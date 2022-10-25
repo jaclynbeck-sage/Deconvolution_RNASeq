@@ -4,25 +4,23 @@
 # that is populated by meta$broadcelltype or meta$subcluster as appropriate,
 # and pass it into this function.
 # Also pass in: fullmat, ints, numreps, numcells
-# Can return pseudobulk and propval as a list, or just save to file
-# Make a separate pseudobulk matrix for full data and donor data, since
-# this don't change based on broad/fine cell types. Then it can cbind to the
-# pb matrix returned by the function.
 # Sacrificed readability for speed. Doing matrix multiplication is >10x faster
 # than using rowSums().
 
 library(Matrix)
+library(SummarizedExperiment) # TODO or is a DESeq2 object better so we can use normalization functions?
 library(stringr)
 
-input_dir <- file.path("DeconvolutionData", "input")
-output_dir <- file.path("DeconvolutionData", "output")
-dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+source("Filenames.R")
+source(file.path("functions", "CreatePseudobulk_ByDonor.R"))
+source(file.path("functions", "CreatePseudobulk_PureSamplesByDonor.R"))
+source(file.path("functions", "CreatePseudobulk_Training.R"))
 
 datasets <- list("mathys") #, "cain", "lau", "leng_SFG", "leng_EC", "lau", "morabito")
 
 for (dataset in datasets) {
-  load(file.path(input_dir, paste0(dataset,"_counts.rda")))
-  meta <- read.csv(file.path(input_dir, paste0(dataset,"_metadata.csv")), as.is = T)
+  load(file.path(dir_input, paste0(dataset,"_counts.rda")))
+  meta <- read.csv(file.path(dir_input, paste0(dataset,"_metadata.csv")), as.is = T)
   meta <- meta[,-1]
   rownames(meta) <- meta$cellid
 
@@ -32,134 +30,55 @@ for (dataset in datasets) {
   meta <- meta[keep,]
   fullmat <- fullmat[, keep]
 
-  ### top level - broad cell types ###
-  broadtypes <- unique(meta$broadcelltype)
-  donors <- unique(meta$donor)
+  meta$donor = factor(meta$donor)
+  meta$broadcelltype = factor(meta$broadcelltype)
 
-  pure_samples_broad <- list()
-  for (ii in broadtypes) {
-    pure_samples_broad[[ii]] <- which(meta$broadcelltype==ii)
-  }
+  CreatePseudobulk_ByDonor(singlecell_counts = fullmat, metadata = meta,
+                           dataset = dataset, dir_pseudobulk = dir_pseudobulk)
+
+  CreatePseudobulk_PureSamplesByDonor(singlecell_counts = fullmat,
+                                      metadata = meta, dataset = dataset,
+                                      dir_pseudobulk = dir_pseudobulk)
+
+  ### top level - broad cell types ###
+  broadtypes <- levels(meta$broadcelltype)
 
   numreps <- 10
   numcells <- 20000 # TODO -- or just use the number of cells available per cell type? Or number of cells in data set?
 
   ints <- seq(from = 0, to = 1, by = 0.1)
 
-  pseudobulk <- matrix(0, nrow = nrow(fullmat),
-                       ncol = length(donors) + length(donors)*length(broadtypes) + numreps * 2 * length(ints) * length(pure_samples_broad))
+  # Dummy rows/cols so we can rbind/cbind below
+  pseudobulk <- Matrix(0, nrow = nrow(fullmat), sparse = FALSE)
   rownames(pseudobulk) <- rownames(fullmat)
-  colnames(pseudobulk) <- 1:ncol(pseudobulk)
 
-  propval <- matrix(0, nrow = ncol(pseudobulk), ncol = length(pure_samples_broad))
-  colnames(propval) <- names(pure_samples_broad)
+  propval <- Matrix(0, ncol = length(broadtypes), sparse = FALSE)
+  colnames(propval) <- broadtypes
 
-  meta$donor = factor(meta$donor)
+  # Now add randomly-sampled data sets to fill out pseudobulk data
 
-  # This is SIGNIFICANTLY faster than calling rowSums on individual donor sets
-
-  y = model.matrix(~0 + donor, data = meta)
-  inds = 1:(ncol(y) - 1)
-  pseudobulk[, inds] <- as.array(fullmat %*% y)
-  colnames(pseudobulk)[inds] = colnames(y)
-
-  tab1 <- table(meta$donor, meta$broadcelltype)
-  propval[inds, colnames(tab1)] <- tab1 / rowSums(tab1)
-
-  index <- max(inds) + 1
-
-
-  # Pure samples by donor
-  meta$celltypedonor <- factor(paste(meta$broadcelltype, meta$donor, sep = "_"))
-  y = model.matrix(~0 + celltypedonor, data = meta)
-  inds = index:(index + ncol(y) - 1)
-  pseudobulk[, inds] <- as.array(fullmat %*% y)
-  colnames(pseudobulk)[inds] = str_replace(colnames(y), "celltypedonor", "puresample_")
-
-  tab1 <- table(meta$celltypedonor, meta$broadcelltype)
-  propval[inds, colnames(tab1)] <- tab1 / rowSums(tab1)
-
-  index <- max(inds) + 1
-
-  # Now add randomly-sampled data sets to fill out the rest of pseudobulk
-
-  for (ii in 1:length(pure_samples_broad)) {
-    cellkeep <- pure_samples_broad[[ii]]
-    othercells <- setdiff(1:nrow(meta), cellkeep)
+  for (ii in 1:length(broadtypes)) {
 
     for (jj in ints) {
-      groups <- matrix(0, nrow = nrow(meta), ncol = numreps * 2)
+      result <- CreatePseudobulk_Training(singlecell_counts = fullmat,
+                                          metadata = meta,
+                                          main_celltype = broadtypes[ii],
+                                          proportion = jj, numreps = numreps)
+      pseudobulk <- cbind(pseudobulk, result[["counts"]])
+      propval <- rbind(propval, result[["propval"]])
 
-      colnames(groups) <- paste(names(pure_samples_broad)[ii], jj, 1:(numreps*2), sep = "_")
-      rownames(groups) <- rownames(meta)
-
-      inds = index:(index + ncol(groups) - 1)
-
-      for (kk in 1:numreps) {
-        set.seed(ii*10000 + jj*100 + kk)
-        numtokeep <- round(jj*numcells)
-        keepinds <- sample(cellkeep, numtokeep, replace = T)
-
-        ###remaining cells###
-        numtofill <- numcells - numtokeep
-        keepinds2 <- sample(othercells, numtofill, replace = T)
-
-        keepinds <- c(keepinds, keepinds2)
-        groups[sort(unique(keepinds)), kk] = table(keepinds)
-
-        tab1 <- table(meta$broadcelltype[keepinds])
-        propval[index, names(tab1)] <- tab1 / sum(tab1)
-
-        index = index + 1
-      }
-
-      for (kk in 1:numreps) {
-        set.seed(ii*10000 + jj*100 + kk)
-        numtokeep <- round(jj*numcells)
-        keepinds <- sample(cellkeep, numtokeep, replace = T)
-
-        ###remaining cells###
-        numtofill <- numcells - numtokeep
-        props <- sample(1:10, ncol(propval)-1, replace = TRUE)
-        props <- (props / sum(props)) * (1-jj) # Make proportions out of 100%, accounting for the celltype already used
-        names(props) <- names(pure_samples_broad)[setdiff(1:length(pure_samples_broad), ii)]
-
-        for (ct in names(props)) {
-          numtofill2 <- round(numcells * props[ct])
-
-          # The last one gets slightly different math to account for rounding error
-          if (ct == names(props)[length(props)]) {
-            numtofill2 <- numcells - length(keepinds)
-          }
-
-          keepinds2 <- sample(pure_samples_broad[[ct]], numtofill2, replace = T)
-          keepinds <- c(keepinds, keepinds2)
-        }
-
-        groups[sort(unique(keepinds)), kk + numreps] = table(keepinds)
-
-        tab1 <- table(meta$broadcelltype[keepinds])
-        propval[index, names(tab1)] <- tab1 / sum(tab1)
-
-        index = index + 1
-      }
-
-      pseudobulk[, inds] <- as.array(fullmat %*% groups)
-      colnames(pseudobulk)[inds] = colnames(groups)
-
-      print(c(dataset, index-1))
+      print(c(dataset, broadtypes[ii], jj))
     }
   }
 
-  rownames(propval) <- colnames(pseudobulk)
+  # Get rid of dummy columns/rows
+  pseudobulk <- pseudobulk[,-1]
+  propval <- propval[-1,]
+  propval <- as.data.frame.matrix(propval)
 
-  # Some donors didn't have specific cell types, so this filters out those cases
-  # where pure sample by donor resulted in 0 counts
-  pseudobulk = pseudobulk[, which(colSums(pseudobulk) > 0)]
-  propval = propval[colnames(pseudobulk), ]
+  se <- SummarizedExperiment(assays = SimpleList(counts = pseudobulk), colData = propval)
 
-  save(pseudobulk, propval, file = file.path(output_dir, paste0("pseudobulk_", dataset, "_broadcelltypes.rda")))
-
+  saveRDS(se, file = file.path(dir_pseudobulk, paste0("pseudobulk_", dataset, "_broadcelltypes.rds")))
 } # Artifically closing for loop to avoid running code below
 
 
@@ -210,5 +129,5 @@ for (dataset in datasets) {
 
   rownames(propval) <- colnames(pseudobulk)
 
-  save(pseudobulk, propval, file = file.path(output_dir, paste0("pseudobulk_",dataset,"_finecelltypes_30percentlimit.rda")))
+  save(pseudobulk, propval, file = file.path(dir_outpu, paste0("pseudobulk_",dataset,"_finecelltypes_30percentlimit.rda")))
 }
