@@ -88,7 +88,9 @@ for (sndata in datasets) {
 
     # We don't need to re-calculate markers every type we change n_markers
     # or summary_fn, so do it outside those loops
-    for (marker_meth in c("ratio", "diff", "p.value", "regression")) {
+    # Note: "regression" is also an option for marker method but it needs more
+    # than 64 GB of memory so I haven't run it.
+    for (marker_meth in c("ratio", "diff", "p.value")) {
 
       for (gamma_name in list("auto", 1)) {
         gamma <- gamma_name
@@ -143,6 +145,9 @@ for (sndata in datasets) {
                                              paste0("dtangle_list_", sndata,
                                                    "_donors_", cellclasstype, ".rds")))
     }
+
+    rm(Y)
+    gc()
   }
 
   # Save the completed list
@@ -151,11 +156,48 @@ for (sndata in datasets) {
                                                 "_donors_", cellclasstype, ".rds")))
 }
 
+
+# Test code
+se <- readRDS(file.path(dir_pseudobulk, paste0("pseudobulk_", sndata, "_bydonor_broadcelltypes.rds")))
+propval <- as.matrix(colData(se))
+
 ses = list()
 for (N in names(dtangle_list)) {
   tmp = dtangle_list[[N]]$estimates
-  ses[[N]] = ((tmp[rownames(propval), colnames(propval)] - propval)/(propval+1e-10))^2 # Proportional to cell proportion -- TODO this biases against ones where propval is 0
+  ses[[N]] = ((tmp[rownames(propval), colnames(propval)] - propval)/(propval + 1e-10))^2 # Proportional to cell proportion -- TODO this biases against ones where propval is 0
   mse = mean(ses[[N]])
   rmse = sqrt(mse)
-  print(paste(N, ": ", mse, "     ", rmse / 1000000))
+  print(paste(N, ": ", rmse / 1000000))
 }
+
+tmp <- sapply(ses, mean)
+best <- min(tmp[!is.na(tmp)])
+print(names(tmp)[which(tmp == best)])
+
+
+ses2 = list()
+for (N in names(dtangle_list)) {
+  tmp = dtangle_list[[N]]$estimates
+  ses2[[N]] = ((tmp[rownames(propval), colnames(propval)] - propval))^2
+  mse = mean(ses2[[N]])
+  rmse = sqrt(mse)
+  print(paste(N, ": ", rmse))
+}
+
+tmp <- sapply(ses2, mean)
+best <- min(tmp[!is.na(tmp)])
+print(names(tmp)[which(tmp == best)])
+
+
+ses3 = list()
+for (N in names(dtangle_list)) {
+  tmp = dtangle_list[[N]]$estimates
+  ses3[[N]] = abs(tmp[rownames(propval), colnames(propval)] - propval)
+  me = mean(ses3[[N]])
+  print(paste(N, ": ", me))
+}
+
+tmp <- sapply(ses3, mean)
+best <- min(tmp[!is.na(tmp)])
+print(names(tmp)[which(tmp == best)])
+
