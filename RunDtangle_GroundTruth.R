@@ -15,8 +15,8 @@ for (sndata in datasets) {
     load(file.path(dir_pseudobulk, paste0("pseudobulk_", sndata, "_finecelltypes_30percentlimit.rda")))
   }
   if (cellclasstype=="broad") {
-    #se <- readRDS(file.path(dir_pseudobulk, paste0("pseudobulk_",sndata,"_broadcelltypes.rds")))
-    se <- readRDS(file.path(dir_pseudobulk, paste0("pseudobulk_", sndata, "_bydonor_broadcelltypes.rds")))
+    se <- readRDS(file.path(dir_pseudobulk, paste0("pseudobulk_",sndata,"_broadcelltypes.rds")))
+    #se <- readRDS(file.path(dir_pseudobulk, paste0("pseudobulk_", sndata, "_bydonor_broadcelltypes.rds")))
   }
 
   load(file.path(dir_input, paste0(sndata,"_counts.rda")))
@@ -74,13 +74,16 @@ for (sndata in datasets) {
   pb_mats[["logcounts"]] <- log2(pseudobulk + 1)
 
   # Clear up as much memory as possible
-  rm(fullmat, fullmat_cpm, pseudobulk, pseudobulk_cpm)
+  rm(se, fullmat, fullmat_cpm, pseudobulk, pseudobulk_cpm)
   gc()
 
   ###test dtangle parameters on pseudo-bulk combinations
-  dtangle_list <- list()
 
   for (normtype in c("logcpm", "logcpm_scuttle", "logcounts")) {
+
+    # New list for each normtype. Otherwise the list takes up a lot of memory
+    dtangle_list <- list()
+
     # Pre-combine matrices so this isn't repeatedly done on every dtangle call.
     # Single cell data must be first so indices in pure_samples are correct
     Y <- as.matrix(t(cbind(sc_mats[[normtype]][keepgene,], pb_mats[[normtype]][keepgene,])))
@@ -136,24 +139,27 @@ for (sndata in datasets) {
                                             summary_fn = sum_fn)
             gc()
             print(name)
-          }
-        }
-      }
+          } # End n_markers loop
+        } # End sum_fn_type loop
+      } # End gamma_name loop
 
       # Periodically save the list in case of crash
+      print("Saving list checkpoint...")
       saveRDS(dtangle_list, file = file.path(dir_output,
                                              paste0("dtangle_list_", sndata,
-                                                   "_donors_", cellclasstype, ".rds")))
-    }
+                                                   "_training_", normtype,
+                                                   "_", cellclasstype, ".rds")))
+    } # End marker_meth loop
 
+    # Next iteration will start with new data, remove the old data
     rm(Y)
     gc()
-  }
+  } # End normtype loop
 
   # Save the completed list
-  saveRDS(dtangle_list, file = file.path(dir_output,
-                                         paste0("dtangle_list_", sndata,
-                                                "_donors_", cellclasstype, ".rds")))
+  #saveRDS(dtangle_list, file = file.path(dir_output,
+  #                                       paste0("dtangle_list_", sndata,
+  #                                              "_training_", cellclasstype, ".rds")))
 }
 
 
@@ -172,7 +178,7 @@ for (N in names(dtangle_list)) {
 
 tmp <- sapply(ses, mean)
 best <- min(tmp[!is.na(tmp)])
-print(names(tmp)[which(tmp == best)])
+best1 <- names(tmp)[which(tmp == best)]
 
 
 ses2 = list()
@@ -186,7 +192,7 @@ for (N in names(dtangle_list)) {
 
 tmp <- sapply(ses2, mean)
 best <- min(tmp[!is.na(tmp)])
-print(names(tmp)[which(tmp == best)])
+best2 <- names(tmp)[which(tmp == best)]
 
 
 ses3 = list()
@@ -199,5 +205,17 @@ for (N in names(dtangle_list)) {
 
 tmp <- sapply(ses3, mean)
 best <- min(tmp[!is.na(tmp)])
-print(names(tmp)[which(tmp == best)])
+best3 <- names(tmp)[which(tmp == best)]
 
+
+matplot(propval, dtangle_list[[best1]]$estimates[rownames(propval),], xlim = c(0,1), ylim=c(0,1),
+        xlab="Truth", ylab="Estimates", main = best1)
+abline(a = 0, b = 1)
+
+matplot(propval, dtangle_list[[best2]]$estimates[rownames(propval),], xlim = c(0,1), ylim=c(0,1),
+        xlab="Truth", ylab="Estimates", main = best2)
+abline(a = 0, b = 1)
+
+matplot(propval, dtangle_list[[best3]]$estimates[rownames(propval),], xlim = c(0,1), ylim=c(0,1),
+        xlab="Truth", ylab="Estimates", main = best3)
+abline(a = 0, b = 1)

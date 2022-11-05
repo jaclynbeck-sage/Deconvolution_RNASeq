@@ -44,7 +44,7 @@ for (dataset in datasets) {
   broadtypes <- levels(meta$broadcelltype)
 
   numreps <- 10
-  numcells <- 20000 # TODO -- or just use the number of cells available per cell type? Or number of cells in data set?
+  numcells <- 10000 # TODO -- or just use the number of cells available per cell type? Or number of cells in data set?
 
   ints <- seq(from = 0, to = 1, by = 0.1)
 

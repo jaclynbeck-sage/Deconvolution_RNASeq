@@ -1,4 +1,4 @@
-install.packages(c("BiocManager", "devtools", "stringr"))
+install.packages(c("BiocManager", "devtools", "stringr", "Metrics"))
 
 # requires install of several linux packages first
 install.packages("synapser", repos = c("http://ran.synapse.org", "http://cran.fhcrc.org"))
