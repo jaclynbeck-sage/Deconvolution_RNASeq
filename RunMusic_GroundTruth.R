@@ -64,12 +64,18 @@ for (sndata in datasets) {
 
           gc()
           print(name)
-        }
-      }
-    }
-  }
+        } # End normalize loop
+      } # End centered loop
+    } # End ct.cov loop
 
-  print("Saving list...")
+    # Periodically save the list, in case of crashes
+    print("Saving list checkpoint...")
+    saveRDS(music_list, file = file.path(dir_output,
+                                         paste0("music_list_", sndata, "_donors_",
+                                                cellclasstype, ".rds")))
+  } # End samples loop
+
+  print("Saving final list...")
   saveRDS(music_list, file = file.path(dir_output,
                                        paste0("music_list_", sndata, "_donors_",
                                               cellclasstype, ".rds")))
