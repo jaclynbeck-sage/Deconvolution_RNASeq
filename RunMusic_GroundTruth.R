@@ -12,8 +12,8 @@ for (sndata in datasets) {
     load(paste0("pseudobulk_", sndata, "_finecelltypes_30percentlimit.rda"))
   }
   if (cellclasstype=="broad") {
-    #se <- readRDS(file.path(dir_pseudobulk, paste0("pseudobulk_",sndata,"_broadcelltypes.rds")))
-    se <- readRDS(file.path(dir_pseudobulk, paste0("pseudobulk_", sndata, "_bydonor_broadcelltypes.rds")))
+    se <- readRDS(file.path(dir_pseudobulk, paste0("pseudobulk_",sndata,"_broadcelltypes.rds")))
+    #se <- readRDS(file.path(dir_pseudobulk, paste0("pseudobulk_", sndata, "_bydonor_broadcelltypes.rds")))
   }
 
   load(file.path(dir_input, paste0(sndata,"_counts.rda")))
@@ -42,42 +42,47 @@ for (sndata in datasets) {
   rm(fullmat, se)
   gc()
 
+  # Every combination of parameters being tested
+  params <- expand.grid(ct.cov = c(TRUE, FALSE),
+                        centered = c(TRUE, FALSE),
+                        normalize = c(TRUE, FALSE))
+
   music_list <- list()
 
   # Test different combinations of parameters
-  for (samples in c('donor', 'cellid')) {
-    for (ct.cov in c(TRUE, FALSE)) {
-      for (centered in c(TRUE, FALSE)) {
-        for (normalize in c(TRUE, FALSE)) {
-          name <- paste(sndata, cellclasstype,
-                        "samples", samples,
-                        "ct.cov", ct.cov,
-                        "centered", centered,
-                        "normalize", normalize,
-                        "counts", sep = "_")
+  for (samples in c('donor')) { #, 'cellid')) { # cellid is way too slow for quick testing
+    for (R in 1:nrow(params)) {
+      ct.cov <- params$ct.cov[R]
+      centered <- params$centered[R]
+      normalize <- params$normalize[R]
 
-          music_list[[name]] = music_prop(bulk.mtx = pseudobulk, sc.sce = sce,
-                                          clusters = 'broadcelltype',
-                                          samples = samples, verbose = TRUE,
-                                          ct.cov = ct.cov, centered = centered,
-                                          normalize = normalize)
+      name <- paste(sndata, cellclasstype,
+                    "samples", samples,
+                    "ct.cov", ct.cov,
+                    "centered", centered,
+                    "normalize", normalize,
+                    "counts", sep = "_")
 
-          gc()
-          print(name)
-        } # End normalize loop
-      } # End centered loop
-    } # End ct.cov loop
+      music_list[[name]] = music_prop(bulk.mtx = pseudobulk, sc.sce = sce,
+                                      clusters = 'broadcelltype',
+                                      samples = samples, verbose = TRUE,
+                                      ct.cov = ct.cov, centered = centered,
+                                      normalize = normalize)
+
+      gc()
+      print(name)
+    } # End params loop
 
     # Periodically save the list, in case of crashes
     print("Saving list checkpoint...")
     saveRDS(music_list, file = file.path(dir_output,
-                                         paste0("music_list_", sndata, "_donors_",
+                                         paste0("music_list_", sndata, "_training_",
                                                 cellclasstype, ".rds")))
   } # End samples loop
 
   print("Saving final list...")
   saveRDS(music_list, file = file.path(dir_output,
-                                       paste0("music_list_", sndata, "_donors_",
+                                       paste0("music_list_", sndata, "_training_",
                                               cellclasstype, ".rds")))
 }
 

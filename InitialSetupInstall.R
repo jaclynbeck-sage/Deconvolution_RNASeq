@@ -17,5 +17,7 @@ devtools::install_github('xuranw/MuSiC')
 # Temporary? Install biomart. Requires install of libxml on Linux
 BiocManager::install(c("biomart"))
 
+# HSPE
+devtools::install_github("gjhunt/hspe/lib_hspe")
 
 

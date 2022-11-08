@@ -7,6 +7,9 @@ cellclasstype <- "broad" ###either "fine" or "broad"
 
 datasets <- list("mathys")#,"cain","lau","morabito","lengSFG","lengEC")
 
+# Workaround for a bug in music2_prop_t_statistics
+exprs <- function(X) {X}
+
 for (sndata in datasets) {
   if (cellclasstype == "fine") {
     load(paste0("pseudobulk_", sndata, "_finecelltypes_30percentlimit.rda"))
@@ -35,8 +38,8 @@ for (sndata in datasets) {
   keepgene <- intersect(rownames(fullmat),rownames(pseudobulk))
   pseudobulk <- as.matrix(pseudobulk[keepgene,])
 
-  controls <- unique(meta$donor[meta$diagnosis == "Control"])
-  disease <- unique(metadata$donor[meta$diagnosis == "??"])
+  controls <- paste0("donor", unique(meta$donor[meta$diagnosis == "Control"]))
+  disease <- paste0("donor", unique(meta$donor[meta$diagnosis == "AD"]))
 
   sce <- SingleCellExperiment(assays = list(counts = fullmat[keepgene,]),
                               colData = meta)
@@ -45,62 +48,73 @@ for (sndata in datasets) {
   rm(fullmat, se)
   gc()
 
+  # Every combination of parameters being tested
+  params <- expand.grid(ct.cov = c(TRUE, FALSE),
+                        centered = c(TRUE, FALSE),
+                        normalize = c(TRUE, FALSE))
+
   music_list <- list()
 
   # Test different combinations of parameters
-  for (samples in c('donor', 'cellid')) {
-    for (music2type in c("default", "t_statistics", "TOAST")) {
+  for (samples in c('donor')) { #}, 'cellid')) { # cellid is way too slow for quick testing
+    for (music2type in c("default", "t_statistics")) { #, "TOAST")) { # TOAST function is broken
 
       # The TOAST function doesn't have ct.cov, centered, or normalize parameters
       if (music2type == "TOAST") {
         name <- paste(sndata, cellclasstype,
                       "samples", samples,
-                      "music2Type", music2Type,
+                      "music2type", music2type,
                       "counts", sep = "_")
-        music_list[[name]] = music2_toast(bulk.control.mtx = pseudobulk[, controls],
-                                          bulk.case.mtx = pseudobulk[, disease],
-                                          sc.sce = sce,
-                                          clusters = 'broadcelltype',
-                                          samples = samples)
+
+        music_list[[name]] = music2_prop_toast_fix(bulk.control.mtx = pseudobulk[, controls],
+                                               bulk.case.mtx = pseudobulk[, disease],
+                                               sc.sce = sce, select.ct = levels(meta$broadcelltype),
+                                               clusters = 'broadcelltype',
+                                               samples = samples)
+
+        gc()
+        print(name)
+
         next # Skip iterating over parameters below
       }
 
-      for (ct.cov in c(TRUE, FALSE)) {
-        for (centered in c(TRUE, FALSE)) {
-          for (normalize in c(TRUE, FALSE)) {
-            name <- paste(sndata, cellclasstype,
-                          "samples", samples,
-                          "music2Type", music2Type,
-                          "ct.cov", ct.cov,
-                          "centered", centered,
-                          "normalize", normalize,
-                          "counts", sep = "_")
+      for (R in 1:nrow(params)) {
+        ct.cov <- params$ct.cov[R]
+        centered <- params$centered[R]
+        normalize <- params$normalize[R]
 
-            if (music2type == "default") {
-              music_list[[name]] = music2_prop(bulk.control.mtx = pseudobulk[, controls],
-                                               bulk.case.mtx = pseudobulk[, disease],
-                                               sc.sce = sce,
-                                               clusters = 'broadcelltype',
-                                               samples = samples, verbose = TRUE,
-                                               ct.cov = ct.cov, centered = centered,
-                                               normalize = normalize)
-            }
-            else if (music2type == "t_statistics") {
-              music_list[[name]] = music2_prop_t_statistics(
-                                               bulk.control.mtx = pseudobulk[, controls],
-                                               bulk.case.mtx = pseudobulk[, disease],
-                                               sc.sce = sce,
-                                               clusters = 'broadcelltype',
-                                               samples = samples, verbose = TRUE,
-                                               ct.cov = ct.cov, centered = centered,
-                                               normalize = normalize)
-            }
+        name <- paste(sndata, cellclasstype,
+                      "samples", samples,
+                      "music2type", music2type,
+                      "ct.cov", ct.cov,
+                      "centered", centered,
+                      "normalize", normalize,
+                      "counts", sep = "_")
 
-            gc()
-            print(name)
-          } # End normalize loop
-        } # End centered loop
-      } # End ct.cov loop
+        if (music2type == "default") {
+          music_list[[name]] = music2_prop(bulk.control.mtx = pseudobulk[, controls],
+                                           bulk.case.mtx = pseudobulk[, disease],
+                                           sc.sce = sce,
+                                           clusters = 'broadcelltype',
+                                           samples = samples,
+                                           select.ct = levels(meta$broadcelltype),
+                                           ct.cov = ct.cov, centered = centered,
+                                           normalize = normalize)
+        }
+        else if (music2type == "t_statistics") {
+          music_list[[name]] = music2_prop_t_statistics(
+                                          bulk.control.mtx = pseudobulk[, controls],
+                                          bulk.case.mtx = pseudobulk[, disease],
+                                          sc.sce = sce,
+                                          clusters = 'broadcelltype',
+                                          samples = samples, select.ct = levels(meta$broadcelltype),
+                                          ct.cov = ct.cov, centered = centered,
+                                          normalize = normalize)
+        }
+
+        gc()
+        print(name)
+      } # End params loop
 
       # Periodically save the list, in case of crashes
       print("Saving list checkpoint...")
