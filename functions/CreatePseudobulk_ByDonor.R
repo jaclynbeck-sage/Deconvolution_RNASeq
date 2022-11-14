@@ -4,8 +4,11 @@ CreatePseudobulk_ByDonor <- function(singlecell_counts, metadata, dataset, dir_p
   y = model.matrix(~0 + donor, data = metadata)
   counts = singlecell_counts %*% y
 
-  props <- table(metadata$donor, metadata$broadcelltype)
-  rownames(props) <- paste0("donor", rownames(props))
+  # colnames end up as "donordonor<#>" because of model.matrix. Remove the extra "donor".
+  colnames(counts) <- str_replace(colnames(counts), "donor", "")
+
+  props <- table(metadata$donor, metadata$broad.cell.type)
+
   # necessary to get the correct shape for Summarized Experiment to convert to DataFrame
   props <- as.data.frame.matrix(props / rowSums(props))
 
@@ -13,18 +16,17 @@ CreatePseudobulk_ByDonor <- function(singlecell_counts, metadata, dataset, dir_p
                                      colData = props)
 
   saveRDS(pseudobulk, file = file.path(dir_pseudobulk,
-                                       paste0("pseudobulk_", dataset, "_bydonor_broadcelltypes.rds")))
+                                       paste0("pseudobulk_", dataset, "_donor_broadcelltypes.rds")))
 
   # TODO Is there a smooth way to put both broad and fine cell types in one object
   # without requiring a lot of reshaping/processing when it's read in from a file?
-  props_fine <- table(metadata$donor, metadata$subcluster)
-  rownames(props_fine) <- paste0("donor", rownames(props_fine))
+  props_fine <- table(metadata$donor, metadata$fine.cell.type)
   props_fine <- as.data.frame.matrix(props_fine / rowSums(props_fine))
 
   pseudobulk_fine <- SummarizedExperiment(assays = SimpleList(counts = counts),
                                           colData = props_fine)
 
   saveRDS(pseudobulk_fine, file = file.path(dir_pseudobulk,
-                                            paste0("pseudobulk_", dataset, "_bydonor_finecelltypes.rds")))
+                                            paste0("pseudobulk_", dataset, "_donor_finecelltypes.rds")))
 
 }
