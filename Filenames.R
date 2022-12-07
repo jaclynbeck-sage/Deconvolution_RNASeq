@@ -5,9 +5,11 @@ dir_input <- file.path(dir_data, "input")
 dir_pseudobulk <- file.path(dir_data, "pseudobulk")
 dir_output <- file.path(dir_data, "output")
 
+dir_lau_raw <- file.path(dir_input, "lau_raw")
 dir_mathys_raw <- file.path(dir_input, "mathys_raw")
+dir_morabito_raw <- file.path(dir_input, "morabito_raw")
 
 # Make sure these directories exist
-for (D in c(dir_pseudobulk, dir_output, dir_mathys_raw)) {
-  dir.create(D, recursive = TRUE, showWarnings = FALSE)
+for (D in ls(pat = "dir_")) {
+  dir.create(eval(parse(text = D)), recursive = TRUE, showWarnings = FALSE)
 }

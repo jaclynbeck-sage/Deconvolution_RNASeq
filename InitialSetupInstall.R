@@ -6,8 +6,8 @@ install.packages("synapser", repos = c("http://ran.synapse.org", "http://cran.fh
 install.packages(c("dtangle"))
 
 BiocManager::install(c("Biobase", "SingleCellExperiment", "TOAST", "scuttle",
-                       "DeconRNASeq"))
-                       #"edgeR", "DelayedArray", "rhdf5", "HDF5Array", "scuttle"))
+                       "DeconRNASeq", "Seurat", "GEOquery"))
+                       #"edgeR", "DelayedArray", "rhdf5", "HDF5Array"))
 
 BiocManager::install("preprocessCore", configure.args="--disable-threading")
 
@@ -17,7 +17,7 @@ devtools::install_github('xuranw/MuSiC')
 # install Spacexr / RCTD package
 #devtools::install_github("dmcable/spacexr", build_vignettes = FALSE)
 
-# Temporary? Install biomart. Requires install of libxml on Linux
+# Requires install of libxml on Linux
 BiocManager::install(c("biomart"))
 
 # HSPE
