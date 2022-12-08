@@ -3,6 +3,7 @@ library(biomaRt)
 library(Seurat)
 library(reshape2)
 library(readxl)
+library(stringr)
 library(GEOquery)
 
 ##### Generic functions #####
@@ -49,6 +50,8 @@ DownloadData <- function(dataset) {
   files <- switch(dataset,
                   "cain" = DownloadData_Cain(),
                   "lau" = DownloadData_Lau(),
+                  "lengEC" = DownloadData_LengEC(),
+                  "lengSFG" = DownloadData_LengSFG(),
                   "mathys" = DownloadData_Mathys(),
                   "morabito" = DownloadData_Morabito())
   return(files)
@@ -58,6 +61,8 @@ ReadMetadata <- function(dataset, files) {
   metadata <- switch(dataset,
                      "cain" = ReadMetadata_Cain(files),
                      "lau" = ReadMetadata_Lau(files),
+                     "lengEC" = ReadMetadata_Leng(files),
+                     "lengSFG" = ReadMetadata_Leng(files),
                      "mathys" = ReadMetadata_Mathys(files),
                      "morabito" = ReadMetadata_Morabito(files))
   return(metadata)
@@ -67,6 +72,8 @@ ReadCounts <- function(dataset, files) {
   counts <- switch(dataset,
                    "cain" = ReadCounts_Cain(files),
                    "lau" = NULL, # Needs more work
+                   "lengEC" = ReadCounts_Leng(files),
+                   "lengSFG" = ReadCounts_Leng(files),
                    "mathys" = ReadCounts_Mathys(files),
                    "morabito" = ReadCounts_Morabito(files))
   return(counts)
@@ -76,6 +83,8 @@ GeneSymbolToEnsembl <- function(dataset, files = NULL, gene.list = NULL) {
   genes <- switch(dataset,
                   "cain" = GeneSymbolToEnsembl_Biomart(gene.list),
                   "lau" = GeneSymbolToEnsembl_Biomart(gene.list),
+                  "lengEC" = GeneSymbolToEnsembl_Biomart(gene.list), # TODO they provide the GTF with ID->Symbol mappings
+                  "lengSFG" = GeneSymbolToEnsembl_Biomart(gene.list),
                   "mathys" = GeneSymbolToEnsembl_Mathys(files),
                   "morabito" = GeneSymbolToEnsembl_Biomart(gene.list))
   return(genes)
@@ -169,6 +178,43 @@ ReadCounts_Lau <- function(geo_metadata, metadata) {
 GeneSymbolToEnsembl_Lau <- function(gene.list) {
   genes <- GeneSymbolToEnsembl_Biomart(gene.list)
   return(genes)
+}
+
+
+##### Leng, et al., 2021 #####
+# https://doi.org/10.1038/s41593-020-00764-7
+
+DownloadData_LengEC <- function() {
+  synIDs <- list("counts" = "syn22722817")
+  files <- DownloadFromSynapse(synIDs, dir_leng_raw)
+  return(files)
+}
+
+DownloadData_LengSFG <- function() {
+  synIDs <- list("counts" = "syn22722860")
+  files <- DownloadFromSynapse(synIDs, dir_leng_raw)
+  return(files)
+}
+
+ReadMetadata_Leng <- function(files) {
+  sce <- readRDS(files[["counts"]]$path)
+  metadata <- colData(sce)
+
+  braak <- list("0" = "Control",
+                "2" = "Early Pathology",
+                "6" = "AD")
+
+  metadata$cellid <- rownames(metadata)
+  metadata$diagnosis <- unlist(braak[metadata$BraakStage])
+  metadata$subcluster <- str_replace(metadata$clusterAssignment, "EC:|SFG:", "")
+  metadata <- metadata[, c("cellid", "SampleID", "diagnosis", "clusterCellType", "subcluster")]
+
+  return(metadata)
+}
+
+ReadCounts_Leng <- function(files) {
+  sce <- readRDS(files[["counts"]]$path)
+  return(counts(sce))
 }
 
 

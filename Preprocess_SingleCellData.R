@@ -1,99 +1,66 @@
 # Load metadata and counts matrices from Synapse and create a SingleCellExperiment
 # object that includes metadata, raw counts, and mappings from
 # Ensembl ID -> gene symbol.
-#
-# Note: Right now this is just for the Mathys dataset, which needs a lot of
-# metadata rearrangement.
 library(Matrix)
 library(SingleCellExperiment)
-library(reshape2)
+library(edgeR)
 
 source("Filenames.R")
+source(file.path("functions", "Preprocess_HelperFunctions.R"))
 
-##### Read in metadata files #####
+datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito")
 
-# syn3191087
-clinical <- read.csv(file.path(dir_mathys_raw, "ROSMAP_clinical.csv"))
-
-# syn18686372
-cellMeta <- read.table(file.path(dir_mathys_raw, "filtered_column_metadata.txt"),
-                       sep = "\t", header = TRUE)
-
-# syn18687959 -- This file has mappings from Ensembl ID to gene symbol
-genes <- read.table(file.path(dir_mathys_raw, "notfiltered_gene_row_names.txt"),
-                    sep = "\t")
-colnames(genes) <- c("Ensembl.ID", "Symbol")
+dataset <- "lengSFG"
 
 
-##### Create metadata data frame #####
+##### Download files #####
 
-metadata <- merge(cellMeta, clinical, by = "projid", all.x = TRUE, all.y = FALSE)
+files <- DownloadData(dataset)
 
-# See https://www.synapse.org/#!Synapse:syn3191090 for this information (cogdx)
-diagnosis.codes <- list("1" = "Control",
-                        "2" = "MCI",
-                        "3" = "MCI",
-                        "4" = "AD",
-                        "5" = "AD",
-                        "6" = "Other")
-diagnosis.codes <- melt(diagnosis.codes)
-colnames(diagnosis.codes) <- c("diagnosis", "cogdx")
 
-metadata <- merge(metadata, diagnosis.codes, by = "cogdx")
+##### Read in metadata file #####
 
-# Remove unneeded columns
-metadata <- metadata[, c("TAG", "projid", "broad.cell.type", "Subcluster", "diagnosis")]
-
-colnames(metadata) <- c("cell.id", "donor", "broad.cell.type", "fine.cell.type", "diagnosis")
-
-# Make sure metadata is in the same order as the counts matrix will be
-rownames(metadata) <- metadata$cell.id
-metadata <- metadata[cellMeta$TAG,]
-
-# Obfuscate donor ID for privacy -- only someone with access to the original
-# files and this script would be able to recover donor -> projid
-projids <- as.character(unique(metadata$donor))
-mapping <- paste0("donor", 1:length(projids))
-names(mapping) <- projids
-
-metadata$donor <- mapping[as.character(metadata$donor)]
+metadata <- ReadMetadata(dataset, files)
+colnames(metadata) <- c("cellid", "donor", "diagnosis", "broadcelltype", "subcluster")
+rownames(metadata) <- metadata$cellid
 
 # Final modifications to metadata
-metadata$broad.cell.type <- factor(metadata$broad.cell.type)
-metadata$fine.cell.type <- factor(metadata$fine.cell.type)
+metadata$broadcelltype <- factor(metadata$broadcelltype)
+metadata$subcluster <- factor(metadata$subcluster)
 metadata$donor <- factor(metadata$donor)
 metadata$diagnosis <- factor(metadata$diagnosis)
 
 
 ##### Read in matrix of counts #####
 
-# syn18686381
-counts <- readMM(file.path(dir_mathys_raw, "filtered_count_matrix.mtx"))
+counts <- ReadCounts(dataset, files)
 
-# syn18686382
-rows <- read.table(file.path(dir_mathys_raw, "filtered_gene_row_names.txt"))
-rownames(counts) <- rows$V1
-colnames(counts) <- cellMeta$TAG
+# Make sure metadata is in the same order as counts
+metadata <- metadata[colnames(counts), ]
 
-# Make sure counts is in the same order as metadata
-counts <- counts[, metadata$cell.id]
-
-# Convert gene symbol to Ensembl ID. Symbols can map to multiple Ensembl IDs.
-# For this application, we use the first Ensembl ID in the list for duplicate
-# symbols, which is what Seurat does.
-dupes <- duplicated(genes$Symbol)
-genes <- genes[!dupes,]
-rownames(genes) <- genes$Symbol
+# Convert gene symbol to Ensembl ID.
+genes <- GeneSymbolToEnsembl(dataset, files, rownames(counts))
 genes <- genes[rownames(counts),]
-rownames(counts) <- genes[rownames(counts), "Ensembl.ID"]
 
 
 ##### Create SingleCellExperiment object and save #####
 
-rownames(genes) <- genes$Ensembl.ID
+if (!all(metadata$cellid == colnames(counts))) {
+  stop("*** Cells in the metadata and counts matrix are in different orders.
+       Double-check the data. ***")
+}
+
+# edgeR TMM normalization -- Needs a lot of memory
+metadata$tmm.size.factors <- calcNormFactors(counts, method = "TMMwsp")
 
 sce <- SingleCellExperiment(assays = list(counts = counts),
                             colData = metadata, rowData = genes)
 
-saveRDS(sce, file = file.path(dir_input, "mathys_sce.rds"))
+saveRDS(sce, file = file.path(dir_input, paste(dataset, "sce.rds", sep = "_")))
+
+# For reference, using TMM factors:
+#tmms <- counts %*% Diagonal(length(norm.factors), norm.factors)
+#lib.norm <- colSums(counts) * metadata$tmm.size.factors
+#tmm.norm <- counts %*% Diagonal(length(lib.norm), 1e6 / lib.norm)
+
 
