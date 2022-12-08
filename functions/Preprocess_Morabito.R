@@ -23,6 +23,7 @@ files <- DownloadFromSynapse(synIDs, dir_morabito_raw)
 
 metadata <- ReadMetadata_Morabito(files)
 colnames(metadata) <- c("cellid", "donor", "diagnosis", "broadcelltype", "subcluster")
+rownames(metadata) <- metadata$cellid
 
 # Final modifications to metadata
 metadata$broadcelltype <- factor(metadata$broadcelltype)

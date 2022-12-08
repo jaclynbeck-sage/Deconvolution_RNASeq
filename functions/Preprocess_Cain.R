@@ -1,6 +1,10 @@
-# Load metadata and counts matrices from Synapse and create a SingleCellExperiment
+# Load metadata and counts matrices from GEO and create a SingleCellExperiment
 # object that includes metadata, raw counts, and mappings from
 # Ensembl ID -> gene symbol.
+
+### Note: this data is unpublished, so this code is temporary until published
+# data is on Synapse.
+
 library(Matrix)
 library(SingleCellExperiment)
 library(edgeR)
@@ -10,18 +14,15 @@ source(file.path("functions", "Preprocess_HelperFunctions.R"))
 
 ##### Download files from Synapse #####
 
-synIDs <- list("clinical" = "syn3191087",
-               "metadata" = "syn18686372",
-               "genes_ensembl" = "syn18687959",
-               "counts" = "syn18686381",
-               "genes" = "syn18686382")
+# TODO
 
-files <- DownloadFromSynapse(synIDs, dir_mathys_raw)
+files <- list("metadata" = file.path(dir_input, "cain_metadata.csv"),
+              "counts" = file.path(dir_input, "cain_counts.rda"))
 
 
 ##### Read in metadata file #####
 
-metadata <- ReadMetadata_Mathys(files)
+metadata <- ReadMetadata_Cain(files)
 colnames(metadata) <- c("cellid", "donor", "diagnosis", "broadcelltype", "subcluster")
 rownames(metadata) <- metadata$cellid
 
@@ -34,16 +35,16 @@ metadata$diagnosis <- factor(metadata$diagnosis)
 
 ##### Read in matrix of counts #####
 
-counts <- ReadCounts_Mathys(files)
+counts <- ReadCounts_Cain(files)
 
 # Make sure metadata is in the same order as counts
 metadata <- metadata[colnames(counts), ]
 
 # Convert gene symbol to Ensembl ID.
-genes <- GeneSymbolToEnsembl_Mathys(files)
+genes <- GeneSymbolToEnsembl_Cain(rownames(counts))
 genes <- genes[rownames(counts),]
-#rownames(counts) <- genes[rownames(counts), "Ensembl.ID"]
-#rownames(genes) <- genes$Ensembl.ID
+#rownames(counts) <- genes[rownames(counts), "Ensembl.ID"] # TODO: Can't do this. Not all genes have an Ensembl ID
+#rownames(genes) <- genes$Ensembl.ID # See above
 
 
 ##### Create SingleCellExperiment object and save #####
@@ -53,11 +54,11 @@ if (!all(metadata$cellid == colnames(counts))) {
        Double-check the data. ***")
 }
 
-# edgeR TMM normalization
+# edgeR TMM normalization -- Needs a lot of memory
 metadata$tmm.size.factors <- calcNormFactors(counts, method = "TMMwsp")
 
 sce <- SingleCellExperiment(assays = list(counts = counts),
                             colData = metadata, rowData = genes)
 
-saveRDS(sce, file = file.path(dir_input, "mathys_sce.rds"))
+saveRDS(sce, file = file.path(dir_input, "cain_sce.rds"))
 
