@@ -17,7 +17,9 @@ source(file.path("functions", "CreatePseudobulk_ByDonor.R"))
 source(file.path("functions", "CreatePseudobulk_PureSamplesByDonor.R"))
 source(file.path("functions", "CreatePseudobulk_Training.R"))
 
-datasets <- list("mathys") #, "cain", "lau", "leng_SFG", "leng_EC", "lau", "morabito")
+datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
+              "seaRef", "seaAD")
+datasets <- c("seaRef")
 
 for (dataset in datasets) {
   sce <- readRDS(file.path(dir_input, paste0(dataset, "_sce.rds")))
@@ -31,7 +33,7 @@ for (dataset in datasets) {
                                       dir_pseudobulk = dir_pseudobulk)
 
   ### top level - broad cell types ###
-  broadtypes <- levels(metadata$broad.cell.type)
+  broadtypes <- levels(metadata$broadcelltype)
 
   numreps <- 10
   numcells <- 10000 # TODO -- or just use the number of cells available per cell type? Or number of cells in data set?
@@ -42,8 +44,8 @@ for (dataset in datasets) {
   pseudobulk <- Matrix(0, nrow = nrow(counts(sce)), sparse = FALSE)
   rownames(pseudobulk) <- rownames(counts(sce))
 
-  propval <- Matrix(0, ncol = length(broadtypes), sparse = FALSE)
-  colnames(propval) <- broadtypes
+  proportions <- Matrix(0, ncol = length(broadtypes), sparse = FALSE)
+  colnames(proportions) <- broadtypes
 
   # Now add randomly-sampled data sets to fill out pseudobulk data
 
@@ -55,7 +57,7 @@ for (dataset in datasets) {
                                           main_celltype = broadtypes[ii],
                                           proportion = jj, numreps = numreps)
       pseudobulk <- cbind(pseudobulk, result[["counts"]])
-      propval <- rbind(propval, result[["propval"]])
+      proportions <- rbind(proportions, result[["proportions"]])
 
       print(c(dataset, broadtypes[ii], jj))
     }
@@ -63,12 +65,14 @@ for (dataset in datasets) {
 
   # Get rid of dummy columns/rows
   pseudobulk <- pseudobulk[,-1]
-  propval <- propval[-1,]
-  propval <- as.data.frame.matrix(propval)
+  proportions <- proportions[-1,]
+  proportions <- as.data.frame.matrix(proportions)
 
-  se <- SummarizedExperiment(assays = SimpleList(counts = pseudobulk), colData = propval)
+  se <- SummarizedExperiment(assays = SimpleList(counts = pseudobulk),
+                             colData = proportions)
 
-  saveRDS(se, file = file.path(dir_pseudobulk, paste0("pseudobulk_", dataset, "_training_broadcelltypes.rds")))
+  saveRDS(se, file = file.path(dir_pseudobulk, paste0("pseudobulk_", dataset,
+                                                      "_training_broadcelltypes.rds")))
 } # Artifically closing for loop to avoid running code below
 
 
@@ -88,8 +92,8 @@ for (dataset in datasets) {
   pseudobulk <- matrix(0, nrow = nrow(counts(sce)),
                        ncol = numreps * length(ints) * length(pure_samples_fine))
   index <- 1
-  propval <- matrix(0, nrow = ncol(pseudobulk), ncol = length(pure_samples_fine))
-  colnames(propval) <- names(pure_samples_fine)
+  proportions <- matrix(0, nrow = ncol(pseudobulk), ncol = length(pure_samples_fine))
+  colnames(proportions) <- names(pure_samples_fine)
 
   for (ii in 1:length(pure_samples_fine)) {
     cellkeep <- pure_samples_fine[[ii]]
@@ -110,14 +114,14 @@ for (dataset in datasets) {
         colnames(pseudobulk)[index] <- paste(names(pure_samples_broad)[ii], jj, kk, sep = "_")
 
         tab1 <- table(metadata$fine.cell.type[keepinds])
-        propval[index, names(tab1)] = tab1 / sum(tab1)
+        proportions[index, names(tab1)] = tab1 / sum(tab1)
         index <- index + 1
         print(c(dataset, "fine", index - 1))
       }
     }
   }
 
-  rownames(propval) <- colnames(pseudobulk)
+  rownames(proportions) <- colnames(pseudobulk)
 
-  save(pseudobulk, propval, file = file.path(dir_outpu, paste0("pseudobulk_",dataset,"_finecelltypes_30percentlimit.rda")))
+  save(pseudobulk, proportions, file = file.path(dir_outpu, paste0("pseudobulk_",dataset,"_finecelltypes_30percentlimit.rda")))
 

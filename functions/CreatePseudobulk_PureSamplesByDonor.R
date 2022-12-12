@@ -1,14 +1,16 @@
 CreatePseudobulk_PureSamplesByDonor <- function(singlecell_counts, metadata, dataset, dir_pseudobulk) {
   # This is SIGNIFICANTLY faster than calling rowSums on individual donor sets
 
-  metadata$celltypedonor <- factor(paste(metadata$broad.cell.type, metadata$donor, sep = "_"))
+  metadata$celltypedonor <- factor(paste(metadata$broadcelltype, metadata$donor,
+                                         sep = "_"))
 
   y = model.matrix(~0 + celltypedonor, data = metadata)
   colnames(y) = str_replace(colnames(y), "celltypedonor", "puresample_")
 
   counts = singlecell_counts %*% y
+  counts <- as(counts, "dgCMatrix") # For cases where counts is a DelayedMatrix
 
-  props <- table(metadata$celltypedonor, metadata$broad.cell.type)
+  props <- table(metadata$celltypedonor, metadata$broadcelltype)
   rownames(props) <- paste0("puresample_", rownames(props))
   # necessary to get the correct shape for Summarized Experiment to convert to DataFrame
   props <- as.data.frame.matrix(props / rowSums(props))
@@ -17,17 +19,18 @@ CreatePseudobulk_PureSamplesByDonor <- function(singlecell_counts, metadata, dat
                                      colData = props)
 
   saveRDS(pseudobulk, file = file.path(dir_pseudobulk,
-                                       paste0("pseudobulk_", dataset, "_puresamplesbydonor_broadcelltypes.rds")))
+                                       paste0("pseudobulk_", dataset,
+                                              "_puresamplesbydonor_broadcelltypes.rds")))
 
   # Fine cell types -- this may not work well for analysis
-  metadata$celltypedonor <- factor(paste(metadata$fine.cell.type, metadata$donor, sep = "_"))
+  metadata$celltypedonor <- factor(paste(metadata$subcluster, metadata$donor, sep = "_"))
 
   y = model.matrix(~0 + celltypedonor, data = metadata)
   colnames(y) = str_replace(colnames(y), "celltypedonor", "puresample_")
 
   counts = singlecell_counts %*% y
 
-  props <- table(metadata$celltypedonor, metadata$fine.cell.type)
+  props <- table(metadata$celltypedonor, metadata$subcluster)
   rownames(props) <- paste0("puresample_", rownames(props))
   # necessary to get the correct shape for Summarized Experiment to convert to DataFrame
   props <- as.data.frame.matrix(props / rowSums(props))
@@ -36,5 +39,6 @@ CreatePseudobulk_PureSamplesByDonor <- function(singlecell_counts, metadata, dat
                                      colData = props)
 
   saveRDS(pseudobulk, file = file.path(dir_pseudobulk,
-                                       paste0("pseudobulk_", dataset, "_puresamplesbydonor_finecelltypes.rds")))
+                                       paste0("pseudobulk_", dataset,
+                                              "_puresamplesbydonor_finecelltypes.rds")))
 }

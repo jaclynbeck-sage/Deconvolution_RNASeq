@@ -1,10 +1,10 @@
 CreatePseudobulk_Training <- function(singlecell_counts, metadata, main_celltype, proportion, numreps) {
-  celltypes <- levels(metadata$broad.cell.type)
+  celltypes <- levels(metadata$broadcelltype)
   celltype_ind <- which(celltypes == main_celltype)
 
   set.seed(celltype_ind*10000 + proportion*100)
 
-  cellkeep <- which(metadata$broad.cell.type == main_celltype)
+  cellkeep <- which(metadata$broadcelltype == main_celltype)
   othercells <- setdiff(1:nrow(metadata), cellkeep)
 
   # Create the model matrix by randomly assigning cells to groups
@@ -46,7 +46,7 @@ CreatePseudobulk_Training <- function(singlecell_counts, metadata, main_celltype
 
     # Same concept as above except each cell type gets its own proportion
     for (N in names(tmp)) {
-      keep = metadata$broad.cell.type == N
+      keep = metadata$broadcelltype == N
       pp[keep] <- tmp[N] / sum(keep)
     }
 
@@ -56,23 +56,24 @@ CreatePseudobulk_Training <- function(singlecell_counts, metadata, main_celltype
   # Get rid of dummy first column
   probs <- probs[,-1]
 
-  propval <- matrix(0, nrow = ncol(groups), ncol = length(celltypes))
-  colnames(propval) <- celltypes
-  rownames(propval) <- colnames(groups)
+  proportions <- matrix(0, nrow = ncol(groups), ncol = length(celltypes))
+  colnames(proportions) <- celltypes
+  rownames(proportions) <- colnames(groups)
 
   for (kk in 1:ncol(probs)) {
     # Will sample the cells with the probabilities above. We will get *approximately*
     # the assigned proportions, but not exactly due to randomness.
-    keepinds <- sample(metadata$cell.id, size = numcells, replace = TRUE, prob = probs[,kk])
+    keepinds <- sample(metadata$cellid, size = numcells, replace = TRUE, prob = probs[,kk])
     totals <- table(keepinds)
     groups[names(totals), kk] <- totals
 
     # Actual cell type proportions
-    tab1 <- table(metadata[keepinds, "broad.cell.type"])
-    propval[kk, names(tab1)] <- tab1 / sum(tab1)
+    tab1 <- table(metadata[keepinds, "broadcelltype"])
+    proportions[kk, names(tab1)] <- tab1 / sum(tab1)
   }
 
   counts = singlecell_counts %*% groups
+  counts <- as(counts, "dgCMatrix") # For cases where counts is a DelayedMatrix
 
-  return(list("counts" = counts, "propval" = propval))
+  return(list("counts" = counts, "proportions" = proportions))
 }

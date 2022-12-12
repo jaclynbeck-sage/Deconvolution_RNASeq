@@ -162,7 +162,8 @@ ReadMetadata_Lau <- function(files) {
   return(metadata)
 }
 
-# TODO this function is a little hack-y
+# TODO this function is a little hack-y.
+# TODO some cells have cell type = "Exclude", these should be excluded maybe?
 ReadCounts_Lau <- function(files, metadata) {
   geo_metadata = files[["geo_metadata"]] # HACK: geo_metadata is a data frame, not a file
   samples <- rownames(geo_metadata)
