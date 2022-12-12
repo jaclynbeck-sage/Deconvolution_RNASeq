@@ -1,13 +1,12 @@
-install.packages(c("BiocManager", "devtools", "stringr", "Metrics"))
+install.packages(c("BiocManager", "devtools", "stringr", "Metrics",
+                   "dtangle", "readxl"))
 
 # requires install of several linux packages first
 install.packages("synapser", repos = c("http://ran.synapse.org", "http://cran.fhcrc.org"))
 
-install.packages(c("dtangle"))
-
 BiocManager::install(c("Biobase", "SingleCellExperiment", "TOAST", "scuttle",
-                       "DeconRNASeq", "Seurat", "GEOquery"))
-                       #"edgeR", "DelayedArray", "rhdf5", "HDF5Array"))
+                       "DeconRNASeq", "Seurat", "GEOquery", "edgeR",
+                       "rhdf5", "HDF5Array"))
 
 BiocManager::install("preprocessCore", configure.args="--disable-threading")
 
@@ -18,9 +17,7 @@ devtools::install_github('xuranw/MuSiC')
 #devtools::install_github("dmcable/spacexr", build_vignettes = FALSE)
 
 # Requires install of libxml on Linux
-BiocManager::install(c("biomart"))
+BiocManager::install(c("biomaRt"))
 
 # HSPE
 devtools::install_github("gjhunt/hspe/lib_hspe")
-
-

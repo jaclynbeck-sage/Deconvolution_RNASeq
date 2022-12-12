@@ -8,7 +8,8 @@ library(edgeR)
 source("Filenames.R")
 source(file.path("functions", "Preprocess_HelperFunctions.R"))
 
-datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito")
+datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
+              "seaRef", "seaAD")
 
 dataset <- "lengSFG"
 
@@ -56,10 +57,12 @@ metadata$tmm.size.factors <- calcNormFactors(counts, method = "TMMwsp")
 sce <- SingleCellExperiment(assays = list(counts = counts),
                             colData = metadata, rowData = genes)
 
+# If the counts matrix is a DelayedArray (i.e. from the SEA-AD files), the
+# sce file will contain a pointer to the original data file rather than
+# writing the full data to disk again
 saveRDS(sce, file = file.path(dir_input, paste(dataset, "sce.rds", sep = "_")))
 
 # For reference, using TMM factors:
-#tmms <- counts %*% Diagonal(length(norm.factors), norm.factors)
 #lib.norm <- colSums(counts) * metadata$tmm.size.factors
 #tmm.norm <- counts %*% Diagonal(length(lib.norm), 1e6 / lib.norm)
 

@@ -2,9 +2,11 @@ library(synapser)
 library(biomaRt)
 library(Seurat)
 library(reshape2)
-library(readxl)
 library(stringr)
 library(GEOquery)
+library(HDF5Array)
+library(rhdf5)
+
 
 ##### Generic functions #####
 
@@ -53,7 +55,9 @@ DownloadData <- function(dataset) {
                   "lengEC" = DownloadData_LengEC(),
                   "lengSFG" = DownloadData_LengSFG(),
                   "mathys" = DownloadData_Mathys(),
-                  "morabito" = DownloadData_Morabito())
+                  "morabito" = DownloadData_Morabito(),
+                  "seaRef" = DownloadData_SEARef(),
+                  "seaAD" = DownloadData_SEAAD())
   return(files)
 }
 
@@ -64,7 +68,9 @@ ReadMetadata <- function(dataset, files) {
                      "lengEC" = ReadMetadata_Leng(files),
                      "lengSFG" = ReadMetadata_Leng(files),
                      "mathys" = ReadMetadata_Mathys(files),
-                     "morabito" = ReadMetadata_Morabito(files))
+                     "morabito" = ReadMetadata_Morabito(files),
+                     "seaRef" = ReadMetadata_SEARef(files),
+                     "seaAD" = ReadMetadata_SEAAD(files))
   return(metadata)
 }
 
@@ -75,7 +81,9 @@ ReadCounts <- function(dataset, files) {
                    "lengEC" = ReadCounts_Leng(files),
                    "lengSFG" = ReadCounts_Leng(files),
                    "mathys" = ReadCounts_Mathys(files),
-                   "morabito" = ReadCounts_Morabito(files))
+                   "morabito" = ReadCounts_Morabito(files),
+                   "seaRef" = ReadCounts_SEARef(files),
+                   "seaAD" = ReadCounts_SEAAD(files))
   return(counts)
 }
 
@@ -86,7 +94,9 @@ GeneSymbolToEnsembl <- function(dataset, files = NULL, gene.list = NULL) {
                   "lengEC" = GeneSymbolToEnsembl_Biomart(gene.list), # TODO they provide the GTF with ID->Symbol mappings
                   "lengSFG" = GeneSymbolToEnsembl_Biomart(gene.list),
                   "mathys" = GeneSymbolToEnsembl_Mathys(files),
-                  "morabito" = GeneSymbolToEnsembl_Biomart(gene.list))
+                  "morabito" = GeneSymbolToEnsembl_Biomart(gene.list),
+                  "seaRef" = GeneSymbolToEnsembl_Biomart(gene.list),
+                  "seaAD" = GeneSymbolToEnsembl_Biomart(gene.list))
   return(genes)
 }
 
@@ -103,27 +113,22 @@ GeneSymbolToEnsembl <- function(dataset, files = NULL, gene.list = NULL) {
 # https://doi.org/10.1101/2020.12.22.424084
 
 DownloadData_Cain <- function() {
-  # TODO
-  files <- list("metadata" = file.path(dir_input, "cain_metadata.csv"),
-                "counts" = file.path(dir_input, "cain_counts.rda"))
+  # TODO these are not the original data files
+  synIDs <- list("metadata" = "syn38609692",
+                 "counts" = "syn38598183")
+
+  files <- DownloadFromSynapse(synIDs, dir_cain_raw)
   return(files)
 }
 
 ReadMetadata_Cain <- function(files) {
-  metadata <- read.csv(files[["metadata"]])
-  metadata <- metadata[, c("cellid", "donor", "diagnosis", "broadcelltype", "subcluster" )]
-
+  metadata <- read.csv(files[["metadata"]]$path)
   return(metadata)
 }
 
 ReadCounts_Cain <- function(files) {
-  load(files[["counts"]])
+  load(files[["counts"]]$path)
   return(fullmat)
-}
-
-GeneSymbolToEnsembl_Cain <- function(gene.list) {
-  genes <- GeneSymbolToEnsembl_Biomart(gene.list)
-  return(genes)
 }
 
 
@@ -141,7 +146,7 @@ DownloadData_Lau <- function() {
   untar(rownames(geo)[1], exdir = dir_lau_raw)
 
   files <- list("metadata" = file.path(dir_input, "lau_metadata.csv"),
-                "geo_metadata" = geo_metadata) # TODO
+                "geo_metadata" = geo_metadata) # TODO this is a data frame, not a file
   return(files)
 }
 
@@ -173,11 +178,6 @@ ReadCounts_Lau <- function(geo_metadata, metadata) {
   counts <- counts[, metadata$cellid] # Filter to use only cells in the provided metadata file
 
   return(counts)
-}
-
-GeneSymbolToEnsembl_Lau <- function(gene.list) {
-  genes <- GeneSymbolToEnsembl_Biomart(gene.list)
-  return(genes)
 }
 
 
@@ -304,29 +304,172 @@ ReadCounts_Morabito <- function(files) {
   return(counts)
 }
 
-GeneSymbolToEnsembl_Morabito <- function(gene.list) {
-  genes <- GeneSymbolToEnsembl_Biomart(gene.list)
-  return(genes)
-}
-
 
 ##### SEA-AD: Not finished yet #####
+# Reference data set (5 donors): https://portal.brain-map.org/atlases-and-data/rnaseq/human-mtg-10x_sea-ad
+# Full data set (84 donors): https://portal.brain-map.org/explore/seattle-alzheimers-disease/seattle-alzheimers-disease-brain-cell-atlas-download?edit&language=en
 
-ReadMetadata_SEA <- function(files) {
-  donor_metadata <- read_excel(path = files[["donor_metadata"]])
-  cell_metadata <- read.csv(files[["cell_metadata"]])
+# These files are h5ad (AnnData) files. There are several R libraries that can
+# read this type of file and output the full object with all fields populated
+# (e.g. anndata and zellkonverter), however most of them use reticulate, which
+# is incompatible with synapser/PythonEmbedInR, so we can't use them in the
+# same R session which makes it difficult to pipeline. So I read pieces by
+# hand.
 
-  donor_metadata <- subset(donor_metadata, donor_metadata$`Donor ID` %in% cell_metadata$external_donor_name_label)
-  # TODO: class_label gives GABA/Glut neuronal split
-  metadata <- metadata[, c("sample_name", "external_donor_name_label",
-                           "diagnosis", "subclass_label", "cluster_label" )]
+# Note: This function can't read fields that are ENUM type
+ReadH5Group <- function(filename, group.name, cols = NULL) {
+  if (is.null(cols)) {
+    attr <- h5readAttributes(filename, group.name)
+    cols <- c(attr[["_index"]], attr[["column-order"]])
+  }
+
+  col_list <- list()
+  for (column in cols) {
+    if (column != "__categories") {
+      col_list[[column]] <- HDF5Array(filename, file.path(group.name, column))
+    }
+  }
+
+  return(col_list)
+}
+
+# Note: This function doesn't work with fields that have -1 values
+ReplaceColWithCategory <- function(metadata, categories, column.names) {
+  if (is.null(column.names)) {
+    column.names <- names(categories)
+  }
+
+  for (column in column.names) {
+    column.safe <- make.names(column) # Replaces invalid characters
+    metadata[, column.safe] <- categories[[column]][metadata[, column.safe] + 1]
+  }
 
   return(metadata)
 }
 
-ReadCounts_SEA <- function(files) {
-  counts <- readRDS(files[["counts"]]) # Seurat object
-  counts <- subset(counts, QCpass == "True")
+DownloadData_SEARef <- function() {
+  synIDs <- list("individual_metadata" = "syn31149116")
+  files <- DownloadFromSynapse(synIDs, downloadLocation = dir_seaad_raw)
+
+  files[["counts"]] = file_searef_h5
+
+  if (!file.exists(files[["counts"]])) { # Don't re-download, this file is large
+    download.file(url_searef_h5,
+                  destfile = files[["counts"]], method = "curl")
+  }
+  return(files)
+}
+
+DownloadData_SEAAD <- function() {
+  synIDs <- list("individual_metadata" = "syn31149116")
+  files <- DownloadFromSynapse(synIDs, downloadLocation = dir_seaad_raw)
+
+  files[["counts"]] = file_seaad_h5
+
+  if (!file.exists(files[["counts"]])) { # Don't re-download, this file is large
+    download.file(url_seaad_h5,
+                  destfile = files[["counts"]], method = "curl")
+  }
+  return(files)
+}
+
+# Testing calling python from R. Ended up not using this code but saving it
+# just in case.
+ReadMetadata_SEARef_old <- function(files) {
+  pytext <- paste0('import scanpy as sc \n',
+                   'data = sc.read_h5ad("', file_searef_h5, '", backed = "r") \n',
+                   'metadata = sc.get.obs_df(data, keys = ["sample_name", ',
+                   '"external_donor_name_label", "class_label", ',
+                   '"subclass_label", "cluster_label"]) \n')
+  pyExec(pytext)
+  metadata <- pyGet("metadata")
+
+  donor_metadata <- read.csv(files[["individual_metadata"]]$path)
+
+  orig_order <- metadata$sample_name
+  metadata <- merge(metadata, donor_metadata,
+                    by.x = "external_donor_name_label", by.y = "individualID")
+
+  rownames(metadata) <- metadata$sample_name
+  metadata <- metadata[orig_order,]
+
+  metadata$broadcelltype <- metadata$subclass_label
+  metadata$broadcelltype[metadata$class_label == "Neuronal: GABAergic"] = "GABA"
+  metadata$broadcelltype[metadata$class_label == "Neuronal: Glutamatergic"] = "Glut"
+
+  metadata <- metadata[, c("sample_name", "external_donor_name_label",
+                           "diagnosis", "broadcelltype", "cluster_label" )]
+
+  return(metadata)
+}
+
+ReadMetadata_SEARef <- function(files) {
+  donor_metadata <- read.csv(files[["individual_metadata"]]$path)
+
+  # SEA-Ref specific columns
+  cols1 <- c("sample_name", "external_donor_name_label", "class_label",
+            "subclass_label", "cluster_label")
+  cols2 <- c("class_label", "cluster_label", "external_donor_name_label",
+             "subclass_label")
+
+  metadata <- data.frame(ReadH5Group(files[["counts"]], "obs", cols1))
+  categories <- ReadH5Group(files[["counts"]], file.path("obs", "__categories"), cols2)
+
+  metadata <- ReplaceColWithCategory(metadata, categories, cols2)
+
+  metadata$broadcelltype <- metadata$subclass_label
+  metadata$broadcelltype[metadata$class_label == "Neuronal: GABAergic"] = "GABA"
+  metadata$broadcelltype[metadata$class_label == "Neuronal: Glutamatergic"] = "Glut"
+
+  metadata <- merge(metadata, donor_metadata,
+                    by.x = "external_donor_name_label", by.y = "individualID")
+
+  metadata <- metadata[, c("sample_name", "external_donor_name_label",
+                           "diagnosis", "broadcelltype", "cluster_label" )]
+
+  return(metadata)
+}
+
+ReadMetadata_SEAAD <- function(files) {
+  donor_metadata <- read.csv(files[["individual_metadata"]]$path)
+
+  # SEA-AD specific columns
+  cols1 <- c("sample_id", "Donor ID", "Supertype", "Class", "Subclass")
+  cols2 <- c("Donor ID", "Supertype", "Class", "Subclass")
+
+  metadata <- data.frame(ReadH5Group(files[["counts"]], "obs", cols1))
+  categories <- ReadH5Group(files[["counts"]], file.path("obs", "__categories"), cols2)
+
+  metadata <- ReplaceColWithCategory(metadata, categories, cols2)
+
+  metadata$broadcelltype <- metadata$Subclass
+  metadata$broadcelltype[metadata$Class == "Neuronal: GABAergic"] = "GABA"
+  metadata$broadcelltype[metadata$Class == "Neuronal: Glutamatergic"] = "Glut"
+
+  metadata <- merge(metadata, donor_metadata,
+                    by.x = "Donor.ID", by.y = "individualID")
+
+  metadata <- metadata[, c("sample_id", "Donor.ID", "diagnosis",
+                           "broadcelltype", "Supertype")]
+  return(metadata)
+}
+
+ReadCounts_SEARef <- function(files) {
+  counts <- H5ADMatrix(files[["counts"]])
+
+  col_names <- as.character(HDF5Array(files[["counts"]],
+                                      file.path("obs", "sample_name")))
+  dimnames(counts)[[2]] <- col_names
+
+  return(counts)
+}
+
+ReadCounts_SEAAD <- function(files) {
+  counts <- H5ADMatrix(files[["counts"]])
+
+  col_names <- as.character(HDF5Array(files[["counts"]],
+                                      file.path("obs", "sample_id")))
+  dimnames(counts)[[2]] <- col_names
 
   return(counts)
 }
