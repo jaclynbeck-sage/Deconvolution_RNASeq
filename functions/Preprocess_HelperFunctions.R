@@ -74,10 +74,10 @@ ReadMetadata <- function(dataset, files) {
   return(metadata)
 }
 
-ReadCounts <- function(dataset, files) {
+ReadCounts <- function(dataset, files, metadata) {
   counts <- switch(dataset,
                    "cain" = ReadCounts_Cain(files),
-                   "lau" = NULL, # Needs more work
+                   "lau" = ReadCounts_Lau(files, metadata),
                    "lengEC" = ReadCounts_Leng(files),
                    "lengSFG" = ReadCounts_Leng(files),
                    "mathys" = ReadCounts_Mathys(files),
@@ -123,6 +123,8 @@ DownloadData_Cain <- function() {
 
 ReadMetadata_Cain <- function(files) {
   metadata <- read.csv(files[["metadata"]]$path)
+  metadata <- metadata[, c("cellid", "donor", "diagnosis", "broadcelltype", "subcluster" )]
+
   return(metadata)
 }
 
@@ -145,19 +147,24 @@ DownloadData_Lau <- function() {
   #untar(rownames(geo)[1], list = TRUE) # List files inside
   untar(rownames(geo)[1], exdir = dir_lau_raw)
 
-  files <- list("metadata" = file.path(dir_input, "lau_metadata.csv"),
-                "geo_metadata" = geo_metadata) # TODO this is a data frame, not a file
+  synIDs <- list("metadata" = "syn38609700")
+
+  files <- DownloadFromSynapse(synIDs, dir_lau_raw)
+
+  files[["geo_metadata"]] = geo_metadata # TODO this is a data frame, not a file
   return(files)
 }
 
 ReadMetadata_Lau <- function(files) {
-  metadata <- read.csv(files[["metadata"]])
+  metadata <- read.csv(files[["metadata"]]$path)
   metadata <- metadata[, c("cellid", "donor", "diagnosis", "broadcelltype", "subcluster" )]
 
   return(metadata)
 }
 
-ReadCounts_Lau <- function(geo_metadata, metadata) {
+# TODO this function is a little hack-y
+ReadCounts_Lau <- function(files, metadata) {
+  geo_metadata = files[["geo_metadata"]] # HACK: geo_metadata is a data frame, not a file
   samples <- rownames(geo_metadata)
   counts_list <- list()
 
@@ -305,9 +312,10 @@ ReadCounts_Morabito <- function(files) {
 }
 
 
-##### SEA-AD: Not finished yet #####
+##### SEA-AD #####
 # Reference data set (5 donors): https://portal.brain-map.org/atlases-and-data/rnaseq/human-mtg-10x_sea-ad
 # Full data set (84 donors): https://portal.brain-map.org/explore/seattle-alzheimers-disease/seattle-alzheimers-disease-brain-cell-atlas-download?edit&language=en
+# Metadata: https://www.synapse.org/#!Synapse:syn28256462
 
 # These files are h5ad (AnnData) files. There are several R libraries that can
 # read this type of file and output the full object with all fields populated

@@ -11,7 +11,7 @@ source(file.path("functions", "Preprocess_HelperFunctions.R"))
 datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
               "seaRef", "seaAD")
 
-dataset <- "lengSFG"
+dataset <- "lau"
 
 
 ##### Download files #####
@@ -34,7 +34,7 @@ metadata$diagnosis <- factor(metadata$diagnosis)
 
 ##### Read in matrix of counts #####
 
-counts <- ReadCounts(dataset, files)
+counts <- ReadCounts(dataset, files, metadata)
 
 # Make sure metadata is in the same order as counts
 metadata <- metadata[colnames(counts), ]
