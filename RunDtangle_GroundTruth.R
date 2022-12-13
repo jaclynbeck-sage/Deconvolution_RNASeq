@@ -1,5 +1,6 @@
 library(dtangle)
 library(Matrix)
+library(SingleCellExperiment)
 library(SummarizedExperiment)
 library(scuttle)
 
@@ -9,161 +10,167 @@ cellclasstype <- "broad" ###either "fine" or "broad"
 
 datasets <- list("mathys")#,"cain","lau","morabito","lengSFG","lengEC")
 
+datatypes <- list("donors", "training")
+
 ###load bulk and snRNA-seq data###
 for (sndata in datasets) {
-  if (cellclasstype == "fine") {
-    load(file.path(dir_pseudobulk, paste0("pseudobulk_", sndata, "_finecelltypes_30percentlimit.rda")))
-  }
-  if (cellclasstype=="broad") {
-    se <- readRDS(file.path(dir_pseudobulk, paste0("pseudobulk_",sndata,"_broadcelltypes.rds")))
-    #se <- readRDS(file.path(dir_pseudobulk, paste0("pseudobulk_", sndata, "_bydonor_broadcelltypes.rds")))
-  }
-
-  load(file.path(dir_input, paste0(sndata,"_counts.rda")))
-
-  # TODO: metadata processing should be done in a function since multiple files do this
-  meta <- read.csv(file.path(dir_input, paste0(sndata,"_metadata.csv")), as.is=T)
-  rownames(meta) <- meta$cellid
-
-  meta$broadcelltype <- factor(meta$broadcelltype)
-  meta$subcluster <- factor(meta$subcluster)
-
-  keep <- intersect(meta$cellid, colnames(fullmat))
-  meta <- meta[keep,]
-  fullmat <- fullmat[,keep]
-  fullmat_cpm <- calculateCPM(fullmat)
-
-  sc_mats <- list()
-
-  sc_mats[["logcpm"]] <- fullmat_cpm
-  sc_mats[["logcpm"]]@x <- log2(fullmat_cpm@x + 1)
-
-  sc_mats[["logcpm_scuttle"]] <- normalizeCounts(fullmat, log = TRUE, pseudo.count = 1)
-
-  sc_mats[["logcounts"]] <- fullmat
-  sc_mats[["logcounts"]]@x <- log2(fullmat@x + 1)
-
-
-  if (cellclasstype == "broad") {
-    broadtypes <- levels(meta$broadcelltype)
-    pure_samples <- list()
-    for (ii in broadtypes) {
-      pure_samples[[ii]] <- which(meta$broadcelltype == ii)
+  for (datatype in datatypes) {
+    if (cellclasstype == "fine") {
+      load(file.path(dir_pseudobulk, paste0("pseudobulk_", sndata, "_finecelltypes_30percentlimit.rda")))
     }
-  }
-
-  if (cellclasstype == "fine") {
-    finetypes <- levels(meta$subcluster)
-    pure_samples <- list()
-    for (ii in finetypes) {
-      pure_samples[[ii]] <- which(meta$subcluster == ii)
+    if (cellclasstype=="broad") {
+      pseudobulk <- readRDS(file.path(dir_pseudobulk,
+                                      paste0("pseudobulk_", sndata, "_",
+                                             datatype, "_broadcelltypes.rds")))
     }
-  }
 
-  pseudobulk <- assays(se)[["counts"]]
+    sce <- readRDS(file.path(dir_input, paste(sndata, "sce.rds", sep = "_")))
+    meta <- colData(sce)
 
-  # These SHOULD have the same rownames, but just in case.
-  keepgene <- intersect(rownames(fullmat),rownames(pseudobulk))
+    sce_cpm <- calculateCPM(counts(sce))
 
-  pseudobulk_cpm <- calculateCPM(pseudobulk)
+    sc_mats <- list()
 
-  pb_mats <- list()
+    sc_mats[["logcpm"]] <- sce_cpm
+    sc_mats[["logcpm"]]@x <- log2(sce_cpm@x + 1)
 
-  pb_mats[["logcpm"]] <- log2(pseudobulk_cpm + 1)
-  pb_mats[["logcpm_scuttle"]] <- normalizeCounts(pseudobulk, log = TRUE, pseudo.count = 1)
-  pb_mats[["logcounts"]] <- log2(pseudobulk + 1)
+    sc_mats[["logcpm_scuttle"]] <- normalizeCounts(counts(sce), log = TRUE, pseudo.count = 1)
 
-  # Clear up as much memory as possible
-  rm(se, fullmat, fullmat_cpm, pseudobulk, pseudobulk_cpm)
-  gc()
+    sc_mats[["logcounts"]] <- counts(sce)
+    sc_mats[["logcounts"]]@x <- log2(counts(sce)@x + 1)
 
-  ###test dtangle parameters on pseudo-bulk combinations
+    if (cellclasstype == "broad") {
+      broadtypes <- levels(meta$broadcelltype)
+      pure_samples <- list()
+      for (ii in broadtypes) {
+        pure_samples[[ii]] <- which(meta$broadcelltype == ii)
+      }
+    }
 
-  for (normtype in c("logcpm", "logcpm_scuttle", "logcounts")) {
+    if (cellclasstype == "fine") {
+      finetypes <- levels(meta$subcluster)
+      pure_samples <- list()
+      for (ii in finetypes) {
+        pure_samples[[ii]] <- which(meta$subcluster == ii)
+      }
+    }
 
-    # New list for each normtype. Otherwise the list takes up a lot of memory
+    pseudobulk <- assays(pseudobulk)[["counts"]]
+
+    # These SHOULD have the same rownames, but just in case.
+    keepgene <- intersect(rownames(sce), rownames(pseudobulk))
+
+    pseudobulk_cpm <- calculateCPM(pseudobulk)
+
+    pb_mats <- list()
+
+    pb_mats[["logcpm"]] <- log2(pseudobulk_cpm + 1)
+    pb_mats[["logcpm_scuttle"]] <- normalizeCounts(pseudobulk, log = TRUE, pseudo.count = 1)
+    pb_mats[["logcounts"]] <- log2(pseudobulk + 1)
+
+    # Clear up as much memory as possible
+    rm(sce_cpm, pseudobulk, pseudobulk_cpm)
+    gc()
+
     dtangle_list <- list()
 
-    # Pre-combine matrices so this isn't repeatedly done on every dtangle call.
-    # Single cell data must be first so indices in pure_samples are correct
-    Y <- as.matrix(t(cbind(sc_mats[[normtype]][keepgene,], pb_mats[[normtype]][keepgene,])))
-    gc()
+    ###test dtangle parameters on pseudo-bulk combinations
 
-    # We don't need to re-calculate markers every type we change n_markers
-    # or summary_fn, so do it outside those loops
-    # Note: "regression" is also an option for marker method but it needs more
-    # than 64 GB of memory so I haven't run it.
-    for (marker_meth in c("ratio", "diff", "p.value")) {
+    for (normtype in c("logcpm")) { #, "logcpm_scuttle", "logcounts")) {
 
-      for (gamma_name in list("auto", 1)) {
-        gamma <- gamma_name
-        if (gamma_name == "auto") {
-          gamma = NULL
-        }
+      # New list for each normtype. Otherwise the list takes up a lot of memory
+      #dtangle_list <- list()
 
-        markers <- find_markers(Y = Y, pure_samples = pure_samples,
-                                data_type = "rna-seq",
-                                gamma = gamma,
-                                marker_method = marker_meth)
-        gc()
+      # Pre-combine matrices so this isn't repeatedly done on every dtangle call.
+      # Single cell data must be first so indices in pure_samples are correct
+      # TODO consider quantile normalization of the matrix
+      Y <- as.matrix(t(cbind(sc_mats[[normtype]][keepgene,],
+                             pb_mats[[normtype]][keepgene,])))
+      gc()
 
-        markers_use <- list(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, # Percent of markers in each cell type
-                            lengths(markers$L), # All markers for each cell type
-                            50, 100, 200, 500, 1000) # Equal number of markers for each cell type
+      # We don't need to re-calculate markers every type we change n_markers
+      # or summary_fn, so do it outside those loops
+      # Note: "regression" is also an option for marker method but it needs more
+      # than 64 GB of memory so I haven't run it.
+      for (marker_meth in c("ratio", "diff", "p.value")) {
 
-        for (sum_fn_type in c("mean", "median")) {
-          sum_fn <- mean
-          if (sum_fn_type == "median") {
-            sum_fn <- median
+        for (gamma_name in list("auto", 1)) {
+          gamma <- gamma_name
+          if (gamma_name == "auto") {
+            gamma = NULL
           }
 
-          for (n_markers in markers_use) {
-            n_markers_name <- n_markers
-            if (is(n_markers, "integer")) { # the list of lengths
-              n_markers_name <- "all"
+          markers <- find_markers(Y = Y, pure_samples = pure_samples,
+                                  data_type = "rna-seq",
+                                  gamma = gamma,
+                                  marker_method = marker_meth)
+          gc()
+
+          markers_use <- list(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, # Percent of markers in each cell type
+                              lengths(markers$L)) # All markers for each cell type
+
+          for (sum_fn_type in c("mean", "median")) {
+            sum_fn <- mean
+            if (sum_fn_type == "median") {
+              sum_fn <- median
             }
 
-            name <- paste(sndata, cellclasstype,
-                          "method", marker_meth,
-                          "gamma", gamma_name,
-                          "summaryfn", sum_fn_type,
-                          "nmarkers", n_markers_name,
-                          "normalization", normtype, sep = "_")
+            for (n_markers in markers_use) {
+              n_markers_name <- n_markers
+              if (is(n_markers, "integer")) { # the list of lengths
+                n_markers_name <- "all"
+              }
 
-            dtangle_list[[name]] <- dtangle(Y = Y,
-                                            pure_samples = pure_samples,
-                                            data_type = "rna-seq",
-                                            gamma = gamma, # If gamma is not NULL, it will override data_type argument
-                                            n_markers = n_markers,
-                                            markers = markers,
-                                            summary_fn = sum_fn)
-            gc()
-            print(name)
-          } # End n_markers loop
-        } # End sum_fn_type loop
-      } # End gamma_name loop
+              name <- paste(sndata, cellclasstype,
+                            "method", marker_meth,
+                            "gamma", gamma_name,
+                            "summaryfn", sum_fn_type,
+                            "nmarkers", n_markers_name,
+                            "normalization", normtype, sep = "_")
 
-      # Periodically save the list in case of crash
-      print("Saving list checkpoint...")
-      saveRDS(dtangle_list, file = file.path(dir_output,
-                                             paste0("dtangle_list_", sndata,
-                                                   "_training_", normtype,
-                                                   "_", cellclasstype, ".rds")))
-    } # End marker_meth loop
+              result <- dtangle(Y = Y,
+                                pure_samples = pure_samples,
+                                data_type = "rna-seq",
+                                gamma = gamma, # If gamma is not NULL, it will override data_type argument
+                                n_markers = n_markers,
+                                markers = markers,
+                                summary_fn = sum_fn)
 
-    # Next iteration will start with new data, remove the old data
-    rm(Y)
-    gc()
-  } # End normtype loop
+              # Only keep results for pseudobulk samples
+              result$estimates <- result$estimates[colnames(pb_mats[[normtype]]), ]
 
-  # Save the completed list
-  #saveRDS(dtangle_list, file = file.path(dir_output,
-  #                                       paste0("dtangle_list_", sndata,
-  #                                              "_training_", cellclasstype, ".rds")))
+              dtangle_list[[name]] <- result
+
+              gc()
+              print(name)
+            } # End n_markers loop
+          } # End sum_fn_type loop
+        } # End gamma_name loop
+
+        # Periodically save the list in case of crash
+        print("Saving list checkpoint...")
+        saveRDS(dtangle_list, file = file.path(dir_output,
+                                               paste0("dtangle_list_", sndata,
+                                                     "_", datatype,
+                                                     "_", cellclasstype, ".rds")))
+      } # End marker_meth loop
+
+      # Next iteration will start with new data, remove the old data
+      rm(Y)
+      gc()
+    } # End normtype loop
+
+    # Save the completed list
+    print("Saving final list...")
+    saveRDS(dtangle_list, file = file.path(dir_output,
+                                           paste0("dtangle_list_", sndata,
+                                                  "_", datatype,
+                                                  "_", cellclasstype, ".rds")))
+  } # end datatypes loop
 }
 
 
-# Test code
+# Test code -- out of date
 se <- readRDS(file.path(dir_pseudobulk, paste0("pseudobulk_", sndata, "_bydonor_broadcelltypes.rds")))
 propval <- as.matrix(colData(se))
 
