@@ -1,5 +1,6 @@
 library(DeconRNASeq)
 library(Matrix)
+library(SingleCellExperiment)
 library(SummarizedExperiment)
 library(scuttle)
 
@@ -7,7 +8,9 @@ source("Filenames.R")
 
 cellclasstype <- "broad" ###either "fine" or "broad"
 
-datasets <- list("mathys")#,"cain","lau","morabito","lengSFG","lengEC")
+datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
+              "seaRef") #, "seaAD")
+
 datatypes <- list("donors", "training")
 
 ###load bulk and snRNA-seq data###
@@ -17,31 +20,19 @@ for (sndata in datasets) {
       load(file.path(dir_pseudobulk, paste0("pseudobulk_", sndata, "_finecelltypes_30percentlimit.rda")))
     }
     if (cellclasstype=="broad") {
-      if (datatype == "donors") {
-        se <- readRDS(file.path(dir_pseudobulk, paste0("pseudobulk_", sndata, "_bydonor_broadcelltypes.rds")))
-      }
-      else {
-        se <- readRDS(file.path(dir_pseudobulk, paste0("pseudobulk_",sndata,"_broadcelltypes.rds")))
-      }
+      pseudobulk <- readRDS(file.path(dir_pseudobulk,
+                                      paste0("pseudobulk_", sndata, "_",
+                                             datatype, "_broadcelltypes.rds")))
     }
 
-    load(file.path(dir_input, paste0(sndata,"_counts.rda")))
+    sce <- readRDS(file.path(dir_input, paste(sndata, "sce.rds", sep = "_")))
+    meta <- colData(sce)
 
-    # TODO: metadata processing should be done in a function since multiple files do this
-    meta <- read.csv(file.path(dir_input, paste0(sndata,"_metadata.csv")), as.is=T)
-    rownames(meta) <- meta$cellid
-
-    meta$broadcelltype <- factor(meta$broadcelltype)
-    meta$subcluster <- factor(meta$subcluster)
-
-    keep <- intersect(meta$cellid, colnames(fullmat))
-    meta <- meta[keep,]
-    fullmat <- fullmat[,keep]
-    fullmat_cpm <- calculateCPM(fullmat)
+    sce_cpm <- calculateCPM(counts(sce))
 
     signature <- lapply(levels(meta$broadcelltype), function(X) {
       cells <- meta[meta$broadcelltype == X,]
-      rowMeans(fullmat_cpm[,rownames(cells)])
+      rowMeans(sce_cpm[,rownames(cells)])
     })
     names(signature) <- levels(meta$broadcelltype)
     signature <- do.call(cbind, signature)
@@ -50,16 +41,16 @@ for (sndata in datasets) {
     ok <- which(rowSums(signature >= 1) > 0)
     signature <- as.data.frame(signature[ok, ])
 
-    pseudobulk <- assays(se)[["counts"]]
+    pseudobulk <- assays(pseudobulk)[["counts"]]
 
     # These SHOULD have the same rownames, but just in case.
-    keepgene <- intersect(rownames(fullmat),rownames(pseudobulk))
+    keepgene <- intersect(rownames(sce), rownames(pseudobulk))
 
     pseudobulk_cpm <- calculateCPM(pseudobulk)
     pseudobulk_cpm <- as.data.frame(as.matrix(pseudobulk_cpm))
 
     # Clear up as much memory as possible
-    rm(se, fullmat, pseudobulk)
+    rm(pseudobulk, sce, sce_cpm)
     gc()
 
     decon_list <- list()
@@ -69,7 +60,7 @@ for (sndata in datasets) {
                     "usescale", use.scale,
                     "normalization", "cpm", sep = "_")
 
-      res <- DeconRNASeq(pseudobulk_cpm, signature, proportions = NULL,
+      res <- DeconRNASeq(pseudobulk_cpm[keepgene,], signature, proportions = NULL,
                          known.prop = FALSE, use.scale = use.scale, fig = FALSE)
 
       res$Est.prop <- res$out.all
@@ -79,14 +70,18 @@ for (sndata in datasets) {
       decon_list[[name]] <- res
 
       print(name)
-    }
+    } # end use.scale loop
 
     # Save the completed list
+    print("Saving final list...")
     saveRDS(decon_list, file = file.path(dir_output,
                                          paste0("deconRNASeq_list_", sndata,
                                                   "_", datatype, "_",
                                                 cellclasstype, ".rds")))
-  }
+
+    rm(decon_list, meta, pseudobulk_cpm, signature)
+    gc()
+  } # end datatypes loop
 }
 
 

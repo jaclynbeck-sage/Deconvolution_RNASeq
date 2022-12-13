@@ -18,7 +18,7 @@ CreatePseudobulk_ByDonor <- function(singlecell_counts, metadata, dataset, dir_p
 
   saveRDS(pseudobulk, file = file.path(dir_pseudobulk,
                                        paste0("pseudobulk_", dataset,
-                                              "_donor_broadcelltypes.rds")))
+                                              "_donors_broadcelltypes.rds")))
 
   # TODO Is there a smooth way to put both broad and fine cell types in one object
   # without requiring a lot of reshaping/processing when it's read in from a file?
@@ -30,6 +30,6 @@ CreatePseudobulk_ByDonor <- function(singlecell_counts, metadata, dataset, dir_p
 
   saveRDS(pseudobulk_fine, file = file.path(dir_pseudobulk,
                                             paste0("pseudobulk_", dataset,
-                                                   "_donor_finecelltypes.rds")))
+                                                   "_donors_finecelltypes.rds")))
 
 }
