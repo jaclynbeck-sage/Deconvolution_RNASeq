@@ -41,7 +41,9 @@ for (dset in datasets) {
     for (filename in files) {
       provenance <- subset(provenance_df, dataset == dset & test.type == test)
       file <- File(path = filename, parent = params.folder)
-      file <- synStore(file, used = c(provenance$sce_id[[1]], provenance$pseudobulk_id[[1]]))
+      file <- synStore(file,
+                       used = c(provenance$sce_id[[1]], provenance$pseudobulk_id[[1]]),
+                       forceVersion = FALSE)
       print(paste0(file$properties$id, ": ", file$properties$name))
     }
   }
@@ -54,6 +56,6 @@ for (dset in datasets) {
 
   for (filename in files) {
     file <- File(path = filename, parent = markers.folder)
-    file <- synStore(file, used = provenance$sce_id[[1]])
+    file <- synStore(file, used = provenance$sce_id[[1]], forceVersion = FALSE)
   }
 }
