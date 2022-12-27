@@ -5,6 +5,7 @@ dir_input <- file.path(dir_data, "input")
 dir_pseudobulk <- file.path(dir_data, "pseudobulk")
 dir_output <- file.path(dir_data, "output")
 dir_markers <- file.path(dir_output, "markers")
+dir_params_lists <- file.path(dir_output, "params_lists")
 
 dir_cain_raw <- file.path(dir_input, "cain_raw")
 dir_lau_raw <- file.path(dir_input, "lau_raw")
