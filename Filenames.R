@@ -20,6 +20,8 @@ file_seaad_h5 <- file.path(dir_seaad_raw, "seaad_counts.h5ad")
 url_searef_h5 <- "https://sea-ad-single-cell-profiling.s3.amazonaws.com/MTG/RNAseq/Reference_MTG_RNAseq_final-nuclei.2022-06-07.h5ad"
 url_seaad_h5 <- "https://sea-ad-single-cell-profiling.s3.amazonaws.com/MTG/RNAseq/SEAAD_MTG_RNAseq_final-nuclei.2022-08-18.h5ad"
 
+file_rosmap <- file.path(dir_input, "ROSMAP_DLPFC_Counts.tsv")
+
 # Make sure these directories exist
 for (D in ls(pat = "dir_")) {
   dir.create(eval(parse(text = D)), recursive = TRUE, showWarnings = FALSE)
