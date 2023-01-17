@@ -34,7 +34,13 @@ for (sndata in datasets) {
   sc_mats <- list()
 
   sc_mats[["logcpm"]] <- sce_cpm
-  sc_mats[["logcpm"]]@x <- log2(sce_cpm@x + 1)
+
+  if (is(sce_cpm, "DelayedArray")) {
+    sc_mats[["logcpm"]] <- log2(sce_cpm + 1)
+  }
+  else { # Sparse matrix
+    sc_mats[["logcpm"]]@x <- log2(sce_cpm@x + 1)
+  }
 
   #sc_mats[["logcpm_scuttle"]] <- normalizeCounts(counts(sce), log = TRUE, pseudo.count = 1)
 
@@ -99,6 +105,13 @@ for (sndata in datasets) {
     print("Done.")
   }
 
+  # TEMPORARY: dtangle code below will not work with a DelayedArray.
+  # The seaRef dataset will fit in memory all at once, so this converts it
+  # to a sparse matrix. The seaAD data set will NOT fit so this won't work on it.
+  if (is(sc_mats[["logcpm"]], "DelayedArray")) {
+    sc_mats[["logcpm"]] <- as(sc_mats[["logcpm"]], "dgCMatrix")
+  }
+
   for (datatype in datatypes) {
     if (cellclasstype == "fine") {
       load(file.path(dir_pseudobulk, paste0("pseudobulk_", sndata, "_finecelltypes_30percentlimit.rda")))
@@ -161,8 +174,8 @@ for (sndata in datasets) {
         }
 
         markers <- readRDS(file.path(dir_markers, str_glue(marker_file_format)))
-        markers_use <- list(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, # Percent of markers in each cell type
-                            lengths(markers$L)) # All markers for each cell type
+        markers_use <- list(0.01, 0.02, 0.05, 0.1, 0.2, 0.5) #, 0.75, # Percent of markers in each cell type
+                            #lengths(markers$L)) # All markers for each cell type
 
         for (n_markers in markers_use) {
           n_markers_name <- n_markers

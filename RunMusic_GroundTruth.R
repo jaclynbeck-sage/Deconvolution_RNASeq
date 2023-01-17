@@ -11,6 +11,18 @@ datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
 
 datatypes <- list("donors", "training")
 
+# HACK to MuSiC to account for the case where some weights are < 0, which leads
+# to error-causing NaNs later. seaRef is the only data set this has happened on,
+# so I need to figure out what's actually going on here.
+weight.cal.ct.orig <- MuSiC::weight.cal.ct
+weight.cal.ct <- function (...) {
+  weight = weight.cal.ct.orig(...)
+  weight[weight < 0] = 0
+  return(weight)
+}
+
+R.utils::reassignInPackage("weight.cal.ct", pkgName="MuSiC", weight.cal.ct);
+
 for (sndata in datasets) {
   for (datatype in datatypes) {
     if (cellclasstype == "fine") {
@@ -30,6 +42,12 @@ for (sndata in datasets) {
     keepgene <- intersect(rownames(sce), rownames(pseudobulk))
     pseudobulk <- as.matrix(pseudobulk[keepgene, ])
     sce <- sce[keepgene, ]
+
+    # The seaRef dataset will fit in memory all at once, so this converts it
+    # to a sparse matrix. The seaAD data set will NOT fit so this won't work on it.
+    if (is(counts(sce), "DelayedArray")) {
+      counts(sce) <- as(counts(sce), "dgCMatrix")
+    }
 
     # Every combination of parameters being tested
     params <- expand.grid(ct.cov = c(TRUE, FALSE),
