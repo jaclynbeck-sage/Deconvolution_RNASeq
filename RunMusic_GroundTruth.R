@@ -70,11 +70,16 @@ for (sndata in datasets) {
                       "normalize", normalize,
                       "counts", sep = "_")
 
-        music_list[[name]] = music_prop(bulk.mtx = pseudobulk, sc.sce = sce,
-                                        clusters = 'broadcelltype',
-                                        samples = samples, verbose = TRUE,
-                                        ct.cov = ct.cov, centered = centered,
-                                        normalize = normalize)
+        result <- music_prop(bulk.mtx = pseudobulk, sc.sce = sce,
+                             clusters = 'broadcelltype',
+                             samples = samples, verbose = TRUE,
+                             ct.cov = ct.cov, centered = centered,
+                             normalize = normalize)
+
+        # Remove "Weight.gene", "r.squared.full", and "Var.prop". "Weight.gene"
+        # especially is a very large array and is unneeded, so this reduces
+        # output size.
+        music_list[[name]] <- result[1:2]
 
         gc()
         print(name)
