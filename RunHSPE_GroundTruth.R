@@ -20,7 +20,6 @@ cellclasstype <- "broad" ###either "fine" or "broad"
 
 datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito") #,
               #"seaRef", "seaAD")
-#datasets <- c("lau", "lengEC", "lengSFG", "mathys", "morabito")
 
 datatypes <- list("donors", "training")
 
@@ -133,8 +132,8 @@ for (sndata in datasets) {
         loss_fn <- params_run$loss_fn[R]
 
         markers <- readRDS(file.path(dir_markers, str_glue(marker_file_format)))
-        markers_use <- list(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, # Percent of markers in each cell type
-                            lengths(markers$L)) # All markers for each cell type
+        markers_use <- list(0.01, 0.02, 0.05, 0.1, 0.2, 0.5) #, 0.75, # Percent of markers in each cell type
+                            #lengths(markers$L)) # All markers for each cell type
 
         for (n_markers in markers_use) {
           n_markers_name <- n_markers
@@ -151,8 +150,10 @@ for (sndata in datasets) {
                          loss_fn = loss_fn,
                          seed = 12345)
 
-          # Only keep results for pseudobulk samples
+          # Only keep results for pseudobulk samples, and get rid of "diag",
+          # which is huge and unneeded
           result$estimates <- result$estimates[colnames(pb_mats[[normtype]]), ]
+          result <- result[1:4] # "diag" is #5
 
           hspe_list[[name]] <- result
 
