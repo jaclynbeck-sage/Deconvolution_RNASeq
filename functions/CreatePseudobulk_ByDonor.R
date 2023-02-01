@@ -3,18 +3,19 @@ CreatePseudobulk_ByDonor <- function(singlecell_counts, metadata, dataset, dir_p
 
   y <- model.matrix(~0 + donor, data = metadata)
   counts <- singlecell_counts %*% y
-  counts <- as(counts, "dgCMatrix") # For cases where counts is a DelayedMatrix
+  counts <- as(counts, "CsparseMatrix") # For cases where counts is a DelayedMatrix
 
-  # colnames end up as "donordonor<#>" because of model.matrix. Remove the extra "donor".
+  # colnames end up as "donor<#>" because of model.matrix. Remove the "donor".
   colnames(counts) <- str_replace(colnames(counts), "donor", "")
 
-  props <- table(metadata$donor, metadata$broadcelltype)
+  propCells <- table(metadata$donor, metadata$broadcelltype)
+  propCells <- propCells / rowSums(propCells)
 
-  # necessary to get the correct shape for Summarized Experiment to convert to DataFrame
-  props <- as.data.frame.matrix(props / rowSums(props))
+  pctRNA <- CalculatePercentRNA(sce, metadata$donor, metadata$broadcelltype)
 
   pseudobulk <- SummarizedExperiment(assays = SimpleList(counts = counts),
-                                     colData = props)
+                                     metadata = list("propCells" = propCells,
+                                                     "pctRNA" = pctRNA))
 
   saveRDS(pseudobulk, file = file.path(dir_pseudobulk,
                                        paste0("pseudobulk_", dataset,
@@ -22,11 +23,14 @@ CreatePseudobulk_ByDonor <- function(singlecell_counts, metadata, dataset, dir_p
 
   # TODO Is there a smooth way to put both broad and fine cell types in one object
   # without requiring a lot of reshaping/processing when it's read in from a file?
-  props_fine <- table(metadata$donor, metadata$subcluster)
-  props_fine <- as.data.frame.matrix(props_fine / rowSums(props_fine))
+  propCells_fine <- table(metadata$donor, metadata$subcluster)
+  propCells_fine <- propCells_fine / rowSums(propCells_fine)
+
+  pctRNA_fine <- CalculatePercentRNA(sce, metadata$donor, metadata$subcluster)
 
   pseudobulk_fine <- SummarizedExperiment(assays = SimpleList(counts = counts),
-                                          colData = props_fine)
+                                          metadata = list("propCells" = propCells_fine,
+                                                          "pctRNA" = pctRNA_fine))
 
   saveRDS(pseudobulk_fine, file = file.path(dir_pseudobulk,
                                             paste0("pseudobulk_", dataset,

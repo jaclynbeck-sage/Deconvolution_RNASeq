@@ -16,21 +16,25 @@ source("Filenames.R")
 source(file.path("functions", "CreatePseudobulk_ByDonor.R"))
 source(file.path("functions", "CreatePseudobulk_PureSamplesByDonor.R"))
 source(file.path("functions", "CreatePseudobulk_Training.R"))
+source(file.path("functions", "General_HelperFunctions.R"))
 
 datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
-              "seaRef", "seaAD")
-datasets <- c("seaRef")
+              "seaRef") #, "seaAD")
 
 for (dataset in datasets) {
   sce <- readRDS(file.path(dir_input, paste0(dataset, "_sce.rds")))
   metadata <- colData(sce)
 
+  print(paste0(dataset, ": creating pseudobulk by donor..."))
   CreatePseudobulk_ByDonor(singlecell_counts = counts(sce), metadata = metadata,
                            dataset = dataset, dir_pseudobulk = dir_pseudobulk)
 
+  print(paste0(dataset, ": creating pseudobulk pure samples..."))
   CreatePseudobulk_PureSamplesByDonor(singlecell_counts = counts(sce),
                                       metadata = metadata, dataset = dataset,
                                       dir_pseudobulk = dir_pseudobulk)
+
+  print(paste0(dataset, ": creating pseudobulk training set..."))
 
   ### top level - broad cell types ###
   broadtypes <- levels(metadata$broadcelltype)
@@ -44,8 +48,11 @@ for (dataset in datasets) {
   pseudobulk <- Matrix(0, nrow = nrow(counts(sce)), sparse = FALSE)
   rownames(pseudobulk) <- rownames(counts(sce))
 
-  proportions <- Matrix(0, ncol = length(broadtypes), sparse = FALSE)
-  colnames(proportions) <- broadtypes
+  propCells <- Matrix(0, ncol = length(broadtypes), sparse = FALSE)
+  colnames(propCells) <- broadtypes
+
+  pctRNA <- Matrix(0, ncol = length(broadtypes), sparse = FALSE)
+  colnames(pctRNA) <- broadtypes
 
   # Now add randomly-sampled data sets to fill out pseudobulk data
 
@@ -57,7 +64,8 @@ for (dataset in datasets) {
                                           main_celltype = broadtypes[ii],
                                           proportion = jj, numreps = numreps)
       pseudobulk <- cbind(pseudobulk, result[["counts"]])
-      proportions <- rbind(proportions, result[["proportions"]])
+      propCells <- rbind(propCells, result[["propCells"]])
+      pctRNA <- rbind(pctRNA, result[["pctRNA"]])
 
       print(c(dataset, broadtypes[ii], jj))
     }
@@ -65,11 +73,12 @@ for (dataset in datasets) {
 
   # Get rid of dummy columns/rows
   pseudobulk <- pseudobulk[,-1]
-  proportions <- proportions[-1,]
-  proportions <- as.data.frame.matrix(proportions)
+  propCells <- propCells[-1,]
+  pctRNA <- pctRNA[-1,]
 
   se <- SummarizedExperiment(assays = SimpleList(counts = pseudobulk),
-                             colData = proportions)
+                             metadata = list("propCells" = propCells,
+                                             "pctRNA" = pctRNA))
 
   saveRDS(se, file = file.path(dir_pseudobulk, paste0("pseudobulk_", dataset,
                                                       "_training_broadcelltypes.rds")))

@@ -4,19 +4,23 @@ CreatePseudobulk_PureSamplesByDonor <- function(singlecell_counts, metadata, dat
   metadata$celltypedonor <- factor(paste(metadata$broadcelltype, metadata$donor,
                                          sep = "_"))
 
-  y = model.matrix(~0 + celltypedonor, data = metadata)
-  colnames(y) = str_replace(colnames(y), "celltypedonor", "puresample_")
+  y <- model.matrix(~0 + celltypedonor, data = metadata)
+  colnames(y) <- str_replace(colnames(y), "celltypedonor", "puresample_")
 
-  counts = singlecell_counts %*% y
-  counts <- as(counts, "dgCMatrix") # For cases where counts is a DelayedMatrix
+  counts <- singlecell_counts %*% y
+  counts <- as(counts, "CsparseMatrix") # For cases where counts is a DelayedMatrix
 
-  props <- table(metadata$celltypedonor, metadata$broadcelltype)
-  rownames(props) <- paste0("puresample_", rownames(props))
-  # necessary to get the correct shape for Summarized Experiment to convert to DataFrame
-  props <- as.data.frame.matrix(props / rowSums(props))
+  propCells <- table(metadata$celltypedonor, metadata$broadcelltype)
+  rownames(propCells) <- paste0("puresample_", rownames(propCells))
+  propCells <- propCells / rowSums(propCells)
+
+  # Since these are pure samples, pctRNA and propCells = 1 where the cell type
+  # matches the pure sample.
+  pctRNA <- propCells
 
   pseudobulk <- SummarizedExperiment(assays = SimpleList(counts = counts),
-                                     colData = props)
+                                     metadata = list("propCells" = propCells,
+                                                     "pctRNA" = pctRNA))
 
   saveRDS(pseudobulk, file = file.path(dir_pseudobulk,
                                        paste0("pseudobulk_", dataset,
@@ -25,18 +29,21 @@ CreatePseudobulk_PureSamplesByDonor <- function(singlecell_counts, metadata, dat
   # Fine cell types -- this may not work well for analysis
   metadata$celltypedonor <- factor(paste(metadata$subcluster, metadata$donor, sep = "_"))
 
-  y = model.matrix(~0 + celltypedonor, data = metadata)
-  colnames(y) = str_replace(colnames(y), "celltypedonor", "puresample_")
+  y <- model.matrix(~0 + celltypedonor, data = metadata)
+  colnames(y) <- str_replace(colnames(y), "celltypedonor", "puresample_")
 
-  counts = singlecell_counts %*% y
+  counts <- singlecell_counts %*% y
+  counts <- as(counts, "CsparseMatrix") # For cases where counts is a DelayedMatrix
 
-  props <- table(metadata$celltypedonor, metadata$subcluster)
-  rownames(props) <- paste0("puresample_", rownames(props))
-  # necessary to get the correct shape for Summarized Experiment to convert to DataFrame
-  props <- as.data.frame.matrix(props / rowSums(props))
+  propCells <- table(metadata$celltypedonor, metadata$subcluster)
+  rownames(propCells) <- paste0("puresample_", rownames(propCells))
+  propCells <- propCells / rowSums(propCells)
+
+  pctRNA <- propCells
 
   pseudobulk <- SummarizedExperiment(assays = SimpleList(counts = counts),
-                                     colData = props)
+                                     metadata = list("propCells" = propCells,
+                                                     "pctRNA" = pctRNA))
 
   saveRDS(pseudobulk, file = file.path(dir_pseudobulk,
                                        paste0("pseudobulk_", dataset,

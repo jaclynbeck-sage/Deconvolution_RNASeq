@@ -56,9 +56,13 @@ CreatePseudobulk_Training <- function(singlecell_counts, metadata, main_celltype
   # Get rid of dummy first column
   probs <- probs[,-1]
 
-  proportions <- matrix(0, nrow = ncol(groups), ncol = length(celltypes))
-  colnames(proportions) <- celltypes
-  rownames(proportions) <- colnames(groups)
+  propCells <- matrix(0, nrow = ncol(groups), ncol = length(celltypes))
+  colnames(propCells) <- celltypes
+  rownames(propCells) <- colnames(groups)
+
+  pctRNA <- matrix(0, nrow = ncol(groups), ncol = length(celltypes))
+  colnames(pctRNA) <- celltypes
+  rownames(pctRNA) <- colnames(groups)
 
   for (kk in 1:ncol(probs)) {
     # Will sample the cells with the probabilities above. We will get *approximately*
@@ -69,11 +73,16 @@ CreatePseudobulk_Training <- function(singlecell_counts, metadata, main_celltype
 
     # Actual cell type proportions
     tab1 <- table(metadata[keepinds, "broadcelltype"])
-    proportions[kk, names(tab1)] <- tab1 / sum(tab1)
+    propCells[kk, names(tab1)] <- tab1 / sum(tab1)
+
+    # Percent RNA
+    pct <- CalculatePercentRNA(sce[,keepinds], rep(kk, length(keepinds)),
+                               metadata[keepinds, "broadcelltype"])
+    pctRNA[kk, colnames(pct)] <- pct
   }
 
   counts = singlecell_counts %*% groups
-  counts <- as(counts, "dgCMatrix") # For cases where counts is a DelayedMatrix
+  counts <- as(counts, "CsparseMatrix") # For cases where counts is a DelayedMatrix
 
-  return(list("counts" = counts, "proportions" = proportions))
+  return(list("counts" = counts, "propCells" = propCells, "pctRNA" = pctRNA))
 }
