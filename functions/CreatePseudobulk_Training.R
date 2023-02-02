@@ -76,7 +76,7 @@ CreatePseudobulk_Training <- function(singlecell_counts, metadata, main_celltype
     propCells[kk, names(tab1)] <- tab1 / sum(tab1)
 
     # Percent RNA
-    pct <- CalculatePercentRNA(sce[,keepinds], rep(kk, length(keepinds)),
+    pct <- CalculatePercentRNA(counts(sce[,keepinds]), rep(kk, length(keepinds)),
                                metadata[keepinds, "broadcelltype"])
     pctRNA[kk, colnames(pct)] <- pct
   }

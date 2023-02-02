@@ -11,7 +11,7 @@ CreatePseudobulk_ByDonor <- function(singlecell_counts, metadata, dataset, dir_p
   propCells <- table(metadata$donor, metadata$broadcelltype)
   propCells <- propCells / rowSums(propCells)
 
-  pctRNA <- CalculatePercentRNA(sce, metadata$donor, metadata$broadcelltype)
+  pctRNA <- CalculatePercentRNA(singlecell_counts, metadata$donor, metadata$broadcelltype)
 
   pseudobulk <- SummarizedExperiment(assays = SimpleList(counts = counts),
                                      metadata = list("propCells" = propCells,
@@ -26,7 +26,7 @@ CreatePseudobulk_ByDonor <- function(singlecell_counts, metadata, dataset, dir_p
   propCells_fine <- table(metadata$donor, metadata$subcluster)
   propCells_fine <- propCells_fine / rowSums(propCells_fine)
 
-  pctRNA_fine <- CalculatePercentRNA(sce, metadata$donor, metadata$subcluster)
+  pctRNA_fine <- CalculatePercentRNA(singlecell_counts, metadata$donor, metadata$subcluster)
 
   pseudobulk_fine <- SummarizedExperiment(assays = SimpleList(counts = counts),
                                           metadata = list("propCells" = propCells_fine,

@@ -17,18 +17,18 @@ CalculatePercentRNA_old <- function(sce, donors, celltypes) {
 
 # Using model.matrix and matrix multiplication to sum counts is way faster
 # than iterating over cell type/donor combos and using sum().
-# sce = SingleCellExperiment object
-# samples = vector of sample IDs that is the same length as ncol(sce).
+# singlecell_counts = matrix of counts (rows = genes, cols = cells)
+# samples = vector of sample IDs that is the same length as ncol(singlecell_counts).
 #           Must either be a factor (contains multiple sample IDs) or a
 #           vector with the same sample ID repeated (for all cells belonging to
 #           a single sample).
 # celltypes = vector of cell type assignments that is the same length as ncol(sce).
 #             Must be a factor.
-CalculatePercentRNA <- function(sce, samples, celltypes) {
+CalculatePercentRNA <- function(singlecell_counts, samples, celltypes) {
   # Sums all counts for each donor/celltype combination
   y <- model.matrix(~0 + samples:celltypes)
 
-  count_sums <- counts(sce) %*% y
+  count_sums <- singlecell_counts %*% y
 
   # Sum over all genes for each donor/celltype combination
   count_sums <- colSums(count_sums)
