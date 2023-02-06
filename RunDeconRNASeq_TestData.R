@@ -9,10 +9,8 @@ source("Filenames.R")
 
 cellclasstype <- "broad" ###either "fine" or "broad"
 
-datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito") #,
-              #"seaRef") #, "seaAD")
-
-datatypes <- list("donors", "training")
+datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
+              "seaRef") #, "seaAD")
 
 ###load bulk and snRNA-seq data###
 for (sndata in datasets) {
@@ -25,6 +23,13 @@ for (sndata in datasets) {
 
   sce_cpm <- calculateCPM(counts(sce))
 
+  # The seaRef dataset will fit in memory all at once, so this converts it
+  # to a sparse matrix. The seaAD data set will NOT fit so this won't work on it.
+  if (is(sce_cpm, "DelayedArray")) {
+    sce_cpm <- as(sce_cpm, "dgCMatrix")
+  }
+
+  # TODO better signature
   signature <- lapply(levels(meta$broadcelltype), function(X) {
     cells <- meta[meta$broadcelltype == X,]
     rowMeans(sce_cpm[,rownames(cells)])
@@ -48,43 +53,39 @@ for (sndata in datasets) {
   rm(bulk, sce, sce_cpm)
   gc()
 
-  for (datatype in datatypes) {
-    best_params <- readRDS(file.path(dir_output, paste0("best_params_", sndata,
-                                                        "_", datatype, "_",
-                                                        cellclasstype, ".rds")))
-    best_params <- best_params[["deconRNASeq"]]
-    best_params <- str_split(best_params, pattern = "_", simplify = TRUE)
-    use.scale.params <- as.logical(best_params[,4]) # This is the only variable that changes
+  best_params <- readRDS(file.path(dir_output, paste0("best_params_", sndata,
+                                                      "_", cellclasstype, ".rds")))
+  best_params <- subset(best_params, algorithm == "deconRNASeq")
+  best_params <- str_split(best_params$name, pattern = "_", simplify = TRUE)
+  use.scale.params <- as.logical(best_params[,4]) # This is the only variable that changes
 
-    decon_list <- list()
+  decon_list <- list()
 
-    for (use.scale in use.scale.params) {
-      name <- paste(sndata, cellclasstype,
-                    "usescale", use.scale,
-                    "normalization", "cpm", sep = "_")
+  for (use.scale in use.scale.params) {
+    name <- paste(sndata, cellclasstype,
+                  "usescale", use.scale,
+                  "normalization", "cpm", sep = "_")
 
-      res <- DeconRNASeq(bulk_cpm[keepgene,], signature, proportions = NULL,
-                         known.prop = FALSE, use.scale = use.scale, fig = FALSE)
+    res <- DeconRNASeq(bulk_cpm[keepgene,], signature, proportions = NULL,
+                       known.prop = FALSE, use.scale = use.scale, fig = FALSE)
 
-      res$Est.prop <- res$out.all
-      rownames(res$Est.prop) <- colnames(bulk_cpm)
-      res <- res[c("Est.prop", "out.pca")]
+    res$Est.prop <- res$out.all
+    rownames(res$Est.prop) <- colnames(bulk_cpm)
+    res <- res[c("Est.prop", "out.pca")]
 
-      decon_list[[name]] <- res
+    decon_list[[name]] <- res
 
-      print(name)
-    } # end use.scale loop
+    print(name)
+  } # end use.scale loop
 
-    # Save the completed list
-    print("Saving final list...")
-    saveRDS(decon_list, file = file.path(dir_output,
-                                         paste0("deconRNASeq_list_", sndata,
-                                                  "_", datatype, "_",
-                                                cellclasstype, "_ROSMAP.rds")))
+  # Save the completed list
+  print("Saving final list...")
+  saveRDS(decon_list, file = file.path(dir_output,
+                                       paste0("deconRNASeq_list_", sndata,
+                                              "_", cellclasstype, "_ROSMAP.rds")))
 
-    rm(decon_list)
-    gc()
-  } # end datatypes loop
+  rm(decon_list)
+  gc()
 }
 
 

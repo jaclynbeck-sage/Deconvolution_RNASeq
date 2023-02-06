@@ -19,8 +19,8 @@ list_name_format <- paste0("{sndata}_{cellclasstype}_method_{marker_meth}",
 
 cellclasstype <- "broad" ###either "fine" or "broad"
 
-datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito") #,
-#"seaRef") #, "seaAD")
+datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
+              "seaRef") #, "seaAD")
 
 ###load bulk and snRNA-seq data###
 for (sndata in datasets) {
@@ -36,7 +36,17 @@ for (sndata in datasets) {
   sc_mats <- list()
 
   sc_mats[["logcpm"]] <- sce_cpm
-  sc_mats[["logcpm"]]@x <- log2(sce_cpm@x + 1)
+
+  if (is(sce_cpm, "DelayedArray") | is(sce_cpm, "matrix")) {
+    sc_mats[["logcpm"]] <- log2(sce_cpm + 1)
+  }
+  else { # Sparse matrix
+    sc_mats[["logcpm"]]@x <- log2(sce_cpm@x + 1)
+  }
+
+  if (is(sc_mats[["logcpm"]], "DelayedArray")) {
+    sc_mats[["logcpm"]] <- as(sc_mats[["logcpm"]], "dgCMatrix")
+  }
 
   if (cellclasstype == "broad") {
     broadtypes <- levels(meta$broadcelltype)
@@ -72,7 +82,7 @@ for (sndata in datasets) {
   best_params <- subset(best_params, algorithm == "dtangle")
   params <- best_params %>%
     extract(name, c("marker_meth", "gamma_name", "sum_fn_type", "n_markers", "normtype"),
-            "method_([a-z]+)_gamma_([[:alnum:]]+)_summaryfn_([a-z]+)_nmarkers_([0-9\\.]+)_normalization_([[:alnum:]]+)")
+            "method_([a-z]+)_gamma_([[:alnum:]]+)_summaryfn_([a-z]+)_nmarkers_([0-9\\.|all]+)_normalization_([[:alnum:]]+)")
 
   dtangle_list <- list()
 
