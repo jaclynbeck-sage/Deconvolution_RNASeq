@@ -6,6 +6,7 @@ dir_pseudobulk <- file.path(dir_data, "pseudobulk")
 dir_output <- file.path(dir_data, "output")
 dir_markers <- file.path(dir_output, "markers")
 dir_params_lists <- file.path(dir_output, "params_lists")
+dir_figures <- "Figures"
 
 dir_cain_raw <- file.path(dir_input, "cain_raw")
 dir_lau_raw <- file.path(dir_input, "lau_raw")
@@ -20,7 +21,10 @@ file_seaad_h5 <- file.path(dir_seaad_raw, "seaad_counts.h5ad")
 url_searef_h5 <- "https://sea-ad-single-cell-profiling.s3.amazonaws.com/MTG/RNAseq/Reference_MTG_RNAseq_final-nuclei.2022-06-07.h5ad"
 url_seaad_h5 <- "https://sea-ad-single-cell-profiling.s3.amazonaws.com/MTG/RNAseq/SEAAD_MTG_RNAseq_final-nuclei.2022-08-18.h5ad"
 
+# TODO rosmap counts come from syn8691134 or syn8456637, metadata needs to be
+# processed from (syn3191087 and syn21323366) or syn11024258
 file_rosmap <- file.path(dir_input, "ROSMAP_DLPFC_Counts.tsv")
+dir_rosmap <- file.path(dir_output, "rosmap")
 
 # Make sure these directories exist
 for (D in ls(pat = "dir_")) {

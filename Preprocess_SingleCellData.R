@@ -7,6 +7,7 @@ library(edgeR)
 
 source("Filenames.R")
 source(file.path("functions", "Preprocess_HelperFunctions.R"))
+source(file.path("functions", "General_HelperFunctions.R"))
 
 datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
               "seaRef", "seaAD")
@@ -61,6 +62,17 @@ sce <- SingleCellExperiment(assays = list(counts = counts),
 # sce file will contain a pointer to the original data file rather than
 # writing the full data to disk again
 saveRDS(sce, file = file.path(dir_input, paste(dataset, "sce.rds", sep = "_")))
+
+# Calculate the "A" matrix that is needed to convert propCells to pctRNA
+A_broad <- CalculateA(sce, metadata$donor, metadata$broadcelltype)
+A_fine <- CalculateA(sce, metadata$donor, metadata$subcluster)
+
+saveRDS(list("A_broad" = A_broad, "A_fine" = A_fine),
+        file = file.path(dir_input, paste(dataset, "A_matrix.rds", sep = "_")))
+
+# TODO Calculate a signature for each cell type
+
+
 
 # For reference, using TMM factors:
 #lib.norm <- colSums(counts) * metadata$tmm.size.factors

@@ -103,3 +103,10 @@ CalculateSignature <- function(sc.cpm, samples, celltypes) {
 
   return(sig)
 }
+
+
+ConvertPropCellsToPctRNA <- function(propCells, A) {
+  pct <- sweep(propCells, 2, A, "*")
+  pct <- sweep(pct, 1, rowSums(pct), "/")
+  return(pct)
+}

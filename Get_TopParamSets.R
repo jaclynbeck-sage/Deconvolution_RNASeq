@@ -3,8 +3,8 @@ library(tidyr)
 library(stringr)
 source("Filenames.R")
 
-datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito") #,
-             #"seaRef") #, "seaAD")
+datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
+              "seaRef") #, "seaAD")
 
 datatypes = c("donors", "training")
 
@@ -13,7 +13,7 @@ for (dataset in datasets) {
 
   for (datatype in datatypes) {
     err_file <- file.path(dir_output,
-                          paste0("errors_", dataset, "_", datatype, "_broad.rds"))
+                          paste0("errors_", dataset, "_", datatype, "_broad_shortsig.rds"))
     if (!file.exists(err_file)) {
       break
     }
