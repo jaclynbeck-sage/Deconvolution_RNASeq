@@ -125,6 +125,9 @@ ReadMetadata_Cain <- function(files) {
   metadata <- read.csv(files[["metadata"]]$path)
   metadata <- metadata[, c("cellid", "donor", "diagnosis", "broadcelltype", "subcluster" )]
 
+  noclust <- which(metadata$subcluster == "no.clus")
+  metadata$subcluster[noclust] <- metadata$broadcelltype[noclust]
+
   return(metadata)
 }
 
@@ -159,11 +162,19 @@ ReadMetadata_Lau <- function(files) {
   metadata <- read.csv(files[["metadata"]]$path)
   metadata <- metadata[, c("cellid", "donor", "diagnosis", "broadcelltype", "subcluster" )]
 
+  # TODO Since this isn't the original metadata, I'm not sure about a few things:
+  #   1) The number of cells in the unfiltered metadata file is less than what the paper states
+  #   2) The paper doesn't classify cells as OPC but this metadata file does
+  #   3) The "Exclude" category was added by someone in the deconvolution WG but
+  #       I don't know what criteria determined this
+  #   4) There are no fine cell types, maybe this data set needs to get mapped
+  #       onto another one before use
+  metadata <- subset(metadata, broadcelltype != "Exclude")
+
   return(metadata)
 }
 
 # TODO this function is a little hack-y.
-# TODO some cells have cell type = "Exclude", these should be excluded maybe?
 ReadCounts_Lau <- function(files, metadata) {
   geo_metadata = files[["geo_metadata"]] # HACK: geo_metadata is a data frame, not a file
   samples <- rownames(geo_metadata)

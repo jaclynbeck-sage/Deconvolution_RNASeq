@@ -12,7 +12,7 @@ source(file.path("functions", "General_HelperFunctions.R"))
 datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
               "seaRef", "seaAD")
 
-dataset <- "lau"
+#dataset <- "lau"
 
 
 ##### Download files #####
@@ -36,6 +36,10 @@ metadata$diagnosis <- factor(metadata$diagnosis)
 ##### Read in matrix of counts #####
 
 counts <- ReadCounts(dataset, files, metadata)
+
+# Remove genes that are expressed in less than 3 cells
+ok <- rowSums(counts > 0) >= 3
+counts <- counts[ok,]
 
 # Make sure metadata is in the same order as counts
 metadata <- metadata[colnames(counts), ]
@@ -70,8 +74,13 @@ A_fine <- CalculateA(sce, metadata$donor, metadata$subcluster)
 saveRDS(list("A_broad" = A_broad, "A_fine" = A_fine),
         file = file.path(dir_input, paste(dataset, "A_matrix.rds", sep = "_")))
 
-# TODO Calculate a signature for each cell type
+# Calculate a signature for each cell type. This matrix includes all genes in
+# the data set and isn't filtered at this point.
+sig_broad <- CalculateSignature(sce, metadata$donor, metadata$broadcelltype)
+sig_fine <- CalculateSignature(sce, metadata$donor, metadata$subcluster)
 
+saveRDS(list("sig_broad" = sig_broad, "sig_fine" = sig_fine),
+        file = file.path(dir_input, paste(dataset, "signature.rds", sep = "_")))
 
 
 # For reference, using TMM factors:

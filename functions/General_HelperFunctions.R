@@ -1,4 +1,5 @@
 library(reshape2)
+library(scuttle)
 
 CalculatePercentRNA_old <- function(sce, donors, celltypes) {
   pctRNA <- sapply(levels(donors), function(dn) {
@@ -80,7 +81,7 @@ CalculateA <- function(sce, samples, celltypes) {
 }
 
 
-CalculateSignature <- function(sc.cpm, samples, celltypes) {
+CalculateSignature_old <- function(sc.cpm, samples, celltypes) {
   # Sums all counts for each donor/celltype combination
   y <- model.matrix(~0 + samples:celltypes)
 
@@ -102,6 +103,50 @@ CalculateSignature <- function(sc.cpm, samples, celltypes) {
   })
 
   return(sig)
+}
+
+CalculateSignature <- function(sce, samples, celltypes) {
+  # Sums all counts for each donor/celltype combination
+  y <- model.matrix(~0 + samples:celltypes)
+
+  count_sums <- counts(sce) %*% y
+
+  # Remove columns where a donor doesn't have the specified cell type
+  count_sums <- count_sums[,colSums(count_sums) > 0]
+
+  # Convert to CPM -- creates an "average" profile in CPM for each cell type
+  count_sums <- calculateCPM(count_sums)
+
+  cts <- str_replace(colnames(count_sums), ".*:celltypes", "")
+
+  # Get the mean over all donors, for each gene and cell type
+  sig <- sapply(levels(celltypes), function(ct) {
+    cols <- which(cts == ct)
+    rowMeans(count_sums[,cols], na.rm = TRUE)
+  })
+
+  return(sig)
+}
+
+
+FilterSignature <- function(signature, filter_level = 1) {
+  # Filter for genes where at least one cell type expresses at > 1 cpm
+  if (filter_level == 1) {
+    ok <- which(rowSums(signature >= 1) > 0)
+    signature <- signature[ok, ]
+  }
+
+  # Filter for genes where at least one cell type expresses at > 10 cpm
+  else if (filter_level == 2) {
+    ok <- which(rowSums(signature >= 10) > 0)
+    signature <- signature[ok, ]
+  }
+
+  else if (filter_level == 3) {
+    # ?? Maybe use Dtangle markers?
+  }
+
+  return(signature)
 }
 
 
