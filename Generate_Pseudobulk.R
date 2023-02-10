@@ -1,15 +1,35 @@
-#### Systematic generation of pseudobulks from clusters ###
-# TODO turn the two for loops that generate random broad/fine samples into a
-# single function. Can make a new metadata DF that contains "cell" and "type"
-# that is populated by meta$broadcelltype or meta$subcluster as appropriate,
-# and pass it into this function.
-# Also pass in: fullmat, ints, numreps, numcells
-# Sacrificed readability for speed. Doing matrix multiplication is >10x faster
-# than using rowSums().
+##### Generation of pseudobulk data sets from single cell data #####
+# This script creates the following pseudobulk data sets for both broad and
+# fine cell types:
+#   1. Pseudobulk of each donor
+#   2. Pseudobulk of each cell type + donor combination, to create "pure"
+#      pseudobulk samples of each cell type
+#   3. A training pseudobulk set with randomly-sampled cells
+#
+# The training pseudobulk set is generated as follows:
+#   1. For each cell type, determine a reasonable range of proportions to
+#      test based on that cell type's abundance in the single cell data set
+#   2. For each cell type, for each proportion in {0 to max_proportion}, create
+#      5 pseudobulk samples where that cell type has the specified proportion:
+#      2a. Cells are randomly sampled from the pool of cells of that cell type
+#          to make up the specified proportion of the sample.
+#      2b. The other cell types fill in the rest of the sample with
+#          randomly-generated proportions, sampling from their respective
+#          pools of cell types.
+#      2c. The counts from all sampled cells are added together.
+#   3. For each pseudobulk sample, the ground truth proportion of cells and
+#      percent RNA from each cell type is calculated and added as metadata
+#
+# This ensures that:
+#   1. Each cell type is missing from at least 5 samples in the set
+#   2. Each cell type is forced to cover a range of proportions across samples
+#   3. Randomness in assigning proportions to each non-main cell type will
+#      create an even wider range of proportions than you would get from
+#      treating the other cell types as a single pool
 
 library(Matrix)
 library(SingleCellExperiment)
-library(SummarizedExperiment) # TODO or is a DESeq2 object better so we can use normalization functions?
+library(SummarizedExperiment)
 library(stringr)
 
 source("Filenames.R")
@@ -18,119 +38,94 @@ source(file.path("functions", "CreatePseudobulk_PureSamplesByDonor.R"))
 source(file.path("functions", "CreatePseudobulk_Training.R"))
 source(file.path("functions", "General_HelperFunctions.R"))
 
-datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
-              "seaRef") #, "seaAD")
+datasets <- c("cain", "lengEC", "lengSFG", "mathys", "morabito",
+              "seaRef") #, "lau", "seaAD")
 
 for (dataset in datasets) {
   sce <- readRDS(file.path(dir_input, paste0(dataset, "_sce.rds")))
   metadata <- colData(sce)
 
-  print(paste0(dataset, ": creating pseudobulk by donor..."))
+  print(str_glue("{dataset}: creating pseudobulk by donor..."))
   CreatePseudobulk_ByDonor(singlecell_counts = counts(sce), metadata = metadata,
                            dataset = dataset, dir_pseudobulk = dir_pseudobulk)
 
-  print(paste0(dataset, ": creating pseudobulk pure samples..."))
+  print(str_glue("{dataset}: creating pseudobulk pure samples..."))
   CreatePseudobulk_PureSamplesByDonor(singlecell_counts = counts(sce),
                                       metadata = metadata, dataset = dataset,
                                       dir_pseudobulk = dir_pseudobulk)
 
-  print(paste0(dataset, ": creating pseudobulk training set..."))
+  for (cellclasstype in c("broad", "fine")) {
+    print(str_glue("{dataset}: creating pseudobulk training set for {cellclasstype} cell types..."))
 
-  ### top level - broad cell types ###
-  broadtypes <- levels(metadata$broadcelltype)
-
-  numreps <- 10
-  numcells <- 10000 # TODO -- or just use the number of cells available per cell type? Or number of cells in data set?
-
-  ints <- seq(from = 0, to = 1, by = 0.1)
-
-  # Dummy rows/cols so we can rbind/cbind below
-  pseudobulk <- Matrix(0, nrow = nrow(counts(sce)), sparse = FALSE)
-  rownames(pseudobulk) <- rownames(counts(sce))
-
-  propCells <- Matrix(0, ncol = length(broadtypes), sparse = FALSE)
-  colnames(propCells) <- broadtypes
-
-  pctRNA <- Matrix(0, ncol = length(broadtypes), sparse = FALSE)
-  colnames(pctRNA) <- broadtypes
-
-  # Now add randomly-sampled data sets to fill out pseudobulk data
-
-  for (ii in 1:length(broadtypes)) {
-
-    for (jj in ints) {
-      result <- CreatePseudobulk_Training(singlecell_counts = counts(sce),
-                                          metadata = metadata,
-                                          main_celltype = broadtypes[ii],
-                                          proportion = jj, numreps = numreps)
-      pseudobulk <- cbind(pseudobulk, result[["counts"]])
-      propCells <- rbind(propCells, result[["propCells"]])
-      pctRNA <- rbind(pctRNA, result[["pctRNA"]])
-
-      print(c(dataset, broadtypes[ii], jj))
+    # Create a generic "celltype" column that is populated with either broad or
+    # fine cell types depending on the for-loop
+    if (cellclasstype == "broad") {
+      metadata$celltype <- metadata$broadcelltype
     }
-  }
+    else if (cellclasstype == "fine") {
+      metadata$celltype <- metadata$subcluster
+    }
 
-  # Get rid of dummy columns/rows
-  pseudobulk <- pseudobulk[,-1]
-  propCells <- propCells[-1,]
-  pctRNA <- pctRNA[-1,]
+    celltypes <- levels(metadata$celltype)
 
-  se <- SummarizedExperiment(assays = SimpleList(counts = pseudobulk),
-                             metadata = list("propCells" = propCells,
-                                             "pctRNA" = pctRNA))
+    # 5 samples per proportion
+    num_samples <- 5
+    n_cells <- table(metadata$celltype)
 
-  saveRDS(se, file = file.path(dir_pseudobulk, paste0("pseudobulk_", dataset,
-                                                      "_training_broadcelltypes.rds")))
-} # Artifically closing for loop to avoid running code below
+    # The range of percents we use to create the training set is dependent on
+    # how abundant each cell type is in this data set
+    pcts <- table(metadata$donor, metadata$celltype)
+    pcts <- sweep(pcts, 1, rowSums(pcts), "/")
 
+    # The largest proportion of each cell type from any donor, x 2 determines
+    # the range of percents we test for that cell type
+    maxs <- colMaxs(pcts, useNames = TRUE)
+    maxs <- ceiling(20*maxs)/10 # Rounds 2*X to the next-highest 10%
+    maxs[maxs > 1] <- 1.0
 
+    # Each cell type gets its own range of percents, divided into 20 increments
+    ints <- sapply(maxs, function(X) {
+      seq(from = 0, to = X, by = (X/20))
+    })
 
-  ###finer subtypes##
-  finetypes <- unique(metadata$fine.cell.type)
-  pure_samples_fine <- list()
-  for (ii in finetypes) {
-    pure_samples_fine[[ii]] <- which(metadata$fine.cell.type == ii)
-  }
+    pseudobulk <- list()
+    propCells <- list()
+    pctRNA <- list()
 
-  numreps <- 10
-  numcells <- 1000 # TODO adjust this number since the max fine subtype might be smaller than 20000
+    # Create randomly-sampled data sets to fill out pseudobulk data
 
-  ints <- seq(from = 0, to = 0.3,by = 0.02)
+    for (ct in 1:length(celltypes)) {
+      for (prop in ints[,ct]) {
+        # Limit the total number of cells in the resample to be proportional
+        # to the number of cells for this cell type. We don't want to resample
+        # a population of 100 cells 10,000 times, for example
+        numcells <- min(10000, n_cells[celltypes[ct]] / prop)
 
-  pseudobulk <- matrix(0, nrow = nrow(counts(sce)),
-                       ncol = numreps * length(ints) * length(pure_samples_fine))
-  index <- 1
-  proportions <- matrix(0, nrow = ncol(pseudobulk), ncol = length(pure_samples_fine))
-  colnames(proportions) <- names(pure_samples_fine)
+        result <- CreatePseudobulk_Training(singlecell_counts = counts(sce),
+                                            cell_assigns = metadata$celltype,
+                                            main_celltype = celltypes[ct],
+                                            proportion = prop,
+                                            num_cells = numcells,
+                                            num_samples = num_samples)
+        name <- paste(ct, prop)
+        pseudobulk[[name]] <- result[["counts"]]
+        propCells[[name]] <- result[["propCells"]]
+        pctRNA[[name]] <- result[["pctRNA"]]
 
-  for (ii in 1:length(pure_samples_fine)) {
-    cellkeep <- pure_samples_fine[[ii]]
-    othercells <- setdiff(1:nrow(metadata), cellkeep)
-
-    for (jj in ints) {
-      for (kk in 1:numreps) {
-        set.seed(ii*10000+jj*100+kk)
-        numtokeep <- round(jj*numcells)
-        keepinds=sample(cellkeep,numtokeep, replace = T)
-
-        ###remaining cells###
-        numtofill <- numcells - numtokeep
-        keepinds2 <- sample(othercells, numtofill, replace = T)
-
-        keepinds <- c(keepinds, keepinds2)
-        pseudobulk[, index] <- rowSums(counts(sce)[, keepinds])
-        colnames(pseudobulk)[index] <- paste(names(pure_samples_broad)[ii], jj, kk, sep = "_")
-
-        tab1 <- table(metadata$fine.cell.type[keepinds])
-        proportions[index, names(tab1)] = tab1 / sum(tab1)
-        index <- index + 1
-        print(c(dataset, "fine", index - 1))
+        print(c(dataset, celltypes[ct], prop))
       }
     }
+
+    pseudobulk <- do.call(cbind, pseudobulk)
+    propCells <- do.call(rbind, propCells)
+    pctRNA <- do.call(rbind, pctRNA)
+
+    se <- SummarizedExperiment(assays = SimpleList(counts = pseudobulk),
+                               metadata = list("propCells" = propCells,
+                                               "pctRNA" = pctRNA))
+
+    saveFile <- file.path(dir_pseudobulk,
+                          str_glue("pseudobulk_{dataset}_training_{cellclasstype}celltypes.rds"))
+    saveRDS(se, file = saveFile)
   }
-
-  rownames(proportions) <- colnames(pseudobulk)
-
-  save(pseudobulk, proportions, file = file.path(dir_outpu, paste0("pseudobulk_",dataset,"_finecelltypes_30percentlimit.rda")))
-
+}
