@@ -129,7 +129,7 @@ CalculateSignature <- function(sce, samples, celltypes) {
 }
 
 
-FilterSignature <- function(signature, filter_level = 1) {
+FilterSignature <- function(signature, filter_level = 1, dataset = NULL, cellclasstype = NULL, filt_percent = 1.0) {
   # Filter for genes where at least one cell type expresses at > 1 cpm
   if (filter_level == 1) {
     ok <- which(rowSums(signature >= 1) > 0)
@@ -142,8 +142,16 @@ FilterSignature <- function(signature, filter_level = 1) {
     signature <- signature[ok, ]
   }
 
-  else if (filter_level == 3) {
-    # ?? Maybe use Dtangle markers?
+  else if (filter_level == 3 & !is.null(dataset) & !is.null(cellclasstype)) {
+    markers <- readRDS(file.path(dir_markers,
+                                 str_glue("dtangle_markers_{dataset}_{cellclasstype}_input_pseudobulk_normalization_logcpm_method_diff.rds")))
+
+    n_markers <- ceiling(lengths(markers$L) * filt_percent)
+    markers <- lapply(names(markers$L), function(N) {
+      names(markers$L[[N]][1:n_markers[N]])
+    })
+
+    signature <- signature[unique(unlist(markers)),]
   }
 
   return(signature)

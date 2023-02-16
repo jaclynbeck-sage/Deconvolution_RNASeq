@@ -13,7 +13,7 @@ for (dataset in datasets) {
 
   for (datatype in datatypes) {
     err_file <- file.path(dir_output,
-                          paste0("errors_", dataset, "_", datatype, "_broad_shortsig.rds"))
+                          paste0("errors_", dataset, "_", datatype, "_broad.rds"))
     if (!file.exists(err_file)) {
       break
     }

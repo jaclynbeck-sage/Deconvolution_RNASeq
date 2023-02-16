@@ -62,7 +62,7 @@ Extract_MeanErrors <- function(datasets, datatypes, best_params, dir_output) {
   errs_means <- lapply(datasets, function(dataset) {
     errs_m <- lapply(datatypes, function(datatype) {
       errs <- readRDS(file = file.path(dir_output, paste0("errors_", dataset, "_",
-                                                          datatype, "_broad_shortsig.rds")))
+                                                          datatype, "_broad.rds")))
       # Pull out the errors in the "means" list
       # Pull out the errors in the "means" list
       errs <- lapply(errs, '[[', "means")
@@ -89,7 +89,7 @@ Extract_MeanErrors <- function(datasets, datatypes, best_params, dir_output) {
   # All params names start with the dataset name. The mutate statement extracts
   # the dataset name from this and adds it as a field to the data frame
   errs_means <- do.call(rbind, errs_means) %>% mutate(dataset = str_replace(name, "_.*", ""))
-  errs_means <- errs_means %>% rename(variable = "error.type") # TODO why does this work here but not in test data plot file?
+  errs_means <- errs_means %>% rename(error.type = "variable")
   return(errs_means)
 }
 
@@ -101,7 +101,7 @@ Extract_ErrorsByCelltype <- function(errs_list, algorithm, best_params) {
     errs_by_celltype[[X]]$celltype <- rownames(errs_by_celltype[[X]])
     errs_by_celltype[[X]]
   })
-  errs_df <- melt(do.call(rbind, errs_by_celltype)) %>% rename(variable = "error.type")
+  errs_df <- melt(do.call(rbind, errs_by_celltype)) %>% rename(error.type = "variable")
   errs_df <- subset(errs_df, name %in% best_params$name)
   return(errs_df)
 }
@@ -113,7 +113,7 @@ Extract_ErrorsBySubject <- function(errs_list, algorithm, best_params) {
     errs_by_subject[[X]]$subject <- rownames(errs_by_subject[[X]])
     errs_by_subject[[X]]
   })
-  errs_df <- melt(do.call(rbind, errs_by_subject)) %>% rename(variable = "error.type")
+  errs_df <- melt(do.call(rbind, errs_by_subject)) %>% rename(error.type = "variable")
   errs_df <- subset(errs_df, name %in% best_params$name)
   return(errs_df)
 }
