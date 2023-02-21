@@ -9,6 +9,8 @@ library(Matrix)
 library(stringr)
 library(scuttle)
 
+source(file.path("functions", "FileIO_HelperFunctions.R"))
+
 # CalculatePercentRNA: Calculates the percentage of RNA contributed by each cell
 # type to each sample as:
 #   (sum of RNA counts over all cells of type T in sample S) /
@@ -175,15 +177,15 @@ CalculateSignature <- function(sce, samples, celltypes) {
 #   filter_level = the filter setting to use (range 0-3)
 #   dataset = the data set used to get Dtangle markers. Only applicable if
 #             filter_level = 3.
-#   cellclasstype = the level of cell types used ("broad" or "fine") to get
-#                   Dtangle markers. Only applicable if filter_level = 3.
+#   granularity = the level of cell types used ("broad" or "fine") to get
+#                 Dtangle markers. Only applicable if filter_level = 3.
 #   filt_percent = percent of Dtangle markers to keep (range 0-1). Only
 #                  applicable if filter_level = 3.
 #
 # Returns:
 #   signature matrix containing only the genes that pass the specified filters.
 #   rows = genes, columns = cell types.
-FilterSignature <- function(signature, filter_level = 1, dataset = NULL, cellclasstype = NULL, filt_percent = 1.0) {
+FilterSignature <- function(signature, filter_level = 1, dataset = NULL, granularity = NULL, filt_percent = 1.0) {
   # Filter for genes where at least one cell type expresses at > 1 cpm
   if (filter_level == 1) {
     ok <- which(rowSums(signature >= 1) > 0)
@@ -196,12 +198,9 @@ FilterSignature <- function(signature, filter_level = 1, dataset = NULL, cellcla
     signature <- signature[ok, ]
   }
 
-  else if (filter_level == 3 & !is.null(dataset) & !is.null(cellclasstype)) {
+  else if (filter_level == 3 & !is.null(dataset) & !is.null(granularity)) {
     # TODO is this the best one?
-    marker_file <- str_glue(paste0("dtangle_markers_{dataset}_{cellclasstype}_",
-                                   "input_pseudobulk_normalization_logcpm_",
-                                   "method_diff.rds")))
-    markers <- readRDS(file.path(dir_markers, marker_file))
+    markers <- Load_DtangleMarkers(dataset, granularity, "pseudobulk", "diff")
 
     n_markers <- ceiling(lengths(markers$L) * filt_percent)
     markers <- lapply(names(markers$L), function(N) {

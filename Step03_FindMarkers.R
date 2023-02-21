@@ -1,10 +1,13 @@
 # Dtangle and HSPE calculate their own markers based on the reference data.
 # Both algorithms use the same method/code to find markers, so only one run
 # per parameter set is needed for use with both algorithms.
+#
 # This script runs through multiple parameters and data input types and saves
 # the resulting markers to files for later usage. This is done outside the
-# main algorithm loops because finding markers requires far fewer parameters
-# than the rest of both algorithms, so this removes redundancy.
+# main algorithm loops because both algorithms can use the same markers file for
+# the same parameters, so this removes redundancy. Additionally, we use Dtangle
+# markers for some of the cell type signature options for DeconRNASeq, so these
+# need to be available before running that algorithm.
 #
 # This script uses parallel processing to run each parameter set on its own
 # core. To run in serial instead, comment out "registerDoParallel(cl)" below and
@@ -15,11 +18,10 @@ library(foreach)
 library(doParallel)
 
 # Libraries that need to be loaded into each parallel environment
-required_libraries <- c("Matrix", "SummarizedExperiment",
-                        "SingleCellExperiment", "stringr", "scuttle",
-                        "hspeSparse", "dplyr")
+required_libraries <- c("hspeSparse", "SingleCellExperiment",
+                        "SummarizedExperiment", "stringr", "dplyr")
 
-# Assume this needs ~20 GB of RAM per core depending on dataset, and adjust
+# Assume this needs up to 20 GB of RAM per core depending on dataset, and adjust
 # accordingly.
 cores <- 4
 cl <- makeCluster(cores, type = "PSOCK", outfile = "")
@@ -34,36 +36,27 @@ params_data <- expand.grid(dataset = c("cain", "lau", "lengEC", "lengSFG",
 
 # Each param set is completely independent of others, so we run it in parallel.
 foreach (R = 1:nrow(params_data), .packages = required_libraries) %dopar% {
-  # These need to be sourced inside the loop for parallel processing
-  source("Filenames.R")
+  # This needs to be sourced inside the loop for parallel processing
   source(file.path("functions", "FileIO_HelperFunctions.R"))
 
   dataset <- params_data$dataset[R]
   granularity <- params_data$granularity[R]
   input_type <- params_data$input_type[R]
 
-  input_mat <- NULL
-  metadata <- NULL
-
   if (input_type == "singlecell") {
-    print(str_glue("Loading {dataset} single cell data ({granularity}) ..."))
-    sce <- Load_SingleCell(dataset, granularity, output_type = "logcpm")
-
-    metadata <- colData(sce)
-    input_mat <- counts(sce)
-
-    # Clear up as much memory as possible
-    rm(sce)
-    gc()
+    input_obj <- Load_SingleCell(dataset, granularity, output_type = "logcpm")
   }
   else { # Input is pseudobulk pure samples
-    print(str_glue("Loading {dataset} pseudobulk pure sample data ({granularity}) ..."))
-    pseudobulk <- Load_PseudobulkPureSamples(dataset, granularity,
-                                             output_type = "logcpm")
-
-    metadata <- colData(pseudobulk)
-    input_mat <- assays(pseudobulk)[["counts"]]
+    input_obj <- Load_PseudobulkPureSamples(dataset, granularity,
+                                            output_type = "logcpm")
   }
+
+  metadata <- colData(input_obj)
+  input_mat <- assay(input_obj, "counts")
+
+  # Clear up as much memory as possible
+  rm(input_obj)
+  gc()
 
   celltypes <- levels(metadata$celltype)
   pure_samples <- lapply(celltypes, function(ct) {
@@ -82,7 +75,8 @@ foreach (R = 1:nrow(params_data), .packages = required_libraries) %dopar% {
 
   # Create marker lists and save them.
   for (marker_meth in marker_methods) {
-    print(str_glue("Finding markers for {dataset} {input_type} ({granularity}), method = {marker_meth} ..."))
+    print(str_glue(paste0("Finding markers for {dataset} {input_type} ",
+                          "({granularity}), method = {marker_meth} ...")))
 
     markers <- find_markers(Y = t(input_mat),
                             pure_samples = pure_samples,
@@ -93,6 +87,8 @@ foreach (R = 1:nrow(params_data), .packages = required_libraries) %dopar% {
     rm(markers)
     gc()
   }
+
+  return(NULL)
 }
 
 stopCluster(cl)

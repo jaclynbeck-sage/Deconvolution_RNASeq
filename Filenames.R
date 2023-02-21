@@ -27,6 +27,6 @@ file_rosmap <- file.path(dir_input, "ROSMAP_DLPFC_Counts.tsv")
 dir_rosmap <- file.path(dir_output, "rosmap")
 
 # Make sure these directories exist
-for (D in ls(pat = "dir_")) {
+for (D in ls(pattern = "dir_")) {
   dir.create(eval(parse(text = D)), recursive = TRUE, showWarnings = FALSE)
 }

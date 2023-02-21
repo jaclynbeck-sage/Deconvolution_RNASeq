@@ -4,6 +4,7 @@ library(SummarizedExperiment)
 library(SingleCellExperiment)
 library(scuttle)
 library(stringr)
+source("Filenames.R")
 
 ##### Single cell / Pseudobulk objects #####
 
@@ -172,14 +173,55 @@ Load_CountsFile <- function(filename, output_type) {
 }
 
 
-##### Dtangle/HSPE Markers #####
+##### Helper matrix load functions #####
+
+# Load_AvgLibSize: Loads the average library size per cell type (called "A")
+# that was calculated from single cell data.
+#
+# Arguments:
+#   dataset = the name of the data set to load
+#   granularity = either "broad" or "fine", for which level of cell types to
+#                 load the A vector for.
+#
+# Returns:
+#   a named vector where the names are cell types and the values are the
+#   normalized average library size of each cell type. Sums to 1.
+Load_AvgLibSize <- function(dataset, granularity) {
+  # This is a list with entries for "A_broad" and "A_fine"
+  A <- readRDS(file.path(dir_input, str_glue("{dataset}_A_matrix.rds")))
+  return(A[[str_glue("A_{granularity}")]])
+}
+
+
+# Load_SignatureMatrix: loads the cell-type signature matrix calculated from
+# single cell data.
+#
+# Arguments:
+#   dataset = the name of the data set to load
+#   granularity = either "broad" or "fine", for which level of cell types to
+#                 load the signature matrix for.
+#
+# Returns:
+#   a matrix with rows = genes and columns = cell types, where the values are
+#   in counts per million, describing the expected value of each gene for each
+#   cell type.
+Load_SignatureMatrix <- function(dataset, granularity) {
+  sig_matrix <- readRDS(file.path(dir_input, str_glue("{dataset}_signature.rds")))
+  return(sig_matrix[[str_glue("sig_{granularity}")]])
+}
+
+
+##### Dtangle/HSPE #####
 
 marker_file_format <- paste0("dtangle_markers_{dataset}_{granularity}_",
                              "input_{input_type}_method_{marker_method}.rds")
 
+list_file_format <- paste0("dtangle_list_{dataset}_{datatype}_{granularity}_",
+                           "input_{input_type}.rds")
+
 # Save_DtangleMarkers: saves a set of Dtangle/HSPE markers to an RDS file, named
 # with a specific format. This is an ease-of-use function to prevent having to
-# edit multiple files whenver the format of the filename changes.
+# edit multiple files whenever the format of the filename changes.
 # Arguments:
 #   markers = the output of hspe::find_markers, which is a list.
 #   dataset = the name of the data set
@@ -197,9 +239,9 @@ Save_DtangleMarkers <- function(markers, dataset, granularity, input_type, marke
 }
 
 
-# Load_DtangleMarkers: saves a set of Dtangle/HSPE markers to an RDS file, named
-# with a specific format. This is an ease-of-use function to prevent having to
-# edit multiple files whenver the format of the filename changes.
+# Load_DtangleMarkers: reads a set of Dtangle/HSPE markers from an RDS file,
+# named with a specific format. This is an ease-of-use function to prevent
+# having to edit multiple files whenever the format of the filename changes.
 #
 # Arguments:
 #   dataset = the name of the data set
@@ -215,4 +257,25 @@ Save_DtangleMarkers <- function(markers, dataset, granularity, input_type, marke
 Load_DtangleMarkers <- function(dataset, granularity, input_type, marker_method) {
   markers <- readRDS(file = file.path(dir_markers, str_glue(marker_file_format)))
   return(markers)
+}
+
+
+# Save_DtangleOutputList: saves a list of Dtangle output to an RDS file, named
+# with a specific format. This is an ease-of-use function to prevent having to
+# edit multiple files whenever the format of the filename changes.
+# Arguments:
+#   output_list = a list of outputs from dtangle::dtangle, which contains output
+#                 run under different parameter sets
+#   dataset = the name of the data set
+#   datatype = either "donors" or "training", to signify if Dtangle was run on
+#              donor or training pseudobulk
+#   granularity = either "broad" or "fine", for which level of cell types was
+#                 used for markers and pseudobulk creation.
+#   input_type = either "singlecell" or "pseudobulk", for which type of input
+#                was used as the reference set.
+#
+# Returns:
+#   Nothing
+Save_DtangleOutputList <- function(output_list, dataset, datatype, granularity, input_type) {
+  saveRDS(params_list, file.path(dir_params_lists, str_glue(list_file_format)))
 }
