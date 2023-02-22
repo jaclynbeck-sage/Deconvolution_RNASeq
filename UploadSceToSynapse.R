@@ -3,8 +3,8 @@ source("Filenames.R")
 
 synLogin()
 
-# My private workspace
-sce.folder <- Folder("sce_objects", parent = "syn49332774")
+# Deconvolution WG Synapse space
+sce.folder <- Folder("sce_objects", parent = "syn51119398")
 sce.folder <- synStore(sce.folder, forceVersion = FALSE)
 
 provenance <- list("cain" = c("syn38609692", "syn38598183"),
@@ -22,10 +22,12 @@ datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
               "seaRef", "seaAD")
 
 for (dataset in datasets) {
-  files <- list.files(dir_input, pattern = paste0(dataset, "_sce.rds"), full.names = TRUE)
+  files <- list.files(dir_input, pattern = dataset, full.names = TRUE)
   for (filename in files) {
-    file <- File(path = filename, parent = sce.folder)
-    file <- synStore(file, used = provenance[[dataset]])
-    print(paste0(file$properties$id, ": ", file$properties$name))
+    if (!(file.info(filename)$isdir)) { # Exclude directories
+      file <- File(path = filename, parent = sce.folder)
+      file <- synStore(file, used = provenance[[dataset]], forceVersion = FALSE)
+      print(paste0(file$properties$id, ": ", file$properties$name))
+    }
   }
 }

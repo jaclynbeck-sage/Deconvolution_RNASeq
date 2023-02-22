@@ -3,8 +3,8 @@ source("Filenames.R")
 
 synLogin()
 
-# My private workspace
-pseudo.folder <- Folder("pseudobulk", parent = "syn49332774")
+# Deconvolution WG Synapse space
+pseudo.folder <- Folder("pseudobulk", parent = "syn51119398")
 pseudo.folder <- synStore(pseudo.folder, forceVersion = FALSE)
 
 provenance <- list("cain" = c("syn38609692", "syn38598183"),
@@ -25,7 +25,7 @@ for (dataset in datasets) {
   files <- list.files(dir_pseudobulk, pattern = dataset, full.names = TRUE)
   for (filename in files) {
     file <- File(path = filename, parent = pseudo.folder)
-    file <- synStore(file, used = provenance[[dataset]])
+    file <- synStore(file, used = provenance[[dataset]], forceVersion = FALSE)
     print(paste0(file$properties$id, ": ", file$properties$name))
   }
 }

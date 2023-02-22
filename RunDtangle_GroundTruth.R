@@ -1,59 +1,98 @@
-library(dtangleSparse) # dtangle with my mods to make it sparse matrix-friendly
-library(Matrix)
-library(SingleCellExperiment)
-library(SummarizedExperiment)
-library(stringr)
-library(dplyr)
+# Runs Dtangle on a variety of parameters and saves the list of results to a
+# file.
+#
+# NOTE: This script relies on Dtangle markers, so these must be calculated
+# before-hand.
+#
+# This script uses parallel processing to run each parameter set on its own
+# core. To run in serial instead, comment out "registerDoParallel(cl)" below and
+# change the foreach loop's "%dopar%" to "%do%".
 
-source(file.path("functions",  "FileIO_HelperFunctions.R"))
+library(dplyr)
+library(foreach)
+library(doParallel)
+
+##### Parallel execution setup #####
+
+cores <- 4
+cl <- makeCluster(cores, type = "PSOCK", outfile = "")
+registerDoParallel(cl)
+
+# Libraries that need to be loaded into each parallel environment
+required_libraries <- c("dtangleSparse", "Matrix", "SummarizedExperiment",
+                        "SingleCellExperiment", "stringr", "dplyr")
+
+#### Parameter setup #####
 
 datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito")#,
-              #"seaRef") #, "seaAD")
+              "seaRef") #, "seaAD")
 
-datatypes <- c("donors", "training")
+input_types = c("singlecell", "pseudobulk")
 
-params <- expand.grid(dataset = datasets,
-                      granularity = c("broad"), #, "fine"),
-                      input_type = c("singlecell", "pseudobulk"),
-                      stringsAsFactors = FALSE) %>% arrange(dataset)
+params_loop1 <- expand.grid(dataset = datasets,
+                            granularity = c("broad"), #, "fine"),
+                            datatype = c("donors", "training"),
+                            stringsAsFactors = FALSE) %>% arrange(datatype)
 
-for (P in 1:nrow(params)) {
-  dataset <- params$dataset[P]
-  granularity <- params$granularity[P]
-  input_type <- params$input_type[P]
+params_loop2 <- expand.grid(marker_method = c("ratio", "diff", "p.value", "regression"),
+                            gamma_name = c("auto", 0.5),
+                            sum_fn_type = c("mean", "median"),
+                            n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2,
+                                          0.5, 0.75, 1.0),
+                          stringsAsFactors = FALSE)
 
-  if (input_type == "singlecell") {
-    input_obj <- Load_SingleCell(dataset, granularity, output_type = "logcpm")
-  }
-  else { # Input is pseudobulk pure samples
-    input_obj <- Load_PseudobulkPureSamples(dataset, granularity,
-                                            output_type = "logcpm")
-  }
+#### Iterate through parameters in parallel ####
 
-  metadata <- colData(input_obj)
-  input_mat <- assay(input_obj, "counts")
+foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
+  # This needs to be sourced inside the loop for parallel processing
+  source(file.path("functions",  "FileIO_HelperFunctions.R"))
 
-  # Clear up as much memory as possible
-  rm(input_obj)
-  gc()
+  dataset <- params_loop1$dataset[P]
+  granularity <- params_loop1$granularity[P]
+  datatype <- params_loop1$datatype[P]
 
-  celltypes <- levels(metadata$celltype)
-  pure_samples <- lapply(celltypes, function(ct) {
-    which(metadata$celltype == ct)
-  })
-  names(pure_samples) <- celltypes
+  # Each dataset / datatype / granularity combo gets its own list
+  dtangle_list <- list()
 
-  # TEMPORARY: dtangle code below will not work with a DelayedArray.
-  # The seaRef dataset will fit in memory all at once, so this converts it
-  # to a sparse matrix. The seaAD data set will NOT fit so this won't work on it.
-  if (is(input_mat, "DelayedArray")) {
-    input_mat <- as(input_mat, "CsparseMatrix")
-  }
+  ##### Run on both single cell and pseudobulk input matrices #####
+  # NOTE: input_types and all parameters from params_loop2 are executed in the
+  # same thread because they all use the same input data, which can be large
+  # and it isn't feasible to have multiple copies of it between multiple threads.
 
-  # To save on memory, we load the input once and run on both donor and training
-  # data, and on all permutations of marker parameters, rather than splitting
-  # this into many separate threads that each have to load the input data.
-  for (datatype in datatypes) {
+  for (input_type in input_types) {
+
+    ##### Prepare input matrix #####
+
+    if (input_type == "singlecell") {
+      input_obj <- Load_SingleCell(dataset, granularity, output_type = "logcpm")
+    }
+    else { # Input is pseudobulk pure samples
+      input_obj <- Load_PseudobulkPureSamples(dataset, granularity,
+                                              output_type = "logcpm")
+    }
+
+    metadata <- colData(input_obj)
+    input_mat <- assay(input_obj, "counts")
+
+    # Clear up as much memory as possible
+    rm(input_obj)
+    gc()
+
+    celltypes <- levels(metadata$celltype)
+    pure_samples <- lapply(celltypes, function(ct) {
+      which(metadata$celltype == ct)
+    })
+    names(pure_samples) <- celltypes
+
+    # TEMPORARY: dtangle code below will not work with a DelayedArray.
+    # The seaRef dataset will fit in memory all at once, so this converts it
+    # to a sparse matrix. The seaAD data set will NOT fit so this won't work on it.
+    if (is(input_mat, "DelayedArray")) {
+      input_mat <- as(input_mat, "CsparseMatrix")
+    }
+
+    ##### Prepare test data matrix #####
+
     pseudobulk <- Load_Pseudobulk(dataset, datatype, granularity, "logcpm")
     bulk_mat <- assays(pseudobulk)[["counts"]]
 
@@ -64,21 +103,15 @@ for (P in 1:nrow(params)) {
     # These SHOULD have the same rownames, but just in case.
     keepgene <- intersect(rownames(input_mat), rownames(bulk_mat))
 
-    marker_methods <- c("ratio", "diff")
-    if (input_type == "pseudobulk") {
-      marker_methods <- c("ratio", "diff", "p.value", "regression")
+    # Filter params_loop2 down: Early testing showed we don't need to test
+    # higher percentages for method = "ratio", since this method returns the
+    # full set of genes and smaller lists do better.
+    params_run <- subset(params_loop2, !(marker_method == "ratio" & n_markers > 0.2))
+
+    # "p.value" and "regression" aren't feasible for single cell input
+    if (input_type == "singlecell") {
+      params_run <- subset(params_run, marker_method == "ratio" | marker_method == "diff")
     }
-
-    params_run <- expand.grid(marker_method = marker_methods,
-                              gamma_name = c("auto", 0.5),
-                              sum_fn_type = c("mean", "median"),
-                              n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2,
-                                            0.5, 0.75, 1.0),
-                              stringsAsFactors = FALSE)
-
-    # Early testing showed we don't need to test higher percentages for
-    # method = "ratio", since this method returns the full set of genes.
-    params_run <- subset(params_run, marker_method != "ratio" | n_markers <= 0.2)
 
     # Pre-combine matrices so this isn't repeatedly done on every dtangle call.
     # Input data must be first so indices in pure_samples are correct.
@@ -86,7 +119,7 @@ for (P in 1:nrow(params)) {
                  bulk_mat[keepgene,]))
     gc()
 
-    dtangle_list <- list()
+    ##### Iterate through Dtangle parameters #####
 
     for (R in 1:nrow(params_run)) {
       marker_method <- params_run$marker_method[R]
@@ -130,7 +163,8 @@ for (P in 1:nrow(params)) {
       result$estimates <- result$estimates[colnames(bulk_mat), ]
 
       # Add the params we used to generate this run
-      result$params <- cbind(params[P,], "datatype" = datatype, params_run[R,])
+      result$params <- cbind(params_loop1[P,], "input_type" = input_type,
+                             params_run[R,])
 
       dtangle_list[[name]] <- result
 
@@ -144,6 +178,10 @@ for (P in 1:nrow(params)) {
 
     # Save the completed list
     print("Saving final list...")
-    Save_DtangleOutputList(dtangle_list, dataset, datatype, granularity, input_type)
-  } # end datatypes loop
-}
+    Save_AlgorithmOutputList(dtangle_list, dataset, datatype, granularity)
+  } # end input_types loop
+
+  return(NULL)
+} # end params_loop1 parallel loop
+
+stopCluster(cl)
