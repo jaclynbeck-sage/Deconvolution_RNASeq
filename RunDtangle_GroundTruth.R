@@ -1,5 +1,6 @@
-# Runs Dtangle on a variety of parameters and saves the list of results to a
-# file.
+# Runs Dtangle or HSPE on a variety of parameters and saves the list of results
+# to a file. The code to run these two algorithms is nearly identical so it has
+# been combined into one file.
 #
 # NOTE: This script relies on Dtangle markers, so these must be calculated
 # before-hand.
@@ -9,22 +10,28 @@
 # change the foreach loop's "%dopar%" to "%do%".
 
 library(dplyr)
+library(stringr)
 library(foreach)
 library(doParallel)
 
+##### Edit this variable to run either dtangle or hspe #####
+
+algorithm <- "dtangle" # "dtangle" or "hspe", all lower case
+
 ##### Parallel execution setup #####
 
-cores <- 4
+cores <- 8
 cl <- makeCluster(cores, type = "PSOCK", outfile = "")
 registerDoParallel(cl)
 
 # Libraries that need to be loaded into each parallel environment
-required_libraries <- c("dtangleSparse", "Matrix", "SummarizedExperiment",
-                        "SingleCellExperiment", "stringr", "dplyr")
+required_libraries <- c("Matrix", "SummarizedExperiment", "stringr", "dplyr",
+                        "SingleCellExperiment",
+                        str_glue("{algorithm}Sparse"))
 
 #### Parameter setup #####
 
-datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito")#,
+datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
               "seaRef") #, "seaAD")
 
 input_types = c("singlecell", "pseudobulk")
@@ -34,18 +41,27 @@ params_loop1 <- expand.grid(dataset = datasets,
                             datatype = c("donors", "training"),
                             stringsAsFactors = FALSE) %>% arrange(datatype)
 
-params_loop2 <- expand.grid(marker_method = c("ratio", "diff", "p.value", "regression"),
-                            gamma_name = c("auto", 0.5),
-                            sum_fn_type = c("mean", "median"),
-                            n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2,
-                                          0.5, 0.75, 1.0),
-                          stringsAsFactors = FALSE)
+if (algorithm == "dtangle") {
+  params_loop2 <- expand.grid(marker_method = c("ratio", "diff", "p.value", "regression"),
+                              gamma_name = c("auto", 0.5),
+                              sum_fn_type = c("mean", "median"),
+                              n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2,
+                                            0.5, 0.75, 1.0),
+                              stringsAsFactors = FALSE)
+} else if (algorithm == "hspe") {
+  params_loop2 <- expand.grid(marker_method = c("ratio", "diff", "p.value", "regression"),
+                              loss_fn = c("var", "L2"),
+                              n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2,
+                                            0.5, 0.75, 1.0),
+                              stringsAsFactors = FALSE)
+}
 
 #### Iterate through parameters in parallel ####
 
 foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
   # This needs to be sourced inside the loop for parallel processing
-  source(file.path("functions",  "FileIO_HelperFunctions.R"))
+  source(file.path("functions", "FileIO_HelperFunctions.R"))
+  source(file.path("functions", "DtangleHSPE_HelperFunctions.R"))
 
   dataset <- params_loop1$dataset[P]
   granularity <- params_loop1$granularity[P]
@@ -61,47 +77,13 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
 
   for (input_type in input_types) {
 
-    ##### Prepare input matrix #####
+    ##### Prepare reference and test matrices #####
 
-    if (input_type == "singlecell") {
-      input_obj <- Load_SingleCell(dataset, granularity, output_type = "logcpm")
-    }
-    else { # Input is pseudobulk pure samples
-      input_obj <- Load_PseudobulkPureSamples(dataset, granularity,
-                                              output_type = "logcpm")
-    }
+    input_list <- Get_DtangleHSPEInput(dataset, datatype, granularity, input_type)
+    pure_samples <- input_list[["pure_samples"]]
 
-    metadata <- colData(input_obj)
-    input_mat <- assay(input_obj, "counts")
-
-    # Clear up as much memory as possible
-    rm(input_obj)
+    # Free up unused memory
     gc()
-
-    celltypes <- levels(metadata$celltype)
-    pure_samples <- lapply(celltypes, function(ct) {
-      which(metadata$celltype == ct)
-    })
-    names(pure_samples) <- celltypes
-
-    # TEMPORARY: dtangle code below will not work with a DelayedArray.
-    # The seaRef dataset will fit in memory all at once, so this converts it
-    # to a sparse matrix. The seaAD data set will NOT fit so this won't work on it.
-    if (is(input_mat, "DelayedArray")) {
-      input_mat <- as(input_mat, "CsparseMatrix")
-    }
-
-    ##### Prepare test data matrix #####
-
-    pseudobulk <- Load_Pseudobulk(dataset, datatype, granularity, "logcpm")
-    bulk_mat <- assays(pseudobulk)[["counts"]]
-
-    # Clear up as much memory as possible
-    rm(pseudobulk)
-    gc()
-
-    # These SHOULD have the same rownames, but just in case.
-    keepgene <- intersect(rownames(input_mat), rownames(bulk_mat))
 
     # Filter params_loop2 down: Early testing showed we don't need to test
     # higher percentages for method = "ratio", since this method returns the
@@ -113,54 +95,55 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
       params_run <- subset(params_run, marker_method == "ratio" | marker_method == "diff")
     }
 
-    # Pre-combine matrices so this isn't repeatedly done on every dtangle call.
-    # Input data must be first so indices in pure_samples are correct.
-    Y <- t(cbind(input_mat[keepgene,],
-                 bulk_mat[keepgene,]))
-    gc()
-
-    ##### Iterate through Dtangle parameters #####
+    ##### Iterate through Dtangle/HSPE parameters #####
 
     for (R in 1:nrow(params_run)) {
       marker_method <- params_run$marker_method[R]
-      gamma_name <- params_run$gamma_name[R]
-      sum_fn_type <- params_run$sum_fn_type[R]
       n_markers <- params_run$n_markers[R]
-
-      gamma <- NULL
-      if (gamma_name != "auto") {
-        gamma <- as.numeric(gamma_name)
-      }
-
-      sum_fn <- mean
-      if (sum_fn_type == "median") {
-        sum_fn <- median
-      }
 
       markers <- Load_DtangleMarkers(dataset, granularity, input_type,
                                      marker_method)
-      n_markers_name <- n_markers
 
-      # dtangle doesn't interpret "1" as 100%, so we need to input a list of
+      # dtangle/hspe don't interpret "1" as 100%, so we need to input a list of
       # the length of each marker set instead
       if (n_markers == 1) {
-        n_markers_name <- "all"
         n_markers <- lengths(markers$L)
       }
 
       name <- str_glue(paste0("{dataset}_{granularity}_{datatype}_",
                               "{input_type}_{R}"))
 
-      result <- dtangle(Y = Y,
-                        pure_samples = pure_samples,
-                        data_type = "rna-seq",
-                        gamma = gamma, # If gamma is not NULL, it will override data_type argument
-                        n_markers = n_markers,
-                        markers = markers,
-                        summary_fn = sum_fn)
+      ##### Dtangle-specific function call #####
+      if (algorithm == "dtangle") {
+        gamma <- Get_Gamma(params_run$gamma_name[R])
+        sum_fn <- Get_SumFn(params_run$sum_fn_type[R])
 
-      # Only keep results for pseudobulk samples
-      result$estimates <- result$estimates[colnames(bulk_mat), ]
+        result <- dtangle(Y = input_list[["Y"]],
+                          pure_samples = pure_samples,
+                          data_type = "rna-seq",
+                          gamma = gamma, # If gamma is not NULL, it will override data_type argument
+                          n_markers = n_markers,
+                          markers = markers,
+                          summary_fn = sum_fn)
+
+        # Only keep results for pseudobulk test samples
+        test_samples <- setdiff(1:nrow(input_list[["Y"]]), unlist(pure_samples))
+        result$estimates <- result$estimates[test_samples, ]
+      }
+      ##### HSPE-specific function call #####
+      else if (algorithm == "hspe") {
+        loss_fn <- params_run$loss_fn[R]
+
+        result <- hspe(Y = input_list[["Y"]],
+                       pure_samples = pure_samples,
+                       n_markers = n_markers,
+                       markers = markers,
+                       loss_fn = loss_fn,
+                       seed = 12345)
+
+        # Get rid of "diag" (index 5), which is huge and unneeded
+        result <- result[1:4]
+      }
 
       # Add the params we used to generate this run
       result$params <- cbind(params_loop1[P,], "input_type" = input_type,
@@ -175,11 +158,11 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
     # Next iteration will start with new data, remove the old data
     rm(Y)
     gc()
-
-    # Save the completed list
-    print("Saving final list...")
-    Save_AlgorithmOutputList(dtangle_list, dataset, datatype, granularity)
   } # end input_types loop
+
+  # Save the completed list
+  print("Saving final list...")
+  Save_AlgorithmOutputList(dtangle_list, algorithm, dataset, datatype, granularity)
 
   return(NULL)
 } # end params_loop1 parallel loop
