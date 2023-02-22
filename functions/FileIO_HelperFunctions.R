@@ -261,8 +261,8 @@ Load_SignatureMatrix <- function(dataset, granularity) {
 #   Nothing
 Save_AlgorithmOutputList <- function(output_list, algorithm, dataset, datatype, granularity) {
   list_file_format <- "{algorithm}_list_{dataset}_{datatype}_{granularity}.rds"
-  saveRDS(decon_list, file = file.path(dir_params_lists,
-                                       str_glue(list_file_format)))
+  saveRDS(output_list, file = file.path(dir_params_lists,
+                                        str_glue(list_file_format)))
 }
 
 

@@ -20,7 +20,7 @@ algorithm <- "dtangle" # "dtangle" or "hspe", all lower case
 
 ##### Parallel execution setup #####
 
-cores <- 8
+cores <- 12
 cl <- makeCluster(cores, type = "PSOCK", outfile = "")
 registerDoParallel(cl)
 
@@ -31,8 +31,8 @@ required_libraries <- c("Matrix", "SummarizedExperiment", "stringr", "dplyr",
 
 #### Parameter setup #####
 
-datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
-              "seaRef") #, "seaAD")
+datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito")#,
+              #"seaRef") #, "seaAD")
 
 input_types = c("singlecell", "pseudobulk")
 
@@ -161,7 +161,7 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
   } # end input_types loop
 
   # Save the completed list
-  print("Saving final list...")
+  print(str_glue("Saving final list for {dataset} {datatype} {granularity}..."))
   Save_AlgorithmOutputList(dtangle_list, algorithm, dataset, datatype, granularity)
 
   return(NULL)

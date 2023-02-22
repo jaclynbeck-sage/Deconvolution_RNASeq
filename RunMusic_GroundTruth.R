@@ -1,3 +1,9 @@
+# Runs MuSiC on a variety of parameters and saves the list of results to a
+# file.
+#
+# This script uses parallel processing to run each parameter set on its own
+# core. To run in serial instead, comment out "registerDoParallel(cl)" below and
+# change the foreach loop's "%dopar%" to "%do%".
 
 library(dplyr)
 library(foreach)
@@ -14,8 +20,8 @@ required_libraries <- c("MuSiC", "SummarizedExperiment", "stringr", "dplyr")
 
 #### Parameter setup #####
 
-datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
-              "seaRef") #, "seaAD")
+datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito")#,
+              #"seaRef") #, "seaAD")
 
 params_loop1 <- expand.grid(dataset = datasets,
                             datatype = c("donors", "training"),
@@ -82,24 +88,26 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
                          ct.cov = ct_cov, centered = centered,
                          normalize = normalize)
 
+    # Remove "Weight.gene", "r.squared.full", and "Var.prop". "Weight.gene"
+    # especially is a very large array and is unneeded, so this reduces
+    # output size.
+    result <- result[c("Est.prop.weighted", "Est.prop.allgene")]
+    result$Est.prop.weighted <- result$Est.prop.weighted[,names(A)]
+    result$Est.prop.allgene <- result$Est.prop.allgene[,names(A)]
+
     # Convert proportion of cells to percent RNA
     result$Est.pctRNA.weighted <- ConvertPropCellsToPctRNA(result$Est.prop.weighted, A)
     result$Est.pctRNA.allgene <- ConvertPropCellsToPctRNA(result$Est.prop.allgene, A)
 
     result$params <- cbind(params_loop1[P,], params_loop2[R,])
 
-    # Remove "Weight.gene", "r.squared.full", and "Var.prop". "Weight.gene"
-    # especially is a very large array and is unneeded, so this reduces
-    # output size.
-    music_list[[name]] <- result[c("Est.prop.weighted", "Est.prop.allgene",
-                                   "Est.pctRNA.weighted", "Est.pctRNA.allgene",
-                                   "params")]
+    music_list[[name]] <- result
 
     gc()
-    print(name)
+    print(paste(result$params, collapse = "  "))
   } # End params loop
 
-  print("Saving final list...")
+  print(str_glue("Saving final list for {dataset} {datatype} {granularity}..."))
   Save_AlgorithmOutputList(music_list, "music", dataset, datatype, granularity)
 
   rm(music_list, pseudobulk, sce)

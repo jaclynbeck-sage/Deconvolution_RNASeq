@@ -91,7 +91,7 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
   } # end params loop 2
 
   # Save the completed list
-  print("Saving final list...")
+  print(str_glue("Saving final list for {dataset} {datatype} {granularity}..."))
   Save_AlgorithmOutputList(decon_list, "deconRNASeq", dataset, datatype, granularity)
   rm(decon_list)
   gc()
