@@ -1,93 +1,102 @@
-library(DeconRNASeq)
-library(Matrix)
-library(SingleCellExperiment)
-library(SummarizedExperiment)
-library(scuttle)
+# Runs DeconRNASeq on a variety of parameters and saves the list of results to a
+# file.
+#
+# NOTE: This script relies on Dtangle markers, so these must be calculated
+# before-hand.
+#
+# This script uses parallel processing to run each parameter set on its own
+# core. To run in serial instead, comment out "registerDoParallel(cl)" below and
+# change the foreach loop's "%dopar%" to "%do%".
 
-source("Filenames.R")
+library(dplyr)
+library(foreach)
+library(doParallel)
 
-cellclasstype <- "broad" ###either "fine" or "broad"
+##### Parallel execution setup #####
+
+cores <- 8
+cl <- makeCluster(cores, type = "PSOCK", outfile = "")
+registerDoParallel(cl)
+
+# Libraries that need to be loaded into each parallel environment
+required_libraries <- c("DeconRNASeq", "Matrix", "SummarizedExperiment",
+                        "stringr", "dplyr")
+
+#### Parameter setup #####
 
 datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
               "seaRef") #, "seaAD")
 
-datatypes <- list("donors", "training")
+params_loop1 <- expand.grid(dataset = datasets,
+                            datatype = c("donors", "training"),
+                            granularity = c("broad"), #, "fine"),
+                            stringsAsFactors = FALSE) %>% arrange(datatype)
 
-###load bulk and snRNA-seq data###
-for (sndata in datasets) {
-  for (datatype in datatypes) {
-    if (cellclasstype == "fine") {
-      load(file.path(dir_pseudobulk, paste0("pseudobulk_", sndata, "_finecelltypes_30percentlimit.rda")))
-    }
-    if (cellclasstype=="broad") {
-      pseudobulk <- readRDS(file.path(dir_pseudobulk,
-                                      paste0("pseudobulk_", sndata, "_",
-                                             datatype, "_broadcelltypes.rds")))
-    }
+params_loop2 <- expand.grid(filter_level = c(0, 1, 2, 3),
+                            n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, 1.0),
+                            use_scale = c(TRUE, FALSE),
+                            stringsAsFactors = FALSE) %>% arrange(filter_level)
 
-    sce <- readRDS(file.path(dir_input, paste(sndata, "sce.rds", sep = "_")))
-    meta <- colData(sce)
+# Some filter_type / n_markers combos are not valid, get rid of them
+# (filter levels 1 & 2 don't use n_markers argument)
+params_loop2 <- subset(params_loop2, !(filter_level < 3 & n_markers < 1))
 
-    sce_cpm <- calculateCPM(counts(sce))
 
-    signature <- lapply(levels(meta$broadcelltype), function(X) {
-      cells <- meta[meta$broadcelltype == X,]
-      rowMeans(sce_cpm[,rownames(cells)])
-    })
-    names(signature) <- levels(meta$broadcelltype)
-    signature <- do.call(cbind, signature)
+#### Iterate through parameters in parallel ####
 
-    # Filter for > 1 cpm
-    ok <- which(rowSums(signature >= 1) > 0)
-    signature <- as.data.frame(signature[ok, ])
+foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
+  # These need to be sourced inside the loop for parallel processing
+  source(file.path("functions", "General_HelperFunctions.R"))
+  source(file.path("functions", "FileIO_HelperFunctions.R"))
 
-    pseudobulk <- assays(pseudobulk)[["counts"]]
+  dataset <- params_loop1$dataset[P]
+  datatype <- params_loop1$datatype[P]
+  granularity <- params_loop1$granularity[P]
 
-    # These SHOULD have the same rownames, but just in case.
-    keepgene <- intersect(rownames(sce), rownames(pseudobulk))
+  signature <- Load_SignatureMatrix(dataset, granularity)
+  signature <- as.data.frame(signature)
 
-    pseudobulk_cpm <- calculateCPM(pseudobulk)
-    pseudobulk_cpm <- as.data.frame(as.matrix(pseudobulk_cpm))
+  pseudobulk <- Load_Pseudobulk(dataset, datatype, granularity, output_type = "logcpm")
+  pseudobulk <- assay(pseudobulk, "counts")
 
-    # Clear up as much memory as possible
-    rm(pseudobulk, sce, sce_cpm)
-    gc()
+  # Each dataset / datatype / granularity combo gets its own list
+  decon_list <- list()
 
-    decon_list <- list()
+  ##### Filter levels, number of markers, and DeconRNASeq arguments #####
+  # NOTE: This set of parameters (params_loop2) are all executed in the same
+  # thread because they use the same signature and pseudobulk data
 
-    for (use.scale in c(TRUE, FALSE)) {
-      name <- paste(sndata, cellclasstype,
-                    "usescale", use.scale,
-                    "normalization", "cpm", sep = "_")
+  for (R in 1:nrow(params_loop2)) {
+    filter_level <- params_loop2$filter_level[R]
+    n_markers <- params_loop2$n_markers[R]
+    use_scale <- params_loop2$use_scale[R]
 
-      res <- DeconRNASeq(pseudobulk_cpm[keepgene,], signature, proportions = NULL,
-                         known.prop = FALSE, use.scale = use.scale, fig = FALSE)
+    signature_filt <- FilterSignature(signature, filter_level, dataset,
+                                      granularity, n_markers)
 
-      res$Est.prop <- res$out.all
-      rownames(res$Est.prop) <- colnames(pseudobulk_cpm)
-      res <- res[c("Est.prop", "out.pca")]
+    keepgene <- intersect(rownames(signature_filt), rownames(pseudobulk))
+    pseudobulk_filt <- as.data.frame(as.matrix(pseudobulk[keepgene,]))
 
-      decon_list[[name]] <- res
+    name <- str_glue("{dataset}_{granularity}_{datatype}_{R}")
 
-      print(name)
-    } # end use.scale loop
+    res <- DeconRNASeq(pseudobulk_filt, signature_filt, proportions = NULL,
+                       known.prop = FALSE, use.scale = use_scale, fig = FALSE)
 
-    # Save the completed list
-    print("Saving final list...")
-    saveRDS(decon_list, file = file.path(dir_output,
-                                         paste0("deconRNASeq_list_", sndata,
-                                                  "_", datatype, "_",
-                                                cellclasstype, ".rds")))
+    rownames(res$out.all) <- colnames(pseudobulk_filt)
+    res$params <- cbind(params_loop1[P,], params_loop2[R,])
 
-    rm(decon_list, meta, pseudobulk_cpm, signature)
-    gc()
-  } # end datatypes loop
+    decon_list[[name]] <- res
+
+    print(paste(res$params, collapse = "  "))
+  } # end params loop 2
+
+  # Save the completed list
+  print("Saving final list...")
+  Save_AlgorithmOutputList(decon_list, "deconRNASeq", dataset, datatype, granularity)
+  rm(decon_list)
+  gc()
+
+  return(NULL)
 }
 
-
-
-
-
-
-
-
+stopCluster(cl)
