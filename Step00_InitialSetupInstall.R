@@ -5,10 +5,7 @@ install.packages(c("BiocManager", "devtools", "stringr", "Metrics",
 install.packages("synapser", repos = c("http://ran.synapse.org", "http://cran.fhcrc.org"))
 
 BiocManager::install(c("Biobase", "SingleCellExperiment", "TOAST", "scuttle",
-                       "DeconRNASeq", "Seurat", "GEOquery", "edgeR",
-                       "rhdf5", "HDF5Array"))
-
-BiocManager::install("preprocessCore", configure.args="--disable-threading")
+                       "DeconRNASeq", "Seurat", "GEOquery", "rhdf5", "HDF5Array"))
 
 # install the MuSiC package
 devtools::install_github('xuranw/MuSiC')

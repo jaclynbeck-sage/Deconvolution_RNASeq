@@ -28,11 +28,14 @@
 #              the broad and fine cell type assignments, respectively, for each
 #              cell
 #   dataset - the name of the dataset
-#   dir_pseudobulk - the directory to write the pseudobulk files to
 #
 # Returns: nothing
 
-CreatePseudobulk_ByDonor <- function(singlecell_counts, metadata, dataset, dir_pseudobulk) {
+source("Filenames.R")
+source(file.path("functions", "FileIO_HelperFunctions.R"))
+source(file.path("functions", "General_HelperFunctions.R"))
+
+CreatePseudobulk_ByDonor <- function(singlecell_counts, metadata, dataset) {
 
   y <- model.matrix(~0 + donor, data = metadata)
   counts <- singlecell_counts %*% y
@@ -50,10 +53,7 @@ CreatePseudobulk_ByDonor <- function(singlecell_counts, metadata, dataset, dir_p
   pseudobulk <- SummarizedExperiment(assays = SimpleList(counts = counts),
                                      metadata = list("propCells" = propCells_broad,
                                                      "pctRNA" = pctRNA_broad))
-
-  broad_file <- file.path(dir_pseudobulk,
-                          str_glue("pseudobulk_{dataset}_donors_broadcelltypes.rds"))
-  saveRDS(pseudobulk, file = broad_file)
+  Save_Pseudobulk(pseudobulk, dataset, "donors", "broad")
 
   # The counts for the fine cell types pseudobulk set are the same, only the
   # metadata changes. But we create it as a separate file to make looping
@@ -67,8 +67,5 @@ CreatePseudobulk_ByDonor <- function(singlecell_counts, metadata, dataset, dir_p
   pseudobulk_fine <- SummarizedExperiment(assays = SimpleList(counts = counts),
                                           metadata = list("propCells" = propCells_fine,
                                                           "pctRNA" = pctRNA_fine))
-
-  fine_file <- file.path(dir_pseudobulk,
-                        str_glue("pseudobulk_{dataset}_donors_finecelltypes.rds"))
-  saveRDS(pseudobulk_fine, file = fine_file)
+  Save_Pseudobulk(pseudobulk, dataset, "donors", "fine")
 }

@@ -28,41 +28,37 @@
 #      treating the other cell types as a single pool
 
 library(Matrix)
-library(SingleCellExperiment)
 library(SummarizedExperiment)
+library(SingleCellExperiment)
 library(stringr)
 
-source("Filenames.R")
-source(file.path("functions", "CreatePseudobulk_ByDonor.R"))
-source(file.path("functions", "CreatePseudobulk_PureSamplesByDonor.R"))
-source(file.path("functions", "CreatePseudobulk_Training.R"))
-source(file.path("functions", "General_HelperFunctions.R"))
+source(file.path("functions", "FileIO_HelperFunctions.R"))
+source(file.path("functions", "Step02a_CreatePseudobulk_ByDonor.R"))
+source(file.path("functions", "Step02b_CreatePseudobulk_PureSamples.R"))
+source(file.path("functions", "Step02c_CreatePseudobulk_Training.R"))
 
-datasets <- c("cain", "lengEC", "lengSFG", "mathys", "morabito",
-              "seaRef") #, "lau", "seaAD")
+datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
+              "seaRef") #, "seaAD")
 
 for (dataset in datasets) {
-  sce <- readRDS(file.path(dir_input, paste0(dataset, "_sce.rds")))
+  sce <- Load_SingleCell(dataset, "broad", output_type = "counts")
   metadata <- colData(sce)
 
   print(str_glue("{dataset}: creating pseudobulk by donor..."))
-  CreatePseudobulk_ByDonor(singlecell_counts = counts(sce), metadata = metadata,
-                           dataset = dataset, dir_pseudobulk = dir_pseudobulk)
+  CreatePseudobulk_ByDonor(counts(sce), metadata, dataset)
 
   print(str_glue("{dataset}: creating pseudobulk pure samples..."))
-  CreatePseudobulk_PureSamplesByDonor(singlecell_counts = counts(sce),
-                                      metadata = metadata, dataset = dataset,
-                                      dir_pseudobulk = dir_pseudobulk)
+  CreatePseudobulk_PureSamples(counts(sce), metadata, dataset)
 
-  for (cellclasstype in c("broad", "fine")) {
-    print(str_glue("{dataset}: creating pseudobulk training set for {cellclasstype} cell types..."))
+  for (granularity in c("broad", "fine")) {
+    print(str_glue("{dataset}: creating pseudobulk training set for {granularity} cell types..."))
 
     # Create a generic "celltype" column that is populated with either broad or
     # fine cell types depending on the for-loop
-    if (cellclasstype == "broad") {
+    if (granularity == "broad") {
       metadata$celltype <- metadata$broadcelltype
     }
-    else if (cellclasstype == "fine") {
+    else if (granularity == "fine") {
       metadata$celltype <- metadata$subcluster
     }
 
@@ -124,8 +120,6 @@ for (dataset in datasets) {
                                metadata = list("propCells" = propCells,
                                                "pctRNA" = pctRNA))
 
-    saveFile <- file.path(dir_pseudobulk,
-                          str_glue("pseudobulk_{dataset}_training_{cellclasstype}celltypes.rds"))
-    saveRDS(se, file = saveFile)
+    Save_Pseudobulk(se, dataset, "training", granularity)
   }
 }

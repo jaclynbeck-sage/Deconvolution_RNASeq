@@ -31,14 +31,15 @@
 #              the broad and fine cell type assignments, respectively, for each
 #              cell
 #   dataset - the name of the dataset
-#   dir_pseudobulk - the directory to write the pseudobulk files to
 #
 # Returns: nothing
 
-CreatePseudobulk_PureSamplesByDonor <- function(singlecell_counts, metadata, dataset, dir_pseudobulk) {
+source(file.path("functions", "FileIO_HelperFunctions.R"))
 
-  for (cell_class in c("broad", "fine")) {
-    if (cell_class == "broad") {
+CreatePseudobulk_PureSamples <- function(singlecell_counts, metadata, dataset) {
+
+  for (granularity in c("broad", "fine")) {
+    if (granularity == "broad") {
       metadata$celltype <- metadata$broadcelltype
     }
     else { # "fine"
@@ -54,7 +55,7 @@ CreatePseudobulk_PureSamplesByDonor <- function(singlecell_counts, metadata, dat
     counts <- singlecell_counts %*% y
     counts <- as(counts, "CsparseMatrix") # For cases where counts is a DelayedMatrix
 
-    propCells <- table(metadata$celltypedonor, metadata$celltype) # TODO check this works
+    propCells <- table(metadata$celltypedonor, metadata$celltype)
     rownames(propCells) <- paste0("puresample_", rownames(propCells))
     propCells <- sweep(propCells, 1, rowSums(propCells), "/")
 
@@ -66,8 +67,16 @@ CreatePseudobulk_PureSamplesByDonor <- function(singlecell_counts, metadata, dat
                                        metadata = list("propCells" = propCells,
                                                        "pctRNA" = pctRNA))
 
-    file_name <- file.path(dir_pseudobulk,
-                           str_glue("pseudobulk_{dataset}_puresamplesbydonor_{cell_class}celltypes.rds"))
-    saveRDS(pseudobulk, file = file_name)
+    # Make metadata with cell type assignments for each pure sample
+    celltypes <- str_replace(colnames(pseudobulk), "puresample_", "")
+    celltypes <- str_replace(celltypes, "_.*", "")
+    celltypes <- factor(celltypes)
+
+    metadata_pb <- DataFrame(celltype = celltypes)
+    rownames(metadata_pb) <- colnames(pseudobulk)
+
+    colData(pseudobulk) <- metadata_pb
+
+    Save_PseudobulkPureSamples(pseudobulk, dataset, granularity)
   }
 }

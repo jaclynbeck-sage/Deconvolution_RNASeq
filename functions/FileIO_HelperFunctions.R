@@ -67,22 +67,30 @@ Load_SingleCell <- function(dataset, granularity, output_type = "counts") {
 #   for "celltype", which is populated with cell type assignments, which can be
 #   extracted from the sample names in the data set.
 Load_PseudobulkPureSamples <- function(dataset, granularity, output_type = "counts") {
-  pb_file <- str_glue(paste0("pseudobulk_{dataset}_puresamplesbydonor_",
-                             "{granularity}celltypes.rds"))
+  pb_file <- str_glue(paste0("pseudobulk_{dataset}_puresamples_",
+                             "{granularity}.rds"))
   pb_file <- file.path(dir_pseudobulk, pb_file)
 
   pseudobulk <- Load_CountsFile(pb_file, output_type)
-
-  # TODO make metadata for these files in generate_pseudobulk
-  celltypes <- str_replace(colnames(pseudobulk), "puresample_", "")
-  celltypes <- str_replace(celltypes, "_.*", "")
-  celltypes <- factor(celltypes)
-
-  metadata <- DataFrame(celltype = celltypes)
-  rownames(metadata) <- colnames(pseudobulk)
-
-  colData(pseudobulk) <- metadata
   return(pseudobulk)
+}
+
+
+# Save_PseudobulkPureSamples: saves a SummarizedExperiment object to a file with
+# a specific filename format (which should match the format used in
+# Load_PseudobulkPureSamples).
+#
+# Arguments:
+#   se = a SummarizedExperiment object
+#   dataset = the name of the data set to load in
+#   granularity = either "broad" or "fine", for which level of cell types to
+#                 load in.
+#
+# Returns:
+#   nothing
+Save_PseudobulkPureSamples <- function(se, dataset, granularity) {
+  filename <- str_glue("pseudobulk_{dataset}_puresamples_{granularity}.rds")
+  saveRDS(se, file = file.path(dir_pseudobulk, filename))
 }
 
 
@@ -92,6 +100,8 @@ Load_PseudobulkPureSamples <- function(dataset, granularity, output_type = "coun
 #
 # Arguments:
 #   dataset = the name of the data set to load in
+#   data_type = either "donors" or "training", for which type of pseudobulk to
+#               load in.
 #   granularity = either "broad" or "fine", for which level of cell types to
 #                 load in.
 #   output_type = either "counts", "cpm", or "logcpm", to determine how the
@@ -106,11 +116,30 @@ Load_PseudobulkPureSamples <- function(dataset, granularity, output_type = "coun
 #   if applicable.
 Load_Pseudobulk <- function(dataset, data_type, granularity, output_type = "counts") {
   pb_file <- str_glue(paste0("pseudobulk_{dataset}_{data_type}_",
-                             "{granularity}celltypes.rds"))
+                             "{granularity}.rds"))
   pb_file <- file.path(dir_pseudobulk, pb_file)
 
   pseudobulk <- Load_CountsFile(pb_file, output_type)
   return(pseudobulk)
+}
+
+
+# Save_Pseudobulk: saves a SummarizedExperiment object to a file with a specific
+# filename format (which should match the format used in Load_Pseudobulk).
+#
+# Arguments:
+#   se = a SummarizedExperiment object
+#   dataset = the name of the data set to load in
+#   data_type = either "donors" or "training", for which type of pseudobulk to
+#               load in.
+#   granularity = either "broad" or "fine", for which level of cell types to
+#                 load in.
+#
+# Returns:
+#   nothing
+Save_Pseudobulk <- function(se, dataset, data_type, granularity) {
+  filename <- str_glue("pseudobulk_{dataset}_{data_type}_{granularity}.rds")
+  saveRDS(se, file = file.path(dir_pseudobulk, filename))
 }
 
 
