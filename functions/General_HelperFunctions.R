@@ -179,13 +179,17 @@ CalculateSignature <- function(sce, samples, celltypes) {
 #             filter_level = 3.
 #   granularity = the level of cell types used ("broad" or "fine") to get
 #                 Dtangle markers. Only applicable if filter_level = 3.
-#   filt_percent = percent of Dtangle markers to keep (range 0-1). Only
-#                  applicable if filter_level = 3.
+#   filt_percent = percent of Dtangle markers to keep (range 0-1) OR an integer
+#                  describing the number of markers to use per cell type
+#                  (range 2-Inf). For example, passing in 10 will use 10
+#                  markers for each cell type, while passing in 0.5 will use
+#                  50% of each cell type's markers (different number of markers
+#                  per cell type). Only applicable if filter_level = 3.
 #
 # Returns:
 #   signature matrix containing only the genes that pass the specified filters.
 #   rows = genes, columns = cell types.
-FilterSignature <- function(signature, filter_level = 1, dataset = NULL, granularity = NULL, filt_percent = 1.0) {
+FilterSignature <- function(signature, filter_level = 1, dataset = NULL, granularity = NULL, filt_percent = 1.0, marker_type = "p.value") {
   # Filter for genes where at least one cell type expresses at > 1 cpm
   if (filter_level == 1) {
     ok <- which(rowSums(signature >= 1) > 0)
@@ -199,10 +203,14 @@ FilterSignature <- function(signature, filter_level = 1, dataset = NULL, granula
   }
 
   else if (filter_level == 3 & !is.null(dataset) & !is.null(granularity)) {
-    # TODO is this the best one?
-    markers <- Load_DtangleMarkers(dataset, granularity, "pseudobulk", "diff")
+    markers <- Load_DtangleMarkers(dataset, granularity, "pseudobulk", marker_type)
 
-    n_markers <- ceiling(lengths(markers$L) * filt_percent)
+    if (filt_percent <= 1) {
+      n_markers <- ceiling(lengths(markers$L) * filt_percent)
+    }
+    else {
+      n_markers <- sapply(lengths(markers$L), min, filt_percent)
+    }
     markers <- lapply(names(markers$L), function(N) {
       names(markers$L[[N]][1:n_markers[N]])
     })

@@ -14,7 +14,7 @@ library(doParallel)
 
 ##### Parallel execution setup #####
 
-cores <- 8
+cores <- 12
 cl <- makeCluster(cores, type = "PSOCK", outfile = "")
 registerDoParallel(cl)
 
@@ -29,18 +29,23 @@ datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
 
 params_loop1 <- expand.grid(dataset = datasets,
                             datatype = c("donors", "training"),
-                            granularity = c("broad"), #, "fine"),
+                            granularity = c("broad", "fine"),
                             stringsAsFactors = FALSE) %>% arrange(datatype)
 
 params_loop2 <- expand.grid(filter_level = c(0, 1, 2, 3),
-                            n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, 1.0),
+                            n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
+                                          10, 50, 100, 200),
+                            marker_type = c("ratio", "diff", "p.value", "regression"),
                             use_scale = c(TRUE, FALSE),
                             stringsAsFactors = FALSE) %>% arrange(filter_level)
 
 # Some filter_type / n_markers combos are not valid, get rid of them
-# (filter levels 1 & 2 don't use n_markers argument)
-params_loop2 <- subset(params_loop2, !(filter_level < 3 & n_markers < 1))
+# (filter levels 1 & 2 don't use n_markers or marker_type arguments)
+params_loop2 <- subset(params_loop2, !(filter_level < 3 &
+                                         (n_markers != 1 | marker_type != "ratio")))
 
+params_loop2$marker_type[params_loop2$filter_level < 3] <- "None"
+params_loop2$n_markers[params_loop2$filter_level < 3] <- -1
 
 #### Iterate through parameters in parallel ####
 
@@ -69,10 +74,11 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
   for (R in 1:nrow(params_loop2)) {
     filter_level <- params_loop2$filter_level[R]
     n_markers <- params_loop2$n_markers[R]
+    marker_type <- params_loop2$marker_type[R]
     use_scale <- params_loop2$use_scale[R]
 
     signature_filt <- FilterSignature(signature, filter_level, dataset,
-                                      granularity, n_markers)
+                                      granularity, n_markers, marker_type)
 
     keepgene <- intersect(rownames(signature_filt), rownames(pseudobulk))
     pseudobulk_filt <- as.data.frame(as.matrix(pseudobulk[keepgene,]))
