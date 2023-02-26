@@ -115,7 +115,16 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
         n_markers <- lengths(markers$L)
       }
       else if (n_markers > 1) {
+        n_markers_orig <- n_markers
         n_markers <- sapply(lengths(markers$L), min, n_markers)
+
+        # The n_markers argument (mostly) doubles each time. If there aren't
+        # enough markers in each cell type to do anything new with this
+        # n_markers value, skip testing.
+        if (all(n_markers <= (n_markers_orig/2))) {
+          print(str_glue("*** skipping n_markers {n_markers_orig} ***")
+          next
+        }
       }
 
       name <- str_glue(paste0("{dataset}_{granularity}_{datatype}_",
