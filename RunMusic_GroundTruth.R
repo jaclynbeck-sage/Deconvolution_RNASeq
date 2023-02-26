@@ -11,7 +11,7 @@ library(doParallel)
 
 ##### Parallel execution setup #####
 
-cores <- 8
+cores <- 12
 cl <- makeCluster(cores, type = "PSOCK", outfile = "")
 registerDoParallel(cl)
 
@@ -20,29 +20,17 @@ required_libraries <- c("MuSiC", "SummarizedExperiment", "stringr", "dplyr")
 
 #### Parameter setup #####
 
-datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito")#,
-              #"seaRef") #, "seaAD")
+datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
+              "seaRef") #, "seaAD")
 
 params_loop1 <- expand.grid(dataset = datasets,
                             datatype = c("donors", "training"),
                             granularity = c("broad", "fine"),
-                            stringsAsFactors = FALSE) %>% arrange(dataset)
+                            stringsAsFactors = FALSE) %>% arrange(datatype)
 
 params_loop2 <- expand.grid(ct.cov = c(TRUE, FALSE),
                             centered = c(TRUE, FALSE),
                             normalize = c(TRUE, FALSE))
-
-# HACK to MuSiC to account for the case where some weights are < 0, which leads
-# to error-causing NaNs later. seaRef is the only data set this has happened on,
-# so I need to figure out what's actually going on here.
-#weight.cal.ct.orig <- MuSiC::weight.cal.ct
-#weight.cal.ct <- function (...) {
-#  weight = weight.cal.ct.orig(...)
-#  weight[weight < 0] = 0
-#  return(weight)
-#}
-
-#R.utils::reassignInPackage("weight.cal.ct", pkgName="MuSiC", weight.cal.ct);
 
 #### Iterate through parameters in parallel ####
 
@@ -82,29 +70,40 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
 
     name <- str_glue("{dataset}_{granularity}_{datatype}_{R}")
 
-    result <- music_prop(bulk.mtx = pseudobulk, sc.sce = sce,
-                         clusters = "celltype",
-                         samples = "donor", verbose = TRUE,
-                         ct.cov = ct_cov, centered = centered,
-                         normalize = normalize)
+    # Sometimes ct.cov = TRUE will produce too many NAs if too many cell types
+    # are missing from too many donors, and this eventually throws errors. The
+    # best thing to do is just ignore the error and continue the loop
+    tryCatch({
+      result <- music_prop(bulk.mtx = pseudobulk, sc.sce = sce,
+                           clusters = "celltype",
+                           samples = "donor", verbose = TRUE,
+                           ct.cov = ct_cov, centered = centered,
+                           normalize = normalize)
 
-    # Remove "Weight.gene", "r.squared.full", and "Var.prop". "Weight.gene"
-    # especially is a very large array and is unneeded, so this reduces
-    # output size.
-    result <- result[c("Est.prop.weighted", "Est.prop.allgene")]
-    result$Est.prop.weighted <- result$Est.prop.weighted[,names(A)]
-    result$Est.prop.allgene <- result$Est.prop.allgene[,names(A)]
+      # Remove "Weight.gene", "r.squared.full", and "Var.prop". "Weight.gene"
+      # especially is a very large array and is unneeded, so this reduces
+      # output size.
+      result <- result[c("Est.prop.weighted", "Est.prop.allgene")]
+      result$Est.prop.weighted <- result$Est.prop.weighted[,names(A)]
+      result$Est.prop.allgene <- result$Est.prop.allgene[,names(A)]
 
-    # Convert proportion of cells to percent RNA
-    result$Est.pctRNA.weighted <- ConvertPropCellsToPctRNA(result$Est.prop.weighted, A)
-    result$Est.pctRNA.allgene <- ConvertPropCellsToPctRNA(result$Est.prop.allgene, A)
+      # Convert proportion of cells to percent RNA
+      result$Est.pctRNA.weighted <- ConvertPropCellsToPctRNA(result$Est.prop.weighted, A)
+      result$Est.pctRNA.allgene <- ConvertPropCellsToPctRNA(result$Est.prop.allgene, A)
 
-    result$params <- cbind(params_loop1[P,], params_loop2[R,])
+      result$params <- cbind(params_loop1[P,], params_loop2[R,])
 
-    music_list[[name]] <- result
+      music_list[[name]] <- result
 
-    gc()
-    print(paste(result$params, collapse = "  "))
+      gc()
+      print(paste(result$params, collapse = "  "))
+    },
+    error = function(err) {
+      param_set <- paste(cbind(params_loop1[P,], params_loop2[R,]), collapse = "  ")
+      print(c("*** Error running param set", param_set))
+      print(err)
+      print("*** skipping ***")
+    })
   } # End params loop
 
   print(str_glue("Saving final list for {dataset} {datatype} {granularity}..."))
