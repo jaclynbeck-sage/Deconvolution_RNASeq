@@ -122,7 +122,7 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
         # enough markers in each cell type to do anything new with this
         # n_markers value, skip testing.
         if (all(n_markers <= (n_markers_orig/2))) {
-          print(str_glue("*** skipping n_markers {n_markers_orig} ***")
+          print(str_glue("*** skipping n_markers {n_markers_orig} ***"))
           next
         }
       }
