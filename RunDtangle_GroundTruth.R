@@ -31,8 +31,8 @@ required_libraries <- c("Matrix", "SummarizedExperiment", "stringr", "dplyr",
 
 #### Parameter setup #####
 
-datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito")#,
-              #"seaRef") #, "seaAD")
+datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
+              "seaRef") #, "seaAD")
 
 input_types = c("singlecell", "pseudobulk")
 
@@ -46,15 +46,23 @@ if (algorithm == "dtangle") {
                               gamma_name = c("auto", 0.5),
                               sum_fn_type = c("mean", "median"),
                               n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2,
-                                            0.5, 0.75, 1.0),
+                                            0.5, 0.75, 1.0,
+                                            10, 50, 100, 200, 500),
                               stringsAsFactors = FALSE)
 } else if (algorithm == "hspe") {
   params_loop2 <- expand.grid(marker_method = c("ratio", "diff", "p.value", "regression"),
                               loss_fn = c("var", "L2"),
                               n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2,
-                                            0.5, 0.75, 1.0),
+                                            0.5, 0.75, 1.0,
+                                            10, 50, 100, 200, 500),
                               stringsAsFactors = FALSE)
 }
+
+# Filter params_loop2 down: Early testing showed we don't need to test
+# higher percentages for method = "ratio", since this method returns the
+# full set of genes and smaller lists do better.
+params_loop2 <- subset(params_loop2, !(marker_method == "ratio" &
+                                         (n_markers > 0.2 & n_markers <= 1)))
 
 #### Iterate through parameters in parallel ####
 
@@ -85,10 +93,7 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
     # Free up unused memory
     gc()
 
-    # Filter params_loop2 down: Early testing showed we don't need to test
-    # higher percentages for method = "ratio", since this method returns the
-    # full set of genes and smaller lists do better.
-    params_run <- subset(params_loop2, !(marker_method == "ratio" & n_markers > 0.2))
+    params_run <- params_loop2
 
     # "p.value" and "regression" aren't feasible for single cell input
     if (input_type == "singlecell") {
@@ -108,6 +113,9 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
       # the length of each marker set instead
       if (n_markers == 1) {
         n_markers <- lengths(markers$L)
+      }
+      else if (n_markers > 1) {
+        n_markers <- sapply(lengths(markers$L), min, n_markers)
       }
 
       name <- str_glue(paste0("{dataset}_{granularity}_{datatype}_",
@@ -156,7 +164,7 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
     } # End params_run loop
 
     # Next iteration will start with new data, remove the old data
-    rm(Y)
+    rm(input_list)
     gc()
   } # end input_types loop
 
