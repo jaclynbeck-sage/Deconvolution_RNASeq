@@ -1,135 +1,138 @@
-library(MuSiC)
-library(SingleCellExperiment)
+library(dplyr)
+library(foreach)
+library(doParallel)
 
-source("Filenames.R")
+##### Parallel execution setup #####
 
-cellclasstype <- "broad" ###either "fine" or "broad"
+cores <- 12
+cl <- makeCluster(cores, type = "PSOCK", outfile = "")
+registerDoParallel(cl)
 
-datasets <- list("mathys")#,"cain","lau","morabito","lengSFG","lengEC")
+# Libraries that need to be loaded into each parallel environment
+required_libraries <- c("MuSiC", "SummarizedExperiment", "stringr", "dplyr")
 
-# Workaround for a bug in music2_prop_t_statistics
-exprs <- function(X) {X}
+#### Parameter setup #####
 
-for (sndata in datasets) {
-  if (cellclasstype == "fine") {
-    load(paste0("pseudobulk_", sndata, "_finecelltypes_30percentlimit.rda"))
-  }
-  if (cellclasstype=="broad") {
-    #se <- readRDS(file.path(dir_pseudobulk, paste0("pseudobulk_",sndata,"_broadcelltypes.rds")))
-    se <- readRDS(file.path(dir_pseudobulk, paste0("pseudobulk_", sndata, "_bydonor_broadcelltypes.rds")))
-  }
+datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
+              "seaRef") #, "seaAD")
 
-  load(file.path(dir_input, paste0(sndata,"_counts.rda")))
+# We can't run Music2 on training data unless we create a training set where
+# each sample is from a pool of control OR AD donors but not both. We currently
+# don't generate our training sets that way.
+params_loop1 <- expand.grid(dataset = datasets,
+                            datatype = c("donors"),
+                            granularity = c("broad", "fine"),
+                            stringsAsFactors = FALSE) %>% arrange(dataset)
 
-  # TODO: metadata processing should be done in a function since multiple files do this
-  meta <- read.csv(file.path(dir_input, paste0(sndata,"_metadata.csv")), as.is=T)
-  rownames(meta) <- meta$cellid
+params_loop2 <- expand.grid(music2_fn_type = c("default", "t_statistics"), #, "toast"), # toast is broken
+                            ct.cov = c(TRUE, FALSE),
+                            centered = c(TRUE, FALSE),
+                            normalize = c(TRUE, FALSE))
 
-  meta$broadcelltype <- factor(meta$broadcelltype)
-  meta$subcluster <- factor(meta$subcluster)
+foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
+  source(file.path("functions", "FileIO_HelperFunctions.R"))
+  source(file.path("functions", "General_HelperFunctions.R"))
 
-  keep <- intersect(meta$cellid, colnames(fullmat))
-  meta <- meta[keep,]
-  fullmat <- fullmat[,keep]
+  dataset <- params_loop1$dataset[P]
+  datatype <- params_loop1$datatype[P]
+  granularity <- params_loop1$granularity[P]
 
-  pseudobulk <- assays(se)[["counts"]]
+  sce <- Load_SingleCell(dataset, granularity, output_type = "counts")
+
+  pseudobulk <- Load_Pseudobulk(dataset, datatype, granularity,
+                                output_type = "counts")
+  pseudobulk <- assay(pseudobulk, "counts")
+
+  A <- Load_AvgLibSize(dataset, granularity)
 
   # These SHOULD have the same rownames, but just in case.
-  keepgene <- intersect(rownames(fullmat),rownames(pseudobulk))
-  pseudobulk <- as.matrix(pseudobulk[keepgene,])
+  keepgene <- intersect(rownames(sce), rownames(pseudobulk))
+  pseudobulk <- as.matrix(pseudobulk[keepgene, ])
+  sce <- sce[keepgene, ]
 
-  controls <- paste0("donor", unique(meta$donor[meta$diagnosis == "Control"]))
-  disease <- paste0("donor", unique(meta$donor[meta$diagnosis == "AD"]))
+  # MuSiC2 needs to know which samples are control and which are AD
+  metadata <- colData(sce)
 
-  sce <- SingleCellExperiment(assays = list(counts = fullmat[keepgene,]),
-                              colData = meta)
+  controls <- unique(metadata$donor[metadata$diagnosis == "Control"])
+  case <- unique(metadata$donor[metadata$diagnosis == "AD"])
 
-  # Clear up some memory
-  rm(fullmat, se)
-  gc()
-
-  # Every combination of parameters being tested
-  params <- expand.grid(ct.cov = c(TRUE, FALSE),
-                        centered = c(TRUE, FALSE),
-                        normalize = c(TRUE, FALSE))
-
+  # Each dataset / datatype / granularity combo gets its own list
   music_list <- list()
 
-  # Test different combinations of parameters
-  for (samples in c('donor')) { #}, 'cellid')) { # cellid is way too slow for quick testing
-    for (music2type in c("default", "t_statistics")) { #, "TOAST")) { # TOAST function is broken
+  ##### Iterate through combinations of MuSiC2 arguments #####
+  # NOTE: This set of parameters (params_loop2) are all executed in the same
+  # thread because they use the same single cell and pseudobulk data
 
-      # The TOAST function doesn't have ct.cov, centered, or normalize parameters
-      if (music2type == "TOAST") {
-        name <- paste(sndata, cellclasstype,
-                      "samples", samples,
-                      "music2type", music2type,
-                      "counts", sep = "_")
+  for (R in 1:nrow(params_loop2)) {
+    music2_fn_type <- params_loop2$music2_fn_type[R]
+    ct.cov <- params_loop2$ct.cov[R]
+    centered <- params_loop2$centered[R]
+    normalize <- params_loop2$normalize[R]
 
-        music_list[[name]] = music2_prop_toast_fix(bulk.control.mtx = pseudobulk[, controls],
-                                               bulk.case.mtx = pseudobulk[, disease],
-                                               sc.sce = sce, select.ct = levels(meta$broadcelltype),
-                                               clusters = 'broadcelltype',
-                                               samples = samples)
+    name <- str_glue("{dataset}_{granularity}_{datatype}_{R}")
+    result <- NULL
 
-        gc()
-        print(name)
+    # The TOAST function has some problems that need extra handling
+    if (music2_fn_type == "toast") {
+      # There is an error in music2_prop_toast where it references these five
+      # variables without defining them or taking them as an argument to the
+      # function. Defining them here counts as a global variable, and the
+      # function can use them. Not ideal, but things work.
+      markers <- NULL
+      cell_size = NULL
+      # ct.cov is needed and defined above
+      # centered is needed and defined above
+      # normalize is needed and defined above
 
-        next # Skip iterating over parameters below
+      # Fix for music2 calling this function with the wrong coef name
+      # TODO this doesn't fix it. music2_prop_toast is broken for now.
+      csTest_orig <- TOAST::csTest
+      csTest <- function(fitted_model, coef, verbose, ...) {
+        return(csTest_orig(fitted_model, coef = "condition", verbose, ...))
       }
 
-      for (R in 1:nrow(params)) {
-        ct.cov <- params$ct.cov[R]
-        centered <- params$centered[R]
-        normalize <- params$normalize[R]
+      R.utils::reassignInPackage("csTest", pkgName="TOAST", csTest);
 
-        name <- paste(sndata, cellclasstype,
-                      "samples", samples,
-                      "music2type", music2type,
-                      "ct.cov", ct.cov,
-                      "centered", centered,
-                      "normalize", normalize,
-                      "counts", sep = "_")
+      result <- music2_prop_toast(bulk.control.mtx = pseudobulk[, controls],
+                                  bulk.case.mtx = pseudobulk[, case],
+                                  sc.sce = sce,
+                                  select.ct = levels(metadata$celltype),
+                                  clusters = "celltype",
+                                  samples = "donor")
+    }
+    else {
+      # Workaround for a bug in music2_prop_t_statistics
+      exprs <- function(X) {X}
 
-        if (music2type == "default") {
-          music_list[[name]] = music2_prop(bulk.control.mtx = pseudobulk[, controls],
-                                           bulk.case.mtx = pseudobulk[, disease],
-                                           sc.sce = sce,
-                                           clusters = 'broadcelltype',
-                                           samples = samples,
-                                           select.ct = levels(meta$broadcelltype),
-                                           ct.cov = ct.cov, centered = centered,
-                                           normalize = normalize)
-        }
-        else if (music2type == "t_statistics") {
-          music_list[[name]] = music2_prop_t_statistics(
-                                          bulk.control.mtx = pseudobulk[, controls],
-                                          bulk.case.mtx = pseudobulk[, disease],
-                                          sc.sce = sce,
-                                          clusters = 'broadcelltype',
-                                          samples = samples, select.ct = levels(meta$broadcelltype),
-                                          ct.cov = ct.cov, centered = centered,
-                                          normalize = normalize)
-        }
+      music2_fn <- music2_prop   # music2_fn_type == "default"
+      if (music2_fn_type == "t_statistics") {
+        music2_fn <- music2_prop_t_statistics
+      }
 
-        gc()
-        print(name)
-      } # End params loop
+      result <- music2_fn(bulk.control.mtx = pseudobulk[, controls],
+                          bulk.case.mtx = pseudobulk[, case],
+                          sc.sce = sce,
+                          clusters = "celltype",
+                          samples = "donor",
+                          select.ct = levels(metadata$celltype),
+                          ct.cov = ct.cov,
+                          centered = centered,
+                          normalize = normalize)
+    } # End if/else on music2_fn_type
 
-      # Periodically save the list, in case of crashes
-      print("Saving list checkpoint...")
-      saveRDS(music_list, file = file.path(dir_output,
-                                           paste0("music2_list_", sndata, "_donors_",
-                                                  cellclasstype, ".rds")))
-    } # End music2type loop
-  } # End samples loop
+    result$Est.pctRNA <- ConvertPropCellsToPctRNA(result$Est.prop, A)
+    result$params <- cbind(params_loop1[P,], params_loop2[R,])
+    music_list[[name]] <- result
 
-  print("Saving final list...")
-  saveRDS(music_list, file = file.path(dir_output,
-                                       paste0("music2_list_", sndata, "_donors_",
-                                              cellclasstype, ".rds")))
+    gc()
+    print(paste(result$params, collapse = "  "))
+  } # End params_loop2 loop
+
+  print(str_glue("Saving final list for {dataset} {datatype} {granularity}..."))
+  Save_AlgorithmOutputList(music_list, "music2", dataset, datatype, granularity)
+
+  rm(music_list, pseudobulk, sce)
+  gc()
 }
 
-
-
-
+stopCluster(cl)
