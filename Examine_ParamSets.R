@@ -19,41 +19,23 @@ for (datatype in datatypes) {
     err_file <- file.path(dir_output,
                           paste0("errors_", dataset, "_", datatype, "_broad.rds"))
     if (!file.exists(err_file)) {
-      break
+      next
     }
 
     err_list <- readRDS(err_file)
+    params_df <- do.call(rbind, err_list[[algorithm]][["params"]])
+
     err_list <- err_list[[algorithm]][["means"]]
 
-    # TODO temporary
-    if (algorithm == "dtangle") {
-      rownames(err_list) <- str_replace(rownames(err_list), "broad_method", "broad_input_singlecell_method")
-    }
-
-    if (algorithm == "dtangle") {
-      params_df <- extract_dtangle_params(rownames(err_list))
-    }
-    else if (algorithm == "deconRNASeq") {
-      params_df <- extract_deconRNASeq_params(rownames(err_list))
-    }
     params_df <- cbind(params_df, err_list)
-    params_df$dataset <- dataset
     params_list[[dataset]] <- params_df
   }
-  params_df <- do.call(rbind, params_list)
-
-  if ("gof.cor" %in% colnames(params_df)) {
-    bests <- params_df %>% select(-gof.cor:-gof.mAPE)
-  }
-  else {
-    bests <- params_df
-  }
+  bests <- do.call(rbind, params_list)
 
   if (algorithm == "dtangle") {
     bests <- bests %>%
-              mutate(marker = paste(marker_meth, n_markers),
-                     input_type = paste(input, normtype)) %>%
-              select(-marker_meth, -n_markers, -input, -normtype)
+              mutate(marker = paste(marker_method, n_markers)) %>%
+              select(-marker_method, -n_markers)
 
     tmp <- bests %>% select(dataset, input_type, cor_celltype:mAPE) %>%
               distinct() %>% group_by(dataset, input_type) %>%
@@ -73,8 +55,8 @@ for (datatype in datatypes) {
   }
   else if (algorithm == "deconRNASeq") {
     bests <- bests %>%
-      mutate(marker = paste(filterlvl, n_markers)) %>%
-      select(-filterlvl, -n_markers)
+      mutate(marker = paste(marker_type, filter_level, n_markers)) %>%
+      select(-marker_type, -filter_level, -n_markers)
   }
 
   tmp5 <- bests %>% group_by(dataset) %>% top_n(n = 10, wt = cor_celltype)
@@ -93,10 +75,8 @@ for (datatype in datatypes) {
 
   else if (algorithm = "deconRNASeq") {
     for (tmp in list(tmp5, tmp6, tmp7, tmp8)) {
-      print(table(tmp$usescale) / table(bests$usescale)[names(table(tmp$usescale))])
-      print(table(tmp$normtype) / table(bests$normtype)[names(table(tmp$normtype))])
+      print(table(tmp$use_scale) / table(bests$use_scale)[names(table(tmp$use_scale))])
       print(table(tmp$marker) / table(bests$marker)[names(table(tmp$marker))])
     }
   }
-
 }
