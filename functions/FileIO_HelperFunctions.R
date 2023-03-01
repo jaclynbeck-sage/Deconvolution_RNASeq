@@ -266,6 +266,36 @@ Save_AlgorithmOutputList <- function(output_list, algorithm, dataset, datatype, 
 }
 
 
+# Load_AlgorithmOutputList: loads a list of output from one of the algorithms,
+# named with a specific format. This is an ease-of-use function to prevent
+# having to edit multiple files whenever the format of the filename changes.
+#
+# Arguments:
+#   algorithm = the name of the algorithm
+#   dataset = the name of the data set
+#   datatype = either "donors" or "training", to signify if the algorithm was
+#              run on donor or training pseudobulk
+#   granularity = either "broad" or "fine", for which level of cell types was
+#                 used for markers and pseudobulk creation.
+#
+# Returns:
+#   a list of outputs from one of the deconvolution algorithms, which contains
+#   output run under different parameter sets
+Load_AlgorithmOutputList <- function(algorithm, dataset, datatype, granularity) {
+  list_file_format <- "{algorithm}_list_{dataset}_{datatype}_{granularity}.rds"
+  params_file <- file.path(dir_params_lists, str_glue(list_file_format))
+
+  if (!file.exists(params_file)) {
+    print(paste(params_file, "doesn't exist!"))
+    return(list())
+  }
+
+  output_list <- readRDS(file.path(dir_params_lists,
+                                   str_glue(list_file_format)))
+  return(output_list)
+}
+
+
 ##### Dtangle/HSPE #####
 
 # Save_DtangleMarkers: saves a set of Dtangle/HSPE markers to an RDS file, named
