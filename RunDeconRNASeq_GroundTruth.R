@@ -14,7 +14,7 @@ library(doParallel)
 
 ##### Parallel execution setup #####
 
-cores <- 12
+cores <- 8
 cl <- makeCluster(cores, type = "PSOCK", outfile = "")
 registerDoParallel(cl)
 
@@ -34,7 +34,7 @@ params_loop1 <- expand.grid(dataset = datasets,
 
 params_loop2 <- expand.grid(filter_level = c(0, 1, 2, 3),
                             n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
-                                          10, 50, 100, 200),
+                                          10, 50, 100, 200, 500),
                             marker_type = c("ratio", "diff", "p.value", "regression"),
                             use_scale = c(TRUE, FALSE),
                             stringsAsFactors = FALSE) %>% arrange(filter_level)
@@ -61,7 +61,7 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
   signature <- Load_SignatureMatrix(dataset, granularity)
   signature <- as.data.frame(signature)
 
-  pseudobulk <- Load_Pseudobulk(dataset, datatype, granularity, output_type = "logcpm")
+  pseudobulk <- Load_Pseudobulk(dataset, datatype, granularity, output_type = "cpm")
   pseudobulk <- assay(pseudobulk, "counts")
 
   # Each dataset / datatype / granularity combo gets its own list
@@ -92,6 +92,7 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
     res$params <- cbind(params_loop1[P,], params_loop2[R,])
 
     decon_list[[name]] <- res
+    gc()
 
     print(paste(res$params, collapse = "  "))
   } # end params loop 2
