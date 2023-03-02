@@ -6,16 +6,17 @@ source("Filenames.R")
 datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
               "seaRef") #, "seaAD")
 
-datatypes = c("donors", "training")
+granularity <- "broad"
+datatypes <- c("donors", "training")
 
 for (dataset in datasets) {
   params <- list()
 
   for (datatype in datatypes) {
-    err_file <- file.path(dir_output,
-                          paste0("errors_", dataset, "_", datatype, "_broad.rds"))
+    err_file <- file.path(dir_errors,
+                          str_glue("errors_{dataset}_{datatype}_{granularity}.rds"))
     if (!file.exists(err_file)) {
-      break
+      next
     }
 
     err_list <- readRDS(err_file)
@@ -23,29 +24,43 @@ for (dataset in datasets) {
     for (algorithm in names(err_list)) {
       errs <- err_list[[algorithm]][["means"]]
 
-      bests <- lapply(colnames(errs), FUN = function(X) {
-        if (length(grep("cor", X)) > 0) {
-          ord <- order(errs[, X], decreasing = TRUE)
+      errs_gof <- err_list[[algorithm]][["gof"]]
+      errs_gof <- lapply(names(errs_gof), function(X) {
+        errs_gof[[X]]$filter_lvl <- rownames(errs_gof[[X]])
+        errs_gof[[X]]$name <- X
+        errs_gof[[X]]
+      })
+      errs_gof <- do.call(rbind, errs_gof)
+
+      pars <- do.call(rbind, err_list[[algorithm]][["params"]])
+
+      get_best_vals <- function(col_name, errs_df) {
+        if (length(grep("cor", col_name)) > 0) {
+          top_ind <- which.max(errs_df[,col_name])
         }
         else {
-          ord <- order(errs[, X], decreasing = FALSE)
+          top_ind <- which.min(errs_df[,col_name])
         }
+        return(top_ind)
+      }
 
-        ord <- ord[1:min(3, length(ord))]
-        data.frame(name = rownames(errs[ord,]), group = X, rank = 1:length(ord))
-      })
+      bests <- sapply(colnames(errs), get_best_vals, errs)
+      bests <- data.frame(name = rownames(errs)[bests],
+                          filter_lvl = "0",
+                          group = names(bests))
 
-      bests <- do.call(rbind, bests)
+      bests_gof <- sapply(grep("gof", colnames(errs_gof), value = TRUE),
+                          get_best_vals, errs_gof)
+      bests_gof <- data.frame(name = errs_gof$name[bests_gof],
+                              filter_lvl = errs_gof$filter_lvl[bests_gof],
+                              group = names(bests_gof))
 
-      # For now, don't use goodness of fit
-      bests <- subset(bests, !grepl("gof", group))
+      bests <- rbind(bests, bests_gof)
+      bests$params <- apply(pars[bests$name,], 1, as.list)
 
-      # Get rank 1 param for each error metric
-      top_one <- bests %>% group_by(group) %>% top_n(1, wt = -rank)
-
-      top_one$algorithm <- algorithm
-      top_one$datatype <- datatype
-      params <- append(params, list(top_one))
+      bests$algorithm <- algorithm
+      bests$datatype <- datatype
+      params <- append(params, list(bests))
     }
   }
 
@@ -55,12 +70,12 @@ for (dataset in datasets) {
   # and a list of each data type for the duplicates. Also count how many times
   # a particular parameter set was duplicated. Remove the old group,
   # datatype, and rank columns
-  params <- params %>% group_by(name) %>%
+  params <- params %>% group_by(name, algorithm) %>%
               mutate(metrics = str_c(unique(group), collapse = ", "),
                      datatypes = str_c(unique(datatype), collapse = ", "),
-                     total = n(), .keep = "unused") %>%
-              select(-rank) %>% distinct()
+                     filter_lvls = str_c(unique(filter_lvl), collapse = ", "),
+                     total = n(), .keep = "unused") %>% distinct()
 
-  saveRDS(params, file = file.path(dir_output, paste0("best_params_", dataset,
-                                                      "_broad.rds")))
+  saveRDS(params, file = file.path(dir_output,
+                                   str_glue("best_params_{dataset}_{granularity}.rds"))
 }
