@@ -202,6 +202,57 @@ Load_CountsFile <- function(filename, output_type) {
 }
 
 
+##### Bulk (test) data #####
+
+# Arguments:
+#   dataset = the name of the dataset ("ROSMAP", "Mayo", or "MSBB")
+#   genes = DataFrame with columns "Ensembl.ID" and "Symbol", used to convert
+#           between gene naming systems
+#   output_type = either "counts", "cpm", or "logcpm", to determine how the
+#                 counts are transformed:
+#                   "counts" will return raw, unaltered counts
+#                   "cpm" will normalize the counts to counts per million
+#                   "logcpm" will take the log2(cpm + 1)
+Load_BulkData <- function(dataset, genes, output_type = "counts") {
+  if (dataset == "ROSMAP") {
+    bulk <- read.table(file_rosmap, header = TRUE, row.names = 1)
+  } else if (dataset == "Mayo") {
+    # TODO
+  } else if (dataset == "MSBB") {
+    # TODO
+  } else {
+    print("Error! datset should be either \"ROSMAP\", \"Mayo\", or \"MSBB\".")
+    return(NULL)
+  }
+
+  rownames(genes) <- genes$Ensembl.ID
+
+  # TODO refactor Load_CountsFile to be able to take this data, OR put these
+  # data set counts in a SummarizedExperiment object
+  if (output_type == "counts") {
+    bulk <- bulk[rownames(bulk) %in% genes$Ensembl.ID, ]
+    rownames(bulk) <- make.unique(genes[rownames(bulk), "Symbol"])
+
+    return(bulk)
+  }
+  else if (output_type == "cpm" | output_type == "logcpm") {
+    bulk_cpm <- calculateCPM(bulk)
+
+    if (output_type == "logcpm") {
+      bulk_cpm <- log2(bulk_cpm + 1)
+    }
+
+    bulk_cpm <- bulk_cpm[rownames(bulk_cpm) %in% genes$Ensembl.ID, ]
+    rownames(bulk_cpm) <- make.unique(genes[rownames(bulk_cpm), "Symbol"])
+    return(bulk_cpm)
+  }
+  else {
+    print("Error! output_type should be either \"counts\", \"cpm\", or \"logcpm\".")
+    return(NULL)
+  }
+}
+
+
 ##### Helper matrix load functions #####
 
 # Load_AvgLibSize: Loads the average library size per cell type (called "A")
@@ -240,6 +291,20 @@ Load_SignatureMatrix <- function(dataset, granularity) {
 }
 
 
+# Load_GeneConversion: loads the data frame that contains mappings between
+# Ensembl ID and gene symbol.
+#
+# Arguments:
+#   dataset = the name of the data set to load the gene info from
+#
+# Returns:
+#   a DataFrame with columns "Ensembl.ID" and "Symbol", used to convert
+#   between gene naming systems
+Load_GeneConversion <- function(dataset) {
+  return(readRDS(file.path(dir_input, str_glue("{dataset}_gene_names.rds"))))
+}
+
+
 ##### General algorithm I/O #####
 
 # Save_AlgorithmOutputList: saves a list of output from one of the algorithms
@@ -261,7 +326,15 @@ Load_SignatureMatrix <- function(dataset, granularity) {
 #   Nothing
 Save_AlgorithmOutputList <- function(output_list, algorithm, dataset, datatype, granularity) {
   list_file_format <- "{algorithm}_list_{dataset}_{datatype}_{granularity}.rds"
-  saveRDS(output_list, file = file.path(dir_params_lists,
+
+  if (datatype == "ROSMAP") {
+    out_directory <- dir_rosmap
+  }
+  else {
+    out_directory <- dir_params_lists # TODO add Mayo and MSBB
+  }
+
+  saveRDS(output_list, file = file.path(out_directory,
                                         str_glue(list_file_format)))
 }
 
@@ -290,9 +363,58 @@ Load_AlgorithmOutputList <- function(algorithm, dataset, datatype, granularity) 
     return(list())
   }
 
-  output_list <- readRDS(file.path(dir_params_lists,
-                                   str_glue(list_file_format)))
-  return(output_list)
+  return(readRDS(params_file))
+}
+
+
+# Save_ErrorList: saves a list of calculated error metrics over all algorithms
+# for a single data set, named with a specific format.  This is an ease-of-use
+# function to prevent having to edit multiple files whenever the format of the
+# filename changes.
+#
+# Arguments:
+#   error_list = a list of errors, where each entry contains a list of
+#                information (mean errors, errors by celltype, errors by
+#                subject, goodness-of-fit, and parameters) for each algorithm
+#   dataset = the name of the data set
+#   datatype = either "donors" or "training", to signify if the algorithms were
+#              run on donor or training pseudobulk
+#   granularity = either "broad" or "fine", for which level of cell types was
+#                 used for markers and pseudobulk creation.
+#
+# Returns:
+#   Nothing
+Save_ErrorList <- function(error_list, dataset, datatype, granularity) {
+  error_file_format <- "errors_{dataset}_{datatype}_{granularity}.rds"
+  saveRDS(error_list, file = file.path(dir_errors, str_glue(error_file_format)))
+}
+
+
+# Load_ErrorList: loads a list of calculated error metrics over all algorithms,
+# for a single data set. This is an ease-of-use function to prevent having to
+# edit multiple files whenever the format of the filename changes.
+#
+# Arguments:
+#   dataset = the name of the data set
+#   datatype = either "donors" or "training", to signify if the algorithms were
+#              run on donor or training pseudobulk
+#   granularity = either "broad" or "fine", for which level of cell types was
+#                 used for markers and pseudobulk creation.
+#
+# Returns:
+#   a list of errors, where each entry contains a list of information (mean
+#   errors, errors by celltype, errors by subject, goodness-of-fit, and
+#   parameters) for each algorithm
+Load_ErrorList <- function(dataset, datatype, granularity) {
+  error_file_format <- "errors_{dataset}_{datatype}_{granularity}.rds"
+  error_file <- file.path(dir_errors, str_glue(error_file_format))
+
+  if (!file.exists(error_file)) {
+    print(paste(error_file, "doesn't exist!"))
+    return(list())
+  }
+
+  return(readRDS(error_file))
 }
 
 
@@ -341,6 +463,3 @@ Load_DtangleMarkers <- function(dataset, granularity, input_type, marker_method)
   markers <- readRDS(file = file.path(dir_markers, str_glue(marker_file_format)))
   return(markers)
 }
-
-
-

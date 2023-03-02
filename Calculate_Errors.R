@@ -34,7 +34,8 @@ gof <- function(meas_expr_cpm, est_pct, sig_matrix_cpm) {
   meas_expr_cpm <- as.matrix(meas_expr_cpm)
   ok <- meas_expr_cpm != 0 | est_expr != 0
 
-  stats$gof_cor_subject <- mean(diag(cor(meas_expr_cpm, est_expr, use = "na.or.complete")))
+  stats$gof_cor_subject <- mean(diag(cor(meas_expr_cpm, est_expr,
+                                         use = "na.or.complete")))
   stats$gof_rMSE <- rmse(meas_expr_cpm, est_expr)
   stats$gof_mAPE <- smape(meas_expr_cpm[ok], est_expr[ok])
 
@@ -76,6 +77,9 @@ for (dataset in datasets) {
       next
     }
 
+    # TODO temporary
+    names(deconv_list) <- paste0(algorithm, "_", names(deconv_list))
+
     errs <- list()
     errs_by_celltype <- list()
     errs_by_subject <- list()
@@ -87,7 +91,7 @@ for (dataset in datasets) {
       tmp <- tmp[rownames(pctRNA), colnames(pctRNA)]
 
       if (any(is.na(tmp))) {
-        print(paste("Param set", algorithm, ii, "has NA values. Skipping..."))
+        print(paste("Param set", ii, "has NA values. Skipping..."))
         next
       }
 
@@ -104,20 +108,24 @@ for (dataset in datasets) {
         })
       }
 
-      errs_by_celltype[[ii]] <- data.frame("cor" = diag(cor(tmp, pctRNA, use = "na.or.complete")),
+      errs_by_celltype[[ii]] <- data.frame("cor" = diag(cor(tmp, pctRNA,
+                                                            use = "na.or.complete")),
                                            "rMSE" = run_by_celltype(rmse),
                                            "mAPE" = run_by_celltype(smape))
 
 
-      errs_by_subject[[ii]] <- data.frame("cor" = diag(cor(t(tmp), t(pctRNA), use = "na.or.complete")),
+      errs_by_subject[[ii]] <- data.frame("cor" = diag(cor(t(tmp), t(pctRNA),
+                                                           use = "na.or.complete")),
                                           "rMSE" = run_by_subject(rmse),
                                           "mAPE" = run_by_subject(smape))
 
       # mAPE can't be calculated if both prediction and truth are 0
       ok <- pctRNA != 0 | tmp != 0
 
-      errs[[ii]] <- data.frame("cor_celltype" = mean(diag(cor(tmp, pctRNA, use = "na.or.complete"))),
-                               "cor_subject" = mean(diag(cor(t(tmp), t(pctRNA), use = "na.or.complete"))),
+      errs[[ii]] <- data.frame("cor_celltype" = mean(diag(cor(tmp, pctRNA,
+                                                              use = "na.or.complete"))),
+                               "cor_subject" = mean(diag(cor(t(tmp), t(pctRNA),
+                                                             use = "na.or.complete"))),
                                "rMSE" = rmse(pctRNA, tmp),
                                "mAPE" = smape(pctRNA[ok], tmp[ok]))
 
@@ -132,7 +140,7 @@ for (dataset in datasets) {
         else {
           for (filt_percent in c(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
                                  10, 50, 100, 200, 500)) {
-            sig_filt <- FilterSignature(sig_matrix, filter_lvl, dataset, "broad", filt_percent)
+            sig_filt <- FilterSignature(sig_matrix, filter_lvl, dataset, granularity, filt_percent)
             pseudobulk_filt <- pseudobulk_cpm[rownames(sig_filt), ]
             gof_list[[paste(filter_lvl, filt_percent)]] <- gof(pseudobulk_filt, tmp, sig_filt)
           }
@@ -152,6 +160,5 @@ for (dataset in datasets) {
     print("Done")
   }
 
-  saveRDS(err_list, file = file.path(dir_errors,
-                                     str_glue("errors_{dataset}_{datatype}_{granularity}.rds")))
+  Save_ErrorList(err_list, dataset, datatype, granularity)
 }

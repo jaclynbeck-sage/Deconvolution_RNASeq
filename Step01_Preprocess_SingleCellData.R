@@ -61,6 +61,10 @@ for (dataset in datasets) {
   # writing the full data to disk again
   saveRDS(sce, file = file.path(dir_input, str_glue("{dataset}_sce.rds")))
 
+  # Also save the gene conversion data frame to a separate file for algorithms
+  # that don't need to load the single cell objectf
+  saveRDS(genes, file = file.path(dir_input, str_glue("{dataset}_gene_names.rds")))
+
   # Calculate the "A" matrix that is needed to convert propCells to pctRNA
   A_broad <- CalculateA(sce, metadata$donor, metadata$broadcelltype)
   A_fine <- CalculateA(sce, metadata$donor, metadata$subcluster)

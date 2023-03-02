@@ -2,8 +2,8 @@ library(dplyr)
 library(tidyr)
 library(stringr)
 library(reshape2)
-source("Filenames.R")
-source(file.path("functions", "Error_HelperFunctions.R"))
+
+source(file.path("functions", "FileIO_HelperFunctions.R"))
 
 datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
               "seaRef") #, "seaAD")
@@ -16,13 +16,13 @@ for (datatype in datatypes) {
   params_list <- list()
 
   for (dataset in datasets) {
-    err_file <- file.path(dir_output,
-                          paste0("errors_", dataset, "_", datatype, "_broad.rds"))
-    if (!file.exists(err_file)) {
+
+    err_list <- Load_ErrorList(dataset, datatype, "broad")
+
+    if (length(err_list) == 0) {
       next
     }
 
-    err_list <- readRDS(err_file)
     params_df <- do.call(rbind, err_list[[algorithm]][["params"]])
 
     err_list <- err_list[[algorithm]][["means"]]
@@ -36,22 +36,6 @@ for (datatype in datatypes) {
     bests <- bests %>%
               mutate(marker = paste(marker_method, n_markers)) %>%
               select(-marker_method, -n_markers)
-
-    tmp <- bests %>% select(dataset, input_type, cor_celltype:mAPE) %>%
-              distinct() %>% group_by(dataset, input_type) %>%
-              mutate(across(cor_celltype:mAPE, mean)) %>% distinct()
-
-    tmp2 <- bests %>% select(dataset, gamma_name, cor_celltype:mAPE) %>%
-      distinct() %>% group_by(dataset, gamma_name) %>%
-      mutate(across(cor_celltype:mAPE, mean)) %>% distinct()
-
-    tmp3 <- bests %>% select(dataset, sum_fn_type, cor_celltype:mAPE) %>%
-      distinct() %>% group_by(dataset, sum_fn_type) %>%
-      mutate(across(cor_celltype:mAPE, mean)) %>% distinct()
-
-    tmp4 <- bests %>% select(dataset, marker, cor_celltype:mAPE) %>%
-      distinct() %>% group_by(dataset, marker) %>%
-      mutate(across(cor_celltype:mAPE, mean)) %>% distinct()
   }
   else if (algorithm == "deconRNASeq") {
     bests <- bests %>%

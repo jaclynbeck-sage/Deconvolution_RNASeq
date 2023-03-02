@@ -1,97 +1,72 @@
+# Runs DeconRNASeq on test data with unknown cell proportions, using the best-
+# performing parameter sets for each reference data set.
+#
+# NOTE: This script relies on Dtangle markers, so these must be calculated
+# before-hand.
+#
+# Since the parameter lists are small, we don't bother with parallel execution
+# here.
+
 library(DeconRNASeq)
 library(Matrix)
-library(SingleCellExperiment)
-library(SummarizedExperiment)
-library(scuttle)
 library(stringr)
+library(dplyr)
+library(foreach)
 
-source("Filenames.R")
+source(file.path("functions", "FileIO_HelperFunctions.R"))
+source(file.path("functions", "General_HelperFunctions.R"))
+source(file.path("functions", "DeconRNASeq_InnerLoop.R"))
 
-cellclasstype <- "broad" ###either "fine" or "broad"
+#datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
+#              "seaRef") #, "seaAD")
+datasets <- c("mathys")
 
-datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
-              "seaRef") #, "seaAD")
+params_loop1 <- expand.grid(dataset = datasets,
+                            datatype = c("ROSMAP"),
+                            granularity = c("broad"),#, "fine"),
+                            stringsAsFactors = FALSE) %>% arrange(datatype)
 
-###load bulk and snRNA-seq data###
-for (sndata in datasets) {
-  sce <- readRDS(file.path(dir_input, paste(sndata, "sce.rds", sep = "_")))
-  meta <- colData(sce)
+for (P in 1:nrow(params_loop1)) {
+  dataset <- params_loop1$dataset[P]
+  granularity <- params_loop1$granularity[P]
+  datatype <- params_loop1$datatype[P]
 
-  # Convert gene names to Ensembl IDs
-  genes <- rowData(sce)
-  rownames(sce) <- genes[rownames(sce), "Ensembl.ID"]
+  # Reference data: signature matrix and Ensembl ID -> Symbol mapping
+  genes <- Load_GeneConversion(dataset)
 
-  sce_cpm <- calculateCPM(counts(sce))
+  signature <- Load_SignatureMatrix(dataset, granularity)
+  signature <- as.data.frame(signature)
 
-  # The seaRef dataset will fit in memory all at once, so this converts it
-  # to a sparse matrix. The seaAD data set will NOT fit so this won't work on it.
-  if (is(sce_cpm, "DelayedArray")) {
-    sce_cpm <- as(sce_cpm, "dgCMatrix")
+  # Test data
+  # Gene names in bulk data are Ensembl IDs. They will get converted to gene
+  # symbols in this function, so the rownames should match between bulk data and
+  # signature matrix.
+  bulk <- Load_BulkData(datatype, genes, output_type = "cpm")
+  bulk <- as.data.frame(bulk)
+
+  best_params <- readRDS(file.path(dir_output,
+                                   str_glue("best_params_{dataset}_{granularity}.rds")))
+
+  best_params <- subset(best_params, algorithm == "deconRNASeq")
+  params_list <- do.call(rbind, lapply(best_params$params, as.data.frame)) %>%
+                  select(-dataset, -granularity)
+
+  ##### Run with the best-performing parameter sets #####
+
+  decon_list <- foreach (R = 1:nrow(params_list)) %do% {
+    res <- DeconRNASeq_InnerLoop(signature, bulk,
+                                 cbind(params_loop1[P,], params_list[R,]))
+    return(res)
   }
 
-  # TODO better signature
-  signature <- lapply(levels(meta$broadcelltype), function(X) {
-    cells <- meta[meta$broadcelltype == X,]
-    rowMeans(sce_cpm[,rownames(cells)])
-  })
-  names(signature) <- levels(meta$broadcelltype)
-  signature <- do.call(cbind, signature)
-
-  # Filter for > 1 cpm
-  ok <- which(rowSums(signature >= 1) > 0)
-  signature <- as.data.frame(signature[ok, ])
-
-  bulk <- read.table(file_rosmap, header = TRUE, row.names = 1)
-  bulk_cpm <- calculateCPM(bulk)
-  bulk_cpm <- as.data.frame(as.matrix(bulk_cpm))
-
-  keepgene <- intersect(rownames(sce), rownames(bulk))
-
-  signature <- signature[intersect(rownames(signature), keepgene),]
-
-  # Clear up as much memory as possible
-  rm(bulk, sce, sce_cpm)
-  gc()
-
-  best_params <- readRDS(file.path(dir_output, paste0("best_params_", sndata,
-                                                      "_", cellclasstype, ".rds")))
-  best_params <- subset(best_params, algorithm == "deconRNASeq")
-  best_params <- str_split(best_params$name, pattern = "_", simplify = TRUE)
-  use.scale.params <- as.logical(best_params[,4]) # This is the only variable that changes
-
-  decon_list <- list()
-
-  for (use.scale in use.scale.params) {
-    name <- paste(sndata, cellclasstype,
-                  "usescale", use.scale,
-                  "normalization", "cpm", sep = "_")
-
-    res <- DeconRNASeq(bulk_cpm[keepgene,], signature, proportions = NULL,
-                       known.prop = FALSE, use.scale = use.scale, fig = FALSE)
-
-    res$Est.prop <- res$out.all
-    rownames(res$Est.prop) <- colnames(bulk_cpm)
-    res <- res[c("Est.prop", "out.pca")]
-
-    decon_list[[name]] <- res
-
-    print(name)
-  } # end use.scale loop
+  names(decon_list) <- paste0("deconRNASeq_",
+                              str_glue("{dataset}_{granularity}_{datatype}_"),
+                              1:nrow(params_list))
 
   # Save the completed list
-  print("Saving final list...")
-  saveRDS(decon_list, file = file.path(dir_output,
-                                       paste0("deconRNASeq_list_", sndata,
-                                              "_", cellclasstype, "_ROSMAP.rds")))
+  print(str_glue("Saving final list for {datatype} / {dataset} {granularity}..."))
+  Save_AlgorithmOutputList(decon_list, "deconRNASeq", dataset, datatype, granularity)
 
   rm(decon_list)
   gc()
 }
-
-
-
-
-
-
-
-
