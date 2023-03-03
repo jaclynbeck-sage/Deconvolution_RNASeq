@@ -59,11 +59,11 @@ for (P in 1:nrow(params_loop1)) {
 
   # It's possible for some items in music_list to be null if there was an error.
   # Filter them out.
-  music_list <- music_list[!is.null(music_list)]
+  music_list <- music_list[lengths(music_list) > 0]
 
   names(music_list) <- paste0("music_",
                               str_glue("{dataset}_{granularity}_{datatype}_"),
-                              1:nrow(params_list))
+                              1:length(music_list))
 
   print(str_glue("Saving final list for {dataset} {datatype} {granularity}..."))
   Save_AlgorithmOutputList(music_list, "music", dataset, datatype, granularity)

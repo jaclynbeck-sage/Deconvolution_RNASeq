@@ -72,7 +72,7 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
 
   # It's possible for some items in music_list to be null if there was an error.
   # Filter them out.
-  music_list <- music_list[!is.null(music_list)]
+  music_list <- music_list[lengths(music_list) > 0]
 
   names(music_list) <- paste0("music_",
                               str_glue("{dataset}_{granularity}_{datatype}_"),
