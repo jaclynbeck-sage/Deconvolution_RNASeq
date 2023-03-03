@@ -1,98 +1,73 @@
+# Runs MuSiC on test data with unknown cell proportions, using the best-
+# performing parameter sets for each reference data set.
+#
+# Since the parameter lists are small, we don't bother with parallel execution
+# here.
+
 library(MuSiC)
 library(SingleCellExperiment)
-library(SummarizedExperiment)
 library(dplyr)
-library(tidyr)
 
-source("Filenames.R")
-
-cellclasstype <- "broad" ###either "fine" or "broad"
+source(file.path("functions", "FileIO_HelperFunctions.R"))
+source(file.path("functions", "General_HelperFunctions.R"))
+source(file.path("functions", "Music_InnerLoop.R"))
 
 datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
               "seaRef") #, "seaAD")
+datasets <- c("mathys")
 
-# HACK to MuSiC to account for the case where some weights are < 0, which leads
-# to error-causing NaNs later. seaRef is the only data set this has happened on,
-# so I need to figure out what's actually going on here.
-weight.cal.ct.orig <- MuSiC::weight.cal.ct
-weight.cal.ct <- function (...) {
-  weight = weight.cal.ct.orig(...)
-  weight[weight < 0] = 0
-  return(weight)
-}
+params_loop1 <- expand.grid(dataset = datasets,
+                            datatype = c("ROSMAP"),
+                            granularity = c("broad"),#, "fine"),
+                            stringsAsFactors = FALSE) %>% arrange(datatype)
 
-R.utils::reassignInPackage("weight.cal.ct", pkgName="MuSiC", weight.cal.ct)
+for (P in 1:nrow(params_loop1)) {
+  dataset <- params_loop1$dataset[P]
+  granularity <- params_loop1$granularity[P]
+  datatype <- params_loop1$datatype[P]
 
-for (sndata in datasets) {
-  sce <- readRDS(file.path(dir_input, paste(sndata, "sce.rds", sep = "_")))
+  # Reference data: single cell data and Ensembl ID -> Symbol mapping
+  genes <- Load_GeneConversion(dataset)
 
-  # Convert gene names to Ensembl IDs
-  genes <- rowData(sce)
-  rownames(sce) <- genes[rownames(sce), "Ensembl.ID"]
+  sce <- Load_SingleCell(dataset, granularity, output_type = "counts")
+  A <- Load_AvgLibSize(dataset, granularity)
 
-  # Specific to ROSMAP for now
-  bulk <- read.table(file_rosmap, header = TRUE, row.names = 1)
+  # Test data
+  # Gene names in bulk data are Ensembl IDs. They will get converted to gene
+  # symbols in this function, so the rownames should match between bulk data and
+  # signature matrix.
+  bulk <- Load_BulkData(datatype, genes, output_type = "counts")
 
   keepgene <- intersect(rownames(sce), rownames(bulk))
 
   bulk <- as.matrix(bulk[keepgene, ]) # Needs to be a matrix, not data.frame
   sce <- sce[keepgene, ]
 
-  # The seaRef dataset will fit in memory all at once, so this converts it
-  # to a sparse matrix. The seaAD data set will NOT fit so this won't work on it.
-  if (is(counts(sce), "DelayedArray")) {
-    counts(sce) <- as(counts(sce), "dgCMatrix")
+  best_params <- readRDS(file.path(dir_output,
+                                   str_glue("best_params_{dataset}_{granularity}.rds")))
+
+  best_params <- subset(best_params, algorithm == "music")
+  params_list <- do.call(rbind, lapply(best_params$params, as.data.frame)) %>%
+    select(-dataset, -granularity)
+
+  ##### Run with the best-performing parameter sets #####
+
+  music_list <- foreach (R = 1:nrow(params_list)) %do% {
+    res <- Music_InnerLoop(sce, bulk, A, cbind(params_loop1[P,], params_list[R,]))
+    return(res)
   }
 
-  best_params <- readRDS(file.path(dir_output, paste0("best_params_", sndata,
-                                                      "_", cellclasstype, ".rds")))
-  best_params <- subset(best_params, algorithm == "music_nnls" | algorithm == "music_wt")
-  params <- best_params %>%
-    extract(name, c("ct.cov", "centered", "normalize"),
-            "ct.cov_([A-Z]+)_centered_([A-Z]+)_normalize_([A-Z]+)",
-            convert = TRUE) %>%
-    select(ct.cov, centered, normalize) %>% distinct()
+  # It's possible for some items in music_list to be null if there was an error.
+  # Filter them out.
+  music_list <- music_list[!is.null(music_list)]
 
+  names(music_list) <- paste0("music_",
+                              str_glue("{dataset}_{granularity}_{datatype}_"),
+                              1:nrow(params_list))
 
-  music_list <- list()
-
-  for (R in 1:nrow(params)) {
-    samples = "donor"
-    ct.cov <- params$ct.cov[R]
-    centered <- params$centered[R]
-    normalize <- params$normalize[R]
-
-    name <- paste(sndata, cellclasstype,
-                  "samples", samples,
-                  "ct.cov", ct.cov,
-                  "centered", centered,
-                  "normalize", normalize,
-                  "counts", sep = "_")
-
-    result <- music_prop(bulk.mtx = bulk, sc.sce = sce,
-                         clusters = 'broadcelltype',
-                         samples = samples, verbose = TRUE,
-                         ct.cov = ct.cov, centered = centered,
-                         normalize = normalize)
-
-    # Remove "Weight.gene", "r.squared.full", and "Var.prop". "Weight.gene"
-    # especially is a very large array and is unneeded, so this reduces
-    # output size.
-    music_list[[name]] <- result[1:2]
-
-    gc()
-    print(name)
-  } # End params loop
-
-  print("Saving final list...")
-  saveRDS(music_list, file = file.path(dir_output,
-                                       paste0("music_list_", sndata, "_",
-                                              cellclasstype, "_ROSMAP.rds")))
+  print(str_glue("Saving final list for {dataset} {datatype} {granularity}..."))
+  Save_AlgorithmOutputList(music_list, "music", dataset, datatype, granularity)
 
   rm(music_list, bulk, sce)
   gc()
 }
-
-
-
-

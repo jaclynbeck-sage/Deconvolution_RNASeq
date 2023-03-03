@@ -38,6 +38,7 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
   # These need to be sourced inside the loop for parallel processing
   source(file.path("functions", "General_HelperFunctions.R"))
   source(file.path("functions", "FileIO_HelperFunctions.R"))
+  source(file.path("functions", "Music_InnerLoop.R"))
 
   dataset <- params_loop1$dataset[P]
   datatype <- params_loop1$datatype[P]
@@ -63,48 +64,19 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
   # NOTE: This set of parameters (params_loop2) are all executed in the same
   # thread because they use the same single cell and pseudobulk data
 
-  for (R in 1:nrow(params_loop2)) {
-    ct_cov <- params_loop2$ct.cov[R]
-    centered <- params_loop2$centered[R]
-    normalize <- params_loop2$normalize[R]
+  music_list <- foreach (R = 1:nrow(params_loop2)) %do% {
+    res <- Music_InnerLoop(sce, pseudobulk, A,
+                           cbind(params_loop1[P,], params_loop2[R,]))
+    return(res)
+  }
 
-    name <- str_glue("{dataset}_{granularity}_{datatype}_{R}")
+  # It's possible for some items in music_list to be null if there was an error.
+  # Filter them out.
+  music_list <- music_list[!is.null(music_list)]
 
-    # Sometimes ct.cov = TRUE will produce too many NAs if too many cell types
-    # are missing from too many donors, and this eventually throws errors. The
-    # best thing to do is just ignore the error and continue the loop
-    tryCatch({
-      result <- music_prop(bulk.mtx = pseudobulk, sc.sce = sce,
-                           clusters = "celltype",
-                           samples = "donor", verbose = TRUE,
-                           ct.cov = ct_cov, centered = centered,
-                           normalize = normalize)
-
-      # Remove "Weight.gene", "r.squared.full", and "Var.prop". "Weight.gene"
-      # especially is a very large array and is unneeded, so this reduces
-      # output size.
-      result <- result[c("Est.prop.weighted", "Est.prop.allgene")]
-      result$Est.prop.weighted <- result$Est.prop.weighted[,names(A)]
-      result$Est.prop.allgene <- result$Est.prop.allgene[,names(A)]
-
-      # Convert proportion of cells to percent RNA
-      result$Est.pctRNA.weighted <- ConvertPropCellsToPctRNA(result$Est.prop.weighted, A)
-      result$Est.pctRNA.allgene <- ConvertPropCellsToPctRNA(result$Est.prop.allgene, A)
-
-      result$params <- cbind(params_loop1[P,], params_loop2[R,])
-
-      music_list[[name]] <- result
-
-      gc()
-      print(paste(result$params, collapse = "  "))
-    },
-    error = function(err) {
-      param_set <- paste(cbind(params_loop1[P,], params_loop2[R,]), collapse = "  ")
-      print(c("*** Error running param set", param_set))
-      print(err)
-      print("*** skipping ***")
-    })
-  } # End params loop
+  names(music_list) <- paste0("music_",
+                              str_glue("{dataset}_{granularity}_{datatype}_"),
+                              1:nrow(params_loop2))
 
   print(str_glue("Saving final list for {dataset} {datatype} {granularity}..."))
   Save_AlgorithmOutputList(music_list, "music", dataset, datatype, granularity)
