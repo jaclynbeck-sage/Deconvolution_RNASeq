@@ -76,7 +76,7 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
 
   names(music_list) <- paste0("music_",
                               str_glue("{dataset}_{granularity}_{datatype}_"),
-                              1:nrow(params_loop2))
+                              1:length(music_list))
 
   print(str_glue("Saving final list for {dataset} {datatype} {granularity}..."))
   Save_AlgorithmOutputList(music_list, "music", dataset, datatype, granularity)

@@ -17,9 +17,8 @@ source(file.path("functions", "FileIO_HelperFunctions.R"))
 source(file.path("functions", "General_HelperFunctions.R"))
 source(file.path("functions", "DeconRNASeq_InnerLoop.R"))
 
-#datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
-#              "seaRef") #, "seaAD")
-datasets <- c("mathys")
+datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
+              "seaRef") #, "seaAD")
 
 params_loop1 <- expand.grid(dataset = datasets,
                             datatype = c("ROSMAP"),

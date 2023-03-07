@@ -184,10 +184,12 @@ Load_CountsFile <- function(filename, output_type) {
     if (output_type == "logcpm") {
       # TODO consider using scuttle normalizeCounts()
       if (is(cpms, "DelayedArray") | is(cpms, "matrix")) {
-        cpms <- log2(cpms + 1)
+        #cpms <- log2(cpms + 1)
+        cpms[cpms != 0] <- log2(cpms[cpms != 0])
       }
       else { # Sparse matrix
-        cpms@x <- log2(cpms@x + 1)
+        #cpms@x <- log2(cpms@x + 1)
+        cpms@x <- log2(cpms@x)
       }
     }
 
@@ -225,6 +227,7 @@ Load_BulkData <- function(dataset, genes, output_type = "counts") {
     return(NULL)
   }
 
+  genes <- subset(genes, !is.na(Ensembl.ID))
   rownames(genes) <- genes$Ensembl.ID
 
   # TODO refactor Load_CountsFile to be able to take this data, OR put these
@@ -239,7 +242,8 @@ Load_BulkData <- function(dataset, genes, output_type = "counts") {
     bulk_cpm <- calculateCPM(bulk)
 
     if (output_type == "logcpm") {
-      bulk_cpm <- log2(bulk_cpm + 1)
+      #bulk_cpm <- log2(bulk_cpm + 1)
+      bulk_cpm[bulk_cpm != 0] <- log2(bulk_cpm[bulk_cpm != 0])
     }
 
     bulk_cpm <- bulk_cpm[rownames(bulk_cpm) %in% genes$Ensembl.ID, ]
@@ -456,10 +460,11 @@ Save_DtangleMarkers <- function(markers, dataset, granularity, input_type, marke
 #                   was used as the input to find_markers.
 #
 # Returns:
-#   a list that was the output of hspe::find_markers for this parameter set
+#   a list where each entry is a list of marker gene names for a given cell type
 Load_DtangleMarkers <- function(dataset, granularity, input_type, marker_method) {
   marker_file_format <- paste0("dtangle_markers_{dataset}_{granularity}_",
                                "input_{input_type}_method_{marker_method}.rds")
   markers <- readRDS(file = file.path(dir_markers, str_glue(marker_file_format)))
+  markers <- lapply(markers$L, names)
   return(markers)
 }

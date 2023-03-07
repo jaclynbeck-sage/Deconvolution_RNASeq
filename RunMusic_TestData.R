@@ -7,6 +7,7 @@
 library(MuSiC)
 library(SingleCellExperiment)
 library(dplyr)
+library(foreach)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
 source(file.path("functions", "General_HelperFunctions.R"))
@@ -14,7 +15,6 @@ source(file.path("functions", "Music_InnerLoop.R"))
 
 datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
               "seaRef") #, "seaAD")
-datasets <- c("mathys")
 
 params_loop1 <- expand.grid(dataset = datasets,
                             datatype = c("ROSMAP"),
@@ -65,7 +65,7 @@ for (P in 1:nrow(params_loop1)) {
                               str_glue("{dataset}_{granularity}_{datatype}_"),
                               1:length(music_list))
 
-  print(str_glue("Saving final list for {dataset} {datatype} {granularity}..."))
+  print(str_glue("Saving final list for {datatype} / {dataset} {granularity}..."))
   Save_AlgorithmOutputList(music_list, "music", dataset, datatype, granularity)
 
   rm(music_list, bulk, sce)

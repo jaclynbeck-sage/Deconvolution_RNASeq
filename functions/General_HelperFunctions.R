@@ -206,13 +206,13 @@ FilterSignature <- function(signature, filter_level = 1, dataset = NULL, granula
     markers <- Load_DtangleMarkers(dataset, granularity, "pseudobulk", marker_type)
 
     if (filt_percent <= 1) {
-      n_markers <- ceiling(lengths(markers$L) * filt_percent)
+      n_markers <- ceiling(lengths(markers) * filt_percent)
     }
     else {
-      n_markers <- sapply(lengths(markers$L), min, filt_percent)
+      n_markers <- sapply(lengths(markers), min, filt_percent)
     }
-    markers <- lapply(names(markers$L), function(N) {
-      names(markers$L[[N]][1:n_markers[N]])
+    markers <- lapply(names(markers), function(N) {
+      markers[[N]][1:n_markers[N]]
     })
 
     signature <- signature[unique(unlist(markers)),]

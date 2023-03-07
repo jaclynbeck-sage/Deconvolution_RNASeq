@@ -51,8 +51,16 @@ Get_DtangleHSPEInput <- function(dataset, datatype, granularity, input_type) {
 
   ##### Test data #####
 
-  pseudobulk <- Load_Pseudobulk(dataset, datatype, granularity, "logcpm")
-  bulk_mat <- assay(pseudobulk, "counts")
+  # Ground truth pseudobulk sets
+  if (datatype == "donors" | datatype == "training") {
+    pseudobulk <- Load_Pseudobulk(dataset, datatype, granularity, "logcpm")
+    bulk_mat <- assay(pseudobulk, "counts")
+  }
+  # ROSMAP, Mayo, or MSBB
+  else {
+    genes <- Load_GeneConversion(dataset)
+    bulk_mat <- Load_BulkData(datatype, genes, output_type = "logcpm")
+  }
 
   # These SHOULD have the same rownames, but just in case.
   keepgene <- intersect(rownames(input_mat), rownames(bulk_mat))
@@ -98,4 +106,41 @@ Get_SumFn <- function(sum_fn_type) {
   }
 
   return(sum_fn)
+}
+
+
+# Get_NMarkers: helper function to get the actual value for n_markers to pass
+# to dtangle/HSPE. If n_markers is < 1, it's a fraction and can be passed in
+# as-is. If n_markers = 1, that signifies to use all markers, but we need to
+# pass in a vector corresponding to the full number of genes in each cell type.
+# If n_markers > 1, that means use the same number of markers for all cell types
+# rather than a relative amount, so a vector with n_markers repeated needs to
+# be passed in, but accounting for cases where a cell type has less than
+# n_markers genes in its marker list.
+#
+# Arguments:
+#   markers = a named list, where the names are cell types and each item in
+#             the list is a vector of genes that dtangle/hspe have determined
+#             to be markers for that cell type
+#   n_markers = a number that can either be a decimal that is > 0 and <= 1,
+#               to signify to use that fraction of markers for each cell type,
+#               or a whole number > 1 to signify using that same number of
+#               markers for each cell type (or less, if a cell type has fewer)
+#
+# Returns:
+#   a single number (for fraction) or a vector of whole numbers (for "all
+#   markers" or "same number of markers" conditions)
+Get_NMarkers <- function(markers, n_markers) {
+  n_markers_new <- n_markers
+
+  # dtangle/hspe don't interpret "1" as 100%, so we need to input a list of
+  # the length of each marker set instead
+  if (n_markers == 1) {
+    n_markers_new <- lengths(markers)
+  }
+  else if (n_markers > 1) {
+    n_markers_new <- sapply(lengths(markers), min, n_markers)
+  }
+
+  return(n_markers_new)
 }
