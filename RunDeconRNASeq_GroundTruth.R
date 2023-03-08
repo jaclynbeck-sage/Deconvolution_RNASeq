@@ -6,21 +6,26 @@
 #
 # This script uses parallel processing to run each parameter set on its own
 # core. To run in serial instead, comment out "registerDoParallel(cl)" below and
-# change the foreach loop's "%dopar%" to "%do%".
+# change the inner foreach loop's "%dopar%" to "%do%".
 
 library(dplyr)
 library(foreach)
 library(doParallel)
+library(SummarizedExperiment)
+library(stringr)
+
+source(file.path("functions", "FileIO_HelperFunctions.R"))
 
 ##### Parallel execution setup #####
 
+# NOTE: Assume a maximum of 5 GB RAM needed per core. DeconRNASeq multi-threads,
+#       so only use ~half the cores available on the machine.
 cores <- 8
 cl <- makeCluster(cores, type = "PSOCK", outfile = "")
 registerDoParallel(cl)
 
 # Libraries that need to be loaded into each parallel environment
-required_libraries <- c("DeconRNASeq", "Matrix", "SummarizedExperiment",
-                        "stringr", "dplyr")
+required_libraries <- c("DeconRNASeq")
 
 #### Parameter setup #####
 
@@ -34,7 +39,7 @@ params_loop1 <- expand.grid(dataset = datasets,
 
 params_loop2 <- expand.grid(filter_level = c(0, 1, 2, 3),
                             n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
-                                          10, 50, 100, 200, 500),
+                                          10, 20, 50, 100, 200, 500),
                             marker_type = c("ratio", "diff", "p.value", "regression"),
                             use_scale = c(TRUE, FALSE),
                             stringsAsFactors = FALSE) %>% arrange(filter_level)
@@ -49,12 +54,7 @@ params_loop2$n_markers[params_loop2$filter_level < 3] <- -1
 
 #### Iterate through parameters in parallel ####
 
-foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
-  # These need to be sourced inside the loop for parallel processing
-  source(file.path("functions", "General_HelperFunctions.R"))
-  source(file.path("functions", "FileIO_HelperFunctions.R"))
-  source(file.path("functions", "DeconRNASeq_InnerLoop.R"))
-
+for (P in 1:nrow(params_loop1)) {
   dataset <- params_loop1$dataset[P]
   datatype <- params_loop1$datatype[P]
   granularity <- params_loop1$granularity[P]
@@ -69,17 +69,22 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
   pseudobulk <- as.data.frame(as.matrix(pseudobulk))
 
   ##### Filter levels, number of markers, and DeconRNASeq arguments #####
-  # NOTE: This set of parameters (params_loop2) are all executed in the same
-  # thread because they use the same signature and pseudobulk data
+  # NOTE: the helper functions have to be sourced inside the foreach loop
+  #       so they exist in each newly-created parallel environment
 
-  decon_list <- foreach (R = 1:nrow(params_loop2)) %do% {
+  decon_list <- foreach (R = 1:nrow(params_loop2),
+                         .packages = required_libraries) %dopar% {
+    source(file.path("functions", "DeconRNASeq_InnerLoop.R"))
+    source(file.path("functions", "General_HelperFunctions.R"))
+
+    set.seed(12345)
     res <- DeconRNASeq_InnerLoop(signature, pseudobulk,
                                  cbind(params_loop1[P,], params_loop2[R,]))
     return(res)
   }
 
   names(decon_list) <- paste0("deconRNASeq_",
-                              str_glue("{dataset}_{granularity}_{datatype}_"),
+                              str_glue("{dataset}_{datatype}_{granularity}_"),
                               1:nrow(params_loop2))
 
   # Save the completed list
@@ -88,8 +93,6 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
 
   rm(decon_list)
   gc()
-
-  return(NULL)
 }
 
 stopCluster(cl)

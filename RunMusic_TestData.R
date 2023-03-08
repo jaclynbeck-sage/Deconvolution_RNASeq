@@ -7,7 +7,6 @@
 library(MuSiC)
 library(SingleCellExperiment)
 library(dplyr)
-library(foreach)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
 source(file.path("functions", "General_HelperFunctions.R"))
@@ -52,10 +51,10 @@ for (P in 1:nrow(params_loop1)) {
 
   ##### Run with the best-performing parameter sets #####
 
-  music_list <- foreach (R = 1:nrow(params_list)) %do% {
+  music_list <- lapply(1:nrow(params_list), function(R) {
     res <- Music_InnerLoop(sce, bulk, A, cbind(params_loop1[P,], params_list[R,]))
     return(res)
-  }
+  })
 
   # It's possible for some items in music_list to be null if there was an error.
   # Filter them out.

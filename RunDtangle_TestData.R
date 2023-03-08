@@ -37,7 +37,7 @@ for (P in 1:nrow(params_loop1)) {
 
   ##### Run with the best-performing parameter sets #####
 
-  dtangle_list <- foreach (R = 1:nrow(params_list)) %do% {
+  dtangle_list <- lapply(1:nrow(params_run), function(R) {
     input_type <- params_list$input_type[R]
     input_list <- Get_DtangleHSPEInput(dataset, datatype, granularity, input_type)
 
@@ -48,7 +48,7 @@ for (P in 1:nrow(params_loop1)) {
                                  algorithm = "dtangle",
                                  limit_n_markers = FALSE)
     return(res)
-  }
+  })
 
   names(dtangle_list) <- paste0("dtangle_",
                                 str_glue("{dataset}_{granularity}_{datatype}_"),

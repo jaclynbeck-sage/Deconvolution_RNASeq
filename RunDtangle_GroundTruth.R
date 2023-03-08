@@ -14,24 +14,30 @@ library(stringr)
 library(foreach)
 library(doParallel)
 
+source(file.path("functions", "FileIO_HelperFunctions.R"))
+source(file.path("functions", "DtangleHSPE_HelperFunctions.R"))
+
 ##### Edit this variable to run either dtangle or hspe #####
 
 algorithm <- "dtangle" # "dtangle" or "hspe", all lower case
 
 ##### Parallel execution setup #####
 
+# NOTE: The amount of memory used per core will vary by data set. For most
+#       datasets, it's about 5-10 GB per core. For seaRef, it's about 50 GB per
+#       core. Adjust accordingly.
+# NOTE: HSPE multi-threads and will use all available CPU, so only use ~2 cores
+#       regardless of memory constraints.
 cores <- 8
 cl <- makeCluster(cores, type = "PSOCK", outfile = "")
 registerDoParallel(cl)
 
 # Libraries that need to be loaded into each parallel environment
-required_libraries <- c("Matrix", "stringr", "dplyr", "foreach",
-                        str_glue("{algorithm}Sparse"))
+required_libraries <- c(str_glue("{algorithm}Sparse"))
 
 #### Parameter setup #####
 
-datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
-              "seaRef") #, "seaAD")
+datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito")#, "seaRef") #, "seaAD")
 
 input_types = c("singlecell", "pseudobulk")
 
@@ -63,14 +69,9 @@ if (algorithm == "dtangle") {
 #params_loop2 <- subset(params_loop2, !(marker_method == "ratio" &
 #                                         (n_markers > 0.2 & n_markers <= 1)))
 
-#### Iterate through parameters in parallel ####
+#### Iterate through parameters ####
 
-foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
-  # This needs to be sourced inside the loop for parallel processing
-  source(file.path("functions", "FileIO_HelperFunctions.R"))
-  source(file.path("functions", "DtangleHSPE_HelperFunctions.R"))
-  source(file.path("functions", "DtangleHSPE_InnerLoop.R"))
-
+for (P in 1:nrow(params_loop1)) {
   dataset <- params_loop1$dataset[P]
   granularity <- params_loop1$granularity[P]
   datatype <- params_loop1$datatype[P]
@@ -99,9 +100,16 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
       params_run <- subset(params_run, marker_method == "ratio" | marker_method == "diff")
     }
 
-    ##### Iterate through Dtangle/HSPE parameters #####
+    ##### Iterate through Dtangle/HSPE parameters in parallel #####
+    # NOTE: the helper functions have to be sourced inside the foreach loop
+    #       so they exist in each newly-created parallel environment
 
-    dtangle_list_tmp <- foreach (R = 1:nrow(params_run)) %do% {
+    dtangle_list_tmp <- foreach (R = 1:nrow(params_run),
+                                 .packages = required_libraries) %dopar% {
+      source(file.path("functions", "DtangleHSPE_HelperFunctions.R"))
+      source(file.path("functions", "DtangleHSPE_InnerLoop.R"))
+
+      set.seed(12345)
       res <- DtangleHSPE_InnerLoop(Y = input_list[["Y"]],
                                    pure_samples = input_list[["pure_samples"]],
                                    params = cbind(params_loop1[P,],
@@ -116,7 +124,7 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
     # set was skipped. Filter them out.
     dtangle_list_tmp <- dtangle_list_tmp[lengths(dtangle_list_tmp) > 0]
 
-    name <- str_glue("{algorithm}_{dataset}_{granularity}_{datatype}_{input_type}_")
+    name <- str_glue("{algorithm}_{dataset}_{datatype}_{granularity}_{input_type}_")
     names(dtangle_list_tmp) <- paste0(name, 1:length(dtangle_list_tmp))
 
     dtangle_list <- append(dtangle_list, dtangle_list_tmp)
@@ -129,8 +137,6 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
   # Save the completed list
   print(str_glue("Saving final list for {dataset} {datatype} {granularity}..."))
   Save_AlgorithmOutputList(dtangle_list, algorithm, dataset, datatype, granularity)
-
-  return(NULL)
 } # end params_loop1 parallel loop
 
 stopCluster(cl)
