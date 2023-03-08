@@ -8,15 +8,21 @@
 library(dplyr)
 library(foreach)
 library(doParallel)
+library(SummarizedExperiment)
+library(SingleCellExperiment)
+library(stringr)
+
+source(file.path("functions", "FileIO_HelperFunctions.R"))
+source(file.path("functions", "General_HelperFunctions.R"))
 
 ##### Parallel execution setup #####
 
-cores <- 12
+cores <- 8
 cl <- makeCluster(cores, type = "PSOCK", outfile = "")
 registerDoParallel(cl)
 
 # Libraries that need to be loaded into each parallel environment
-required_libraries <- c("MuSiC", "SummarizedExperiment", "stringr", "dplyr")
+required_libraries <- c("MuSiC", "SingleCellExperiment")
 
 #### Parameter setup #####
 
@@ -34,12 +40,7 @@ params_loop2 <- expand.grid(ct.cov = c(TRUE, FALSE),
 
 #### Iterate through parameters in parallel ####
 
-foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
-  # These need to be sourced inside the loop for parallel processing
-  source(file.path("functions", "General_HelperFunctions.R"))
-  source(file.path("functions", "FileIO_HelperFunctions.R"))
-  source(file.path("functions", "Music_InnerLoop.R"))
-
+for (P in 1:nrow(params_loop1)) {
   dataset <- params_loop1$dataset[P]
   datatype <- params_loop1$datatype[P]
   granularity <- params_loop1$granularity[P]
@@ -57,14 +58,16 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
   pseudobulk <- as.matrix(pseudobulk[keepgene, ])
   sce <- sce[keepgene, ]
 
-  # Each dataset / datatype / granularity combo gets its own list
-  music_list <- list()
+  ##### Iterate through combinations of MuSiC arguments in parallel #####
+  # NOTE: the helper functions have to be sourced inside the foreach loop
+  #       so they exist in each newly-created parallel environment
 
-  ##### Iterate through combinations of MuSiC arguments #####
-  # NOTE: This set of parameters (params_loop2) are all executed in the same
-  # thread because they use the same single cell and pseudobulk data
+  music_list <- foreach (R = 1:nrow(params_loop2),
+                         .packages = required_libraries) %dopar% {
+    source(file.path("functions", "General_HelperFunctions.R"))
+    source(file.path("functions", "Music_InnerLoop.R"))
+    set.seed(12345)
 
-  music_list <- foreach (R = 1:nrow(params_loop2)) %do% {
     res <- Music_InnerLoop(sce, pseudobulk, A,
                            cbind(params_loop1[P,], params_loop2[R,]))
     return(res)
@@ -75,7 +78,7 @@ foreach (P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
   music_list <- music_list[lengths(music_list) > 0]
 
   names(music_list) <- paste0("music_",
-                              str_glue("{dataset}_{granularity}_{datatype}_"),
+                              str_glue("{dataset}_{datatype}_{granularity}_"),
                               1:length(music_list))
 
   print(str_glue("Saving final list for {dataset} {datatype} {granularity}..."))
