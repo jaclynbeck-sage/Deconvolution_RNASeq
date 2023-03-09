@@ -11,6 +11,11 @@ DtangleHSPE_InnerLoop <- function(Y, pure_samples, params, algorithm, limit_n_ma
 
   markers <- lapply(markers, function(X) {intersect(X, colnames(Y))})
 
+  if (any(lengths(markers) == 0)) {
+    print(str_glue("*** Skipping marker method {marker_method}: Missing markers for some cell types. ***"))
+    return(NULL)
+  }
+
   n_markers_orig <- n_markers
   n_markers <- Get_NMarkers(markers, n_markers_orig)
 
@@ -18,7 +23,7 @@ DtangleHSPE_InnerLoop <- function(Y, pure_samples, params, algorithm, limit_n_ma
   # doubles each time. If there aren't enough markers in each cell type to do
   # anything new with this n_markers value, skip testing.
   if (limit_n_markers & is.vector(n_markers) & all(n_markers <= (n_markers_orig/2))) {
-    print(str_glue("*** skipping n_markers {n_markers_orig} ***"))
+    print(str_glue("*** Skipping n_markers {n_markers_orig}: Not enough total markers. ***"))
     return(NULL)
   }
 

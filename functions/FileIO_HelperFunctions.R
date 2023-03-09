@@ -182,8 +182,12 @@ Load_CountsFile <- function(filename, output_type) {
     cpms <- calculateCPM(se_obj)
 
     if (output_type == "logcpm") {
-      # TODO consider using scuttle normalizeCounts()
-      if (is(cpms, "DelayedArray") | is(cpms, "matrix")) {
+      # TODO seaRef only, this loads it all into memory
+      if (is(cpms, "DelayedArray")) {
+        cpms <- as(cpms, "CsparseMatrix")
+      }
+
+      if (is(cpms, "matrix")) {
         #cpms <- log2(cpms + 1)
         cpms[cpms != 0] <- log2(cpms[cpms != 0])
       }
