@@ -315,6 +315,28 @@ Load_GeneConversion <- function(dataset) {
 
 ##### General algorithm I/O #####
 
+# Save_AlgorithmIntermediate: saves a single output from an algorithm to
+# a temporary folder, to safeguard against having to re-start processing on the
+# full parameter set list in the event of a crash. The file is named with the
+# parameters used to generate the result.
+#
+# Arguments:
+#   result = a named list output by one of the deconvolution algorithms. Can
+#            also be NULL instead of a list. If it's a list, it must contain an
+#            entry called "params", which is a single-row dataframe containing
+#            the parameters used to generate this result.
+#   algorithm = the name of the algorithm to prepend to the file name
+#
+# Returns:
+#   nothing
+Save_AlgorithmIntermediate <- function(result, algorithm) {
+  if (!is.null(result)) {
+    filename <- paste(result$params, collapse = "_")
+    saveRDS(result, file.path(dir_params_lists_tmp,
+                              paste0(algorithm, "_", filename, ".rds")))
+  }
+}
+
 # Save_AlgorithmOutputList: saves a list of output from one of the algorithms
 # to an RDS file, named with a specific format. This is an ease-of-use function
 # to prevent having to edit multiple files whenever the format of the filename

@@ -23,13 +23,16 @@ algorithm <- "dtangle" # "dtangle" or "hspe", all lower case
 
 ##### Parallel execution setup #####
 
-# NOTE: The amount of memory used per core will vary by data set. For most
-#       datasets, it's about 5-10 GB per core. For seaRef, it's about 50 GB per
-#       core. Adjust accordingly.
+# NOTE: Dtangle and HSPE are very memory-intensive. The amount of memory used
+#       per core will vary by data set, usually about 2-3x the size of the data
+#       set in memory. For most datasets, it's between 5-20 GB per core for
+#       single cell input, much less for pseudobulk input. Adjust accordingly.
 # NOTE: HSPE multi-threads and will use all available CPU, so only use ~2 cores
 #       regardless of memory constraints.
+# NOTE: "FORK" is more memory-efficient but only works on Unix systems. For
+#       other systems, use "PSOCK" and reduce the number of cores.
 cores <- 8
-cl <- makeCluster(cores, type = "PSOCK", outfile = "")
+cl <- makeCluster(cores, type = "FORK", outfile = "")
 registerDoParallel(cl)
 
 # Libraries that need to be loaded into each parallel environment
@@ -37,12 +40,13 @@ required_libraries <- c(str_glue("{algorithm}Sparse"))
 
 #### Parameter setup #####
 
-datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito")#, "seaRef") #, "seaAD")
+datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
+              "seaRef") #, "seaAD")
 
 input_types = c("singlecell", "pseudobulk")
 
 params_loop1 <- expand.grid(dataset = datasets,
-                            granularity = c("broad"), #, "fine"),
+                            granularity = c("broad", "fine"),
                             datatype = c("donors", "training"),
                             stringsAsFactors = FALSE) %>% arrange(datatype)
 
@@ -63,12 +67,6 @@ if (algorithm == "dtangle") {
                               stringsAsFactors = FALSE)
 }
 
-# Filter params_loop2 down: Early testing showed we don't need to test
-# higher percentages for method = "ratio", since this method returns the
-# full set of genes and smaller lists do better.
-#params_loop2 <- subset(params_loop2, !(marker_method == "ratio" &
-#                                         (n_markers > 0.2 & n_markers <= 1)))
-
 #### Iterate through parameters ####
 
 for (P in 1:nrow(params_loop1)) {
@@ -80,9 +78,6 @@ for (P in 1:nrow(params_loop1)) {
   dtangle_list <- list()
 
   ##### Run on both single cell and pseudobulk input matrices #####
-  # NOTE: input_types and all parameters from params_loop2 are executed in the
-  # same thread because they all use the same input data, which can be large
-  # and it isn't feasible to have multiple copies of it between multiple threads.
 
   for (input_type in input_types) {
 
@@ -117,6 +112,8 @@ for (P in 1:nrow(params_loop1)) {
                                                   params_run[R,]),
                                    algorithm = algorithm,
                                    limit_n_markers = TRUE)
+
+      Save_AlgorithmIntermediate(res, algorithm)
       return(res)
     }
 

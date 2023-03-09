@@ -17,8 +17,10 @@ source(file.path("functions", "General_HelperFunctions.R"))
 
 ##### Parallel execution setup #####
 
+# NOTE: "FORK" is more memory-efficient but only works on Unix systems. For
+#       other systems, use "PSOCK" and reduce the number of cores.
 cores <- 8
-cl <- makeCluster(cores, type = "PSOCK", outfile = "")
+cl <- makeCluster(cores, type = "FORK", outfile = "")
 registerDoParallel(cl)
 
 # Libraries that need to be loaded into each parallel environment
@@ -70,6 +72,8 @@ for (P in 1:nrow(params_loop1)) {
 
     res <- Music_InnerLoop(sce, pseudobulk, A,
                            cbind(params_loop1[P,], params_loop2[R,]))
+
+    Save_AlgorithmIntermediate(res, "music")
     return(res)
   }
 

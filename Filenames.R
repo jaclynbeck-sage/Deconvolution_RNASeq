@@ -6,6 +6,7 @@ dir_pseudobulk <- file.path(dir_data, "pseudobulk")
 dir_output <- file.path(dir_data, "output")
 dir_markers <- file.path(dir_output, "markers")
 dir_params_lists <- file.path(dir_output, "params_lists")
+dir_params_lists_tmp <- file.path(dir_params_lists, "tmp")
 dir_errors <- file.path(dir_output, "errors")
 dir_figures <- "figures"
 

@@ -18,10 +18,12 @@ source(file.path("functions", "FileIO_HelperFunctions.R"))
 
 ##### Parallel execution setup #####
 
-# NOTE: Assume a maximum of 5 GB RAM needed per core. DeconRNASeq multi-threads,
+# NOTE: Assume about 5-20 GB RAM needed per core. DeconRNASeq multi-threads,
 #       so only use ~half the cores available on the machine.
-cores <- 8
-cl <- makeCluster(cores, type = "PSOCK", outfile = "")
+# NOTE: "FORK" is more memory-efficient but only works on Unix systems. For
+#       other systems, use "PSOCK" and reduce the number of cores.
+cores <- 2
+cl <- makeCluster(cores, type = "FORK", outfile = "")
 registerDoParallel(cl)
 
 # Libraries that need to be loaded into each parallel environment
@@ -52,7 +54,7 @@ params_loop2 <- subset(params_loop2, !(filter_level < 3 &
 params_loop2$marker_type[params_loop2$filter_level < 3] <- "None"
 params_loop2$n_markers[params_loop2$filter_level < 3] <- -1
 
-#### Iterate through parameters in parallel ####
+#### Iterate through parameters ####
 
 for (P in 1:nrow(params_loop1)) {
   dataset <- params_loop1$dataset[P]
@@ -80,6 +82,8 @@ for (P in 1:nrow(params_loop1)) {
     set.seed(12345)
     res <- DeconRNASeq_InnerLoop(signature, pseudobulk,
                                  cbind(params_loop1[P,], params_loop2[R,]))
+
+    Save_AlgorithmIntermediate(res, "deconRNASeq")
     return(res)
   }
 
