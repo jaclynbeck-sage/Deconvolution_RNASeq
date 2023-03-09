@@ -23,8 +23,6 @@ est_fields = list("dtangle" = "estimates",
 
 algorithms <- names(est_fields)
 
-err_list <- list()
-
 # Goodness of fit
 gof <- function(meas_expr_cpm, est_pct, sig_matrix_cpm) {
   est_expr <- t(est_pct %*% t(sig_matrix_cpm))
@@ -76,9 +74,6 @@ for (dataset in datasets) {
     if (length(deconv_list) == 0) {
       next
     }
-
-    # TODO temporary
-    names(deconv_list) <- paste0(algorithm, "_", names(deconv_list))
 
     errs <- list()
     errs_by_celltype <- list()
@@ -138,9 +133,14 @@ for (dataset in datasets) {
           gof_list[[paste(filter_lvl, -1)]] <- gof(pseudobulk_filt, tmp, sig_filt)
         }
         else {
-          for (filt_percent in c(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
-                                 10, 50, 100, 200, 500)) {
+          for (filt_percent in c(0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
+                                 10, 20, 50, 100, 200, 500)) {
             sig_filt <- FilterSignature(sig_matrix, filter_lvl, dataset, granularity, filt_percent)
+
+            if (filt_percent > 1 & nrow(sig_filt) < (ncol(sig_filt) * filt_percent / 2)) {
+              next # Skip if we're not getting more markers than the previous filter value
+            }
+
             pseudobulk_filt <- pseudobulk_cpm[rownames(sig_filt), ]
             gof_list[[paste(filter_lvl, filt_percent)]] <- gof(pseudobulk_filt, tmp, sig_filt)
           }
@@ -152,13 +152,12 @@ for (dataset in datasets) {
       print(str_glue("\t{ii}"), paste(deconv_list[[ii]]$params, collapse = " "))
     }
 
-    err_list[[algorithm]] <- list("means" = do.call(rbind, errs),
-                                  "by_celltype" = errs_by_celltype,
-                                  "by_subject" = errs_by_subject,
-                                  "gof" = errs_gof,
-                                  "params" = params)
+    err_list <- list("means" = do.call(rbind, errs),
+                     "by_celltype" = errs_by_celltype,
+                     "by_subject" = errs_by_subject,
+                     "gof" = errs_gof,
+                     "params" = params)
+    Save_ErrorList(err_list, algorithm, dataset, datatype, granularity)
     print("Done")
   }
-
-  Save_ErrorList(err_list, dataset, datatype, granularity)
 }

@@ -20,7 +20,7 @@ source("Filenames.R")
 #                 counts are transformed:
 #                   "counts" will return raw, unaltered counts
 #                   "cpm" will normalize the counts to counts per million
-#                   "logcpm" will take the log2(cpm + 1)
+#                   "logcpm" will take the log2(cpm) of non-zero entries
 #
 # Returns:
 #   a SingleCellExperiment object that is the exact same as what was read from
@@ -58,7 +58,7 @@ Load_SingleCell <- function(dataset, granularity, output_type = "counts") {
 #                 counts are transformed:
 #                   "counts" will return raw, unaltered counts
 #                   "cpm" will normalize the counts to counts per million
-#                   "logcpm" will take the log2(cpm + 1)
+#                   "logcpm" will take the log2(cpm) of non-zero entries
 #
 # Returns:
 #   a SummarizedExperiment object that is the exact same as what was read from
@@ -152,7 +152,7 @@ Save_Pseudobulk <- function(se, dataset, data_type, granularity) {
 #                 counts are transformed:
 #                   "counts" will return raw, unaltered counts
 #                   "cpm" will normalize the counts to counts per million
-#                   "logcpm" will take the log2(cpm + 1)
+#                   "logcpm" will take the log2(cpm) of non-zero entries
 #
 # Returns:
 #   a SummarizedExperiment or SingleCellExperiment object that is the exact same
@@ -188,11 +188,9 @@ Load_CountsFile <- function(filename, output_type) {
       }
 
       if (is(cpms, "matrix")) {
-        #cpms <- log2(cpms + 1)
         cpms[cpms != 0] <- log2(cpms[cpms != 0])
       }
       else { # Sparse matrix
-        #cpms@x <- log2(cpms@x + 1)
         cpms@x <- log2(cpms@x)
       }
     }
@@ -218,7 +216,7 @@ Load_CountsFile <- function(filename, output_type) {
 #                 counts are transformed:
 #                   "counts" will return raw, unaltered counts
 #                   "cpm" will normalize the counts to counts per million
-#                   "logcpm" will take the log2(cpm + 1)
+#                   "logcpm" will take the log2(cpm)
 Load_BulkData <- function(dataset, genes, output_type = "counts") {
   if (dataset == "ROSMAP") {
     bulk <- read.table(file_rosmap, header = TRUE, row.names = 1)
@@ -246,7 +244,6 @@ Load_BulkData <- function(dataset, genes, output_type = "counts") {
     bulk_cpm <- calculateCPM(bulk)
 
     if (output_type == "logcpm") {
-      #bulk_cpm <- log2(bulk_cpm + 1)
       bulk_cpm[bulk_cpm != 0] <- log2(bulk_cpm[bulk_cpm != 0])
     }
 
@@ -325,7 +322,7 @@ Load_GeneConversion <- function(dataset) {
 #            also be NULL instead of a list. If it's a list, it must contain an
 #            entry called "params", which is a single-row dataframe containing
 #            the parameters used to generate this result.
-#   algorithm = the name of the algorithm to prepend to the file name
+#   algorithm = the name of the algorithm to pre-pend to the file name
 #
 # Returns:
 #   nothing
@@ -338,9 +335,7 @@ Save_AlgorithmIntermediate <- function(result, algorithm) {
 }
 
 # Save_AlgorithmOutputList: saves a list of output from one of the algorithms
-# to an RDS file, named with a specific format. This is an ease-of-use function
-# to prevent having to edit multiple files whenever the format of the filename
-# changes.
+# to an RDS file, named with a specific format.
 #
 # Arguments:
 #   output_list = a list of outputs from one of the deconvolution algorithms,
@@ -370,8 +365,7 @@ Save_AlgorithmOutputList <- function(output_list, algorithm, dataset, datatype, 
 
 
 # Load_AlgorithmOutputList: loads a list of output from one of the algorithms,
-# named with a specific format. This is an ease-of-use function to prevent
-# having to edit multiple files whenever the format of the filename changes.
+# named with a specific format.
 #
 # Arguments:
 #   algorithm = the name of the algorithm
@@ -397,46 +391,45 @@ Load_AlgorithmOutputList <- function(algorithm, dataset, datatype, granularity) 
 }
 
 
-# Save_ErrorList: saves a list of calculated error metrics over all algorithms
-# for a single data set, named with a specific format.  This is an ease-of-use
-# function to prevent having to edit multiple files whenever the format of the
-# filename changes.
+# Save_ErrorList: saves a list of calculated error metrics for a single
+# algorithm for a single data set, named with a specific format.
 #
 # Arguments:
-#   error_list = a list of errors, where each entry contains a list of
-#                information (mean errors, errors by celltype, errors by
-#                subject, goodness-of-fit, and parameters) for each algorithm
+#   error_list = a list of errors containing entries for mean errors, errors
+#                by celltype, errors by subject, goodness-of-fit, and parameters
+#                for an algorithm / dataset / datatype / granularity combo
+#   algorithm = the name of the algorithm
 #   dataset = the name of the data set
-#   datatype = either "donors" or "training", to signify if the algorithms were
+#   datatype = either "donors" or "training", to signify if the algorithm was
 #              run on donor or training pseudobulk
 #   granularity = either "broad" or "fine", for which level of cell types was
 #                 used for markers and pseudobulk creation.
 #
 # Returns:
 #   Nothing
-Save_ErrorList <- function(error_list, dataset, datatype, granularity) {
-  error_file_format <- "errors_{dataset}_{datatype}_{granularity}.rds"
+Save_ErrorList <- function(error_list, algorithm, dataset, datatype, granularity) {
+  error_file_format <- "errors_{algorithm}_{dataset}_{datatype}_{granularity}.rds"
   saveRDS(error_list, file = file.path(dir_errors, str_glue(error_file_format)))
 }
 
 
-# Load_ErrorList: loads a list of calculated error metrics over all algorithms,
-# for a single data set. This is an ease-of-use function to prevent having to
-# edit multiple files whenever the format of the filename changes.
+# Load_ErrorList: loads a list of calculated error metrics for a single
+# algorithm for a single data set.
 #
 # Arguments:
+#   algorithm = the name of the algorithm
 #   dataset = the name of the data set
-#   datatype = either "donors" or "training", to signify if the algorithms were
+#   datatype = either "donors" or "training", to signify if the algorithm was
 #              run on donor or training pseudobulk
 #   granularity = either "broad" or "fine", for which level of cell types was
 #                 used for markers and pseudobulk creation.
 #
 # Returns:
-#   a list of errors, where each entry contains a list of information (mean
-#   errors, errors by celltype, errors by subject, goodness-of-fit, and
-#   parameters) for each algorithm
+#   a list of errors containing entries for mean errors, errors by celltype,
+#   errors by subject, goodness-of-fit, and parameters for an algorithm /
+#   dataset / datatype / granularity combo
 Load_ErrorList <- function(dataset, datatype, granularity) {
-  error_file_format <- "errors_{dataset}_{datatype}_{granularity}.rds"
+  error_file_format <- "errors_{algorithm}_{dataset}_{datatype}_{granularity}.rds"
   error_file <- file.path(dir_errors, str_glue(error_file_format))
 
   if (!file.exists(error_file)) {
@@ -451,8 +444,8 @@ Load_ErrorList <- function(dataset, datatype, granularity) {
 ##### Dtangle/HSPE #####
 
 # Save_DtangleMarkers: saves a set of Dtangle/HSPE markers to an RDS file, named
-# with a specific format. This is an ease-of-use function to prevent having to
-# edit multiple files whenever the format of the filename changes.
+# with a specific format.
+#
 # Arguments:
 #   markers = the output of hspe::find_markers, which is a list.
 #   dataset = the name of the data set
@@ -473,8 +466,7 @@ Save_DtangleMarkers <- function(markers, dataset, granularity, input_type, marke
 
 
 # Load_DtangleMarkers: reads a set of Dtangle/HSPE markers from an RDS file,
-# named with a specific format. This is an ease-of-use function to prevent
-# having to edit multiple files whenever the format of the filename changes.
+# named with a specific format.
 #
 # Arguments:
 #   dataset = the name of the data set
