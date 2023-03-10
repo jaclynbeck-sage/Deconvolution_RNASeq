@@ -67,5 +67,5 @@ CreatePseudobulk_ByDonor <- function(singlecell_counts, metadata, dataset) {
   pseudobulk_fine <- SummarizedExperiment(assays = SimpleList(counts = counts),
                                           metadata = list("propCells" = propCells_fine,
                                                           "pctRNA" = pctRNA_fine))
-  Save_Pseudobulk(pseudobulk, dataset, "donors", "fine")
+  Save_Pseudobulk(pseudobulk_fine, dataset, "donors", "fine")
 }
