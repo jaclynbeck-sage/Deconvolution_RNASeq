@@ -126,15 +126,14 @@ for (dataset in datasets) {
 
       # Goodness of fit
       gof_list <- list()
-      for (filter_lvl in 0:3) {
+      for (filter_lvl in c(0, 2, 3)) {
         if (filter_lvl < 3) {
           sig_filt <- FilterSignature(sig_matrix, filter_lvl)
           pseudobulk_filt <- pseudobulk_cpm[rownames(sig_filt), ]
           gof_list[[paste(filter_lvl, -1)]] <- gof(pseudobulk_filt, tmp, sig_filt)
         }
         else {
-          for (filt_percent in c(0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
-                                 10, 20, 50, 100, 200, 500)) {
+          for (filt_percent in c(0.5, 0.75, 10, 500)) {
             sig_filt <- FilterSignature(sig_matrix, filter_lvl, dataset, granularity, filt_percent)
 
             if (filt_percent > 1 & nrow(sig_filt) < (ncol(sig_filt) * filt_percent / 2)) {

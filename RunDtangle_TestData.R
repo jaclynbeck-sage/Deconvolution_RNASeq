@@ -6,7 +6,6 @@
 #
 # Since the parameter lists are small, we don't bother with parallel execution
 # here.
-library(dtangleSparse) # dtangle with my mods to make it sparse matrix-friendly
 library(Matrix)
 library(stringr)
 library(dplyr)
@@ -14,6 +13,14 @@ library(dplyr)
 source(file.path("functions", "FileIO_HelperFunctions.R"))
 source(file.path("functions", "DtangleHSPE_HelperFunctions.R"))
 source(file.path("functions", "DtangleHSPE_InnerLoop.R"))
+
+##### Edit this variable to run either dtangle or hspe #####
+
+algorithm <- "dtangle" # "dtangle" or "hspe", all lower case
+
+##### Parameter setup #####
+
+library(str_glue("{algorithm}Sparse"), character.only = TRUE)
 
 datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
               "seaRef") #, "seaAD")
@@ -31,13 +38,14 @@ for (P in 1:nrow(params_loop1)) {
   best_params <- readRDS(file.path(dir_output,
                                    str_glue("best_params_{dataset}_{granularity}.rds")))
 
-  best_params <- subset(best_params, algorithm == "dtangle")
+  alg_name <- algorithm
+  best_params <- subset(best_params, algorithm == alg_name)
   params_list <- do.call(rbind, lapply(best_params$params, as.data.frame)) %>%
     select(-dataset, -granularity)
 
   ##### Run with the best-performing parameter sets #####
 
-  dtangle_list <- lapply(1:nrow(params_run), function(R) {
+  dtangle_list <- lapply(1:nrow(params_list), function(R) {
     input_type <- params_list$input_type[R]
     input_list <- Get_DtangleHSPEInput(dataset, datatype, granularity, input_type)
 
@@ -45,7 +53,7 @@ for (P in 1:nrow(params_loop1)) {
                                  pure_samples = input_list[["pure_samples"]],
                                  params = cbind(params_loop1[P,],
                                                 params_list[R,]),
-                                 algorithm = "dtangle",
+                                 algorithm = algorithm,
                                  limit_n_markers = FALSE)
     return(res)
   })
@@ -57,6 +65,6 @@ for (P in 1:nrow(params_loop1)) {
   print(str_glue("Saving final list for {datatype} / {dataset} {granularity}..."))
   Save_AlgorithmOutputList(dtangle_list, "dtangle", dataset, datatype, granularity)
 
-  rm(decon_list)
+  rm(dtangle_list)
   gc()
 }

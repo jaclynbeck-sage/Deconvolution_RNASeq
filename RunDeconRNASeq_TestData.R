@@ -11,7 +11,6 @@ library(DeconRNASeq)
 library(Matrix)
 library(stringr)
 library(dplyr)
-library(foreach)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
 source(file.path("functions", "General_HelperFunctions.R"))
@@ -52,11 +51,11 @@ for (P in 1:nrow(params_loop1)) {
 
   ##### Run with the best-performing parameter sets #####
 
-  decon_list <- foreach (R = 1:nrow(params_list)) %do% {
+  decon_list <- lapply(1:nrow(params_list), function(R) {
     res <- DeconRNASeq_InnerLoop(signature, bulk,
                                  cbind(params_loop1[P,], params_list[R,]))
     return(res)
-  }
+  })
 
   names(decon_list) <- paste0("deconRNASeq_",
                               str_glue("{dataset}_{granularity}_{datatype}_"),
