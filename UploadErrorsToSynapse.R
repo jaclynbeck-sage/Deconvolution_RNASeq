@@ -28,7 +28,7 @@ for (filename in files) {
   fields <- str_split(filename, "_", simplify = TRUE)
   provenance <- subset(params_list_df, dataset == fields[3] &
                          datatype == fields[4] &
-                         granularity == str_replace(fields, ".rds", "") &
+                         granularity == str_replace(fields[5], ".rds", "") &
                          algorithm == fields[2])
 
   file <- File(path = file.path(dir_errors, filename), parent = errors.folder)
