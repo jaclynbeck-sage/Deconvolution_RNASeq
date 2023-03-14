@@ -428,7 +428,7 @@ Save_ErrorList <- function(error_list, algorithm, dataset, datatype, granularity
 #   a list of errors containing entries for mean errors, errors by celltype,
 #   errors by subject, goodness-of-fit, and parameters for an algorithm /
 #   dataset / datatype / granularity combo
-Load_ErrorList <- function(dataset, datatype, granularity) {
+Load_ErrorList <- function(algorithm, dataset, datatype, granularity) {
   error_file_format <- "errors_{algorithm}_{dataset}_{datatype}_{granularity}.rds"
   error_file <- file.path(dir_errors, str_glue(error_file_format))
 

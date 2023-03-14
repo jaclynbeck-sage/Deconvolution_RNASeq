@@ -9,21 +9,22 @@ datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
 
 granularity <- "broad"
 datatypes <- c("donors", "training")
+algorithms <- c("deconRNASeq", "dtangle", "hspe", "music")
 
 for (dataset in datasets) {
   params <- list()
 
   for (datatype in datatypes) {
-    err_list <- Load_ErrorList(dataset, datatype, granularity)
+    for (algorithm in algorithms) {
 
-    if (length(err_list) == 0) {
-      next
-    }
+      err_list <- Load_ErrorList(algorithm, dataset, datatype, granularity)
+      if (length(err_list) == 0) {
+        next
+      }
 
-    for (algorithm in names(err_list)) {
-      errs <- err_list[[algorithm]][["means"]]
+      errs <- err_list[["means"]]
 
-      errs_gof <- err_list[[algorithm]][["gof"]]
+      errs_gof <- err_list[["gof"]]
       errs_gof <- lapply(names(errs_gof), function(X) {
         errs_gof[[X]]$filter_lvl <- rownames(errs_gof[[X]])
         errs_gof[[X]]$name <- X
@@ -31,7 +32,7 @@ for (dataset in datasets) {
       })
       errs_gof <- do.call(rbind, errs_gof)
 
-      pars <- do.call(rbind, err_list[[algorithm]][["params"]]) %>%
+      pars <- do.call(rbind, err_list[["params"]]) %>%
                 select(-datatype)
 
       get_best_vals <- function(col_name, errs_df) {
@@ -56,7 +57,7 @@ for (dataset in datasets) {
                               group = names(bests_gof))
 
       bests <- rbind(bests, bests_gof)
-      bests$params <- apply(pars[bests$name,], 1, as.list)
+      bests$params <- lapply(bests$name, function(X) { as.list(pars[X,]) })
 
       bests$algorithm <- algorithm
       bests$datatype <- datatype
