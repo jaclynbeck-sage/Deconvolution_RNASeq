@@ -11,13 +11,8 @@
 #   3) The set of markers with the best score when lowest correlation and highest
 #      distance are equally weighted
 #
-# This script assumes the following conda setup has already been run to install
-# conda and set up a conda environment with all necessary packages:
-# wget https://repo.anaconda.com/miniconda/Miniconda3-py310_23.1.0-1-Linux-x86_64.sh
-# bash Miniconda3-py310_23.1.0-1-Linux-x86_64.sh
-# conda create -n autogenes_env python=3.10 libffi=3.3
-# conda activate autogenes_env
-# pip install scanpy pandas numpy scipy anndata anndata2ri autogenes scikit-learn scikit-misc
+# This script assumes there is already a conda environment that has been set up 
+# with all needed packages (see Step00_InitialSetupInstall.R or the dockerfile).
 
 import sys
 import scanpy as sc
@@ -32,7 +27,7 @@ anndata2ri.activate()
 def find_ag_markers(dataset, granularity, output_filename_prefix):
   r('source(file.path("functions", "FileIO_HelperFunctions.R"))')
   
-  # This is necessary to enable loading of seaRef, which is a Delayed Array
+  # This is necessary to enable loading of seaRef, which is a DelayedArray
   cmd = "sce = Load_SingleCell(\"" + dataset + "\",\"" + granularity + "\");" \
              + "counts(sce) = as(counts(sce), \"CsparseMatrix\"); sce"
   adata = r(cmd)
@@ -49,20 +44,24 @@ def find_ag_markers(dataset, granularity, output_filename_prefix):
   
   wts = {"correlation": (-1,0), "combined": (-1,1), "distance": (0, 1)}
   
+  # Get the marker genes for each type of weight, rank them by fold-change
+  # between the target cell type and other cell types, and put them in ranked
+  # order in a named list, separated by cell type. 
   for key, wt in wts.items():
     inds = ag.select(weights=wt)
     sc_means = ag.adata()[:,inds]
     X = pd.DataFrame(sc_means.X)
     markers = sc_means.var_names
     
+    # Which cell type has the highest expression for each gene
     maxs = X.idxmax()
     cts = sc_means.obs_names[maxs]
     
     print("Markers for " + dataset + " / " + granularity + " cell types (" + key + "):")
     print(cts.value_counts())
   
-    # This isn't exactly FC because it's the mean of means, but it's good enough 
-    # for figuring out a relative ordering within each cell type
+    # This isn't exactly FC because it uses the mean of means, but it's good 
+    # enough for figuring out a relative ordering within each cell type
     def calc_fc(col, ct):
       val1 = X.iloc[ct, col]
       non_ct = [x for x in range(X.shape[0]) if x != ct]
@@ -71,10 +70,16 @@ def find_ag_markers(dataset, granularity, output_filename_prefix):
     
     fc = [calc_fc(m, maxs[m]) for m in range(len(maxs))]
     
+    # Data frame ordered by fold-change -> collapsed to one row per cell type
+    # with a list of genes for each cell type -> dict
     markers_df = pd.DataFrame({"gene": markers, "celltype": cts, "fc": fc})
     markers_df = markers_df.sort_values(by = "fc", ascending = False)
     tmp = markers_df.groupby("celltype")["gene"].apply(list).to_dict()
     
+    # Convert to R named list. This makes one list entry per cell type, but
+    # each cell type's entry is another list with one item per gene. We don't
+    # want the genes in list format, so we use "unlist" on that to end up 
+    # with one list entry per cell type, where each entry is a vector of genes. 
     r_list = ListVector(tmp)
     r_list = r['lapply'](r_list, "unlist")
     
