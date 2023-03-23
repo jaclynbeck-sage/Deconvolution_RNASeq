@@ -23,7 +23,6 @@ datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
 # What granularities?
 granularities <- c("broad", "fine")
 
-
 # Dtangle/HSPE only: input types
 dtangle_input_types <- c("singlecell", "pseudobulk")
 
@@ -62,6 +61,9 @@ if ("seurat" %in% marker_types_run) {
 # crashing. We need to use reticulate to establish the conda environment but
 # then need to call the python script as a system command, because otherwise
 # reticulate/RStudio crashes when trying to call ag.optimize directly from R.
+# Assumes there is already a conda environment called "autogenes_env" that has
+# been set up with all needed packages (see Step00_InitialSetupInstall.R or
+# the dockerfile).
 
 if ("autogenes" %in% marker_types_run) {
   # This activates the conda environment we need, and running the useless command
