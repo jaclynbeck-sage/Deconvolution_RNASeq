@@ -68,8 +68,8 @@ CreatePseudobulk_PureSamples <- function(singlecell_counts, metadata, dataset) {
                                                        "pctRNA" = pctRNA))
 
     # Make metadata with cell type assignments for each pure sample
-    celltypes <- str_replace(colnames(pseudobulk), "puresample_", "")
-    celltypes <- str_replace(celltypes, "_.*", "")
+    tmp <- apply(propCells, 1, which.max)
+    celltypes <- colnames(propCells)[tmp]
     celltypes <- factor(celltypes)
 
     metadata_pb <- DataFrame(celltype = celltypes)
