@@ -11,7 +11,7 @@
 #             Must be a data.frame, not a matrix.
 #   params = a single-row data frame or a named vector/list of parameters
 #            containing the following variables: dataset, granularity,
-#            filter_level, n_markers, marker_type, and use_scale.
+#            filter_level, n_markers, marker_type, marker_subtype, and use_scale.
 #
 # Returns:
 #   a list containing entries for "out.all" and "out.pca", which are output by
@@ -25,11 +25,13 @@ DeconRNASeq_InnerLoop <- function(signature, bulk_df, params) {
   filter_level <- as.numeric( params$filter_level )
   n_markers <- as.numeric( params$n_markers )
   marker_type <- params$marker_type
+  marker_subtype <- params$marker_subtype
   use_scale <- as.logical( params$use_scale )
 
   # Filter signature matrix according to parameters
   signature_filt <- FilterSignature(signature, filter_level, dataset,
-                                    granularity, n_markers, marker_type)
+                                    granularity, n_markers, marker_type,
+                                    marker_subtype)
 
   # Signature and bulk data should have the same rows post-filtering
   keepgene <- intersect(rownames(signature_filt), rownames(bulk_df))

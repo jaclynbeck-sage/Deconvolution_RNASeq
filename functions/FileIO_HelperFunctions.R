@@ -186,8 +186,8 @@ Load_CountsFile <- function(filename, output_type) {
   se_obj <- readRDS(filename)
 
   # TODO seaRef only, this loads it all into memory
-  if (is(cpms, "DelayedArray")) {
-    cpms <- as(cpms, "CsparseMatrix")
+  if (is(assay(se_obj, "counts"), "DelayedArray")) {
+    assay(se_obj, "counts") <- as(assay(se_obj, "counts"), "CsparseMatrix")
   }
 
   if (output_type == "counts") {
@@ -482,24 +482,61 @@ Save_DtangleMarkers <- function(markers, dataset, granularity, input_type, marke
 }
 
 
-# Load_DtangleMarkers: reads a set of Dtangle/HSPE markers from an RDS file,
-# named with a specific format.
+# Load_Markers: a generic function that reads a set of markers from an RDS file,
+# named with a specific format. Markers can be from dtangle/HSPE, AutogeneS, or
+# Seurat.
 #
 # Arguments:
 #   dataset = the name of the data set
 #   granularity = either "broad" or "fine", for which level of cell types was
 #                 used to generate the markers.
-#   input_type = either "singlecell" or "pseudobulk", for which type of input
-#                was used to generate the markers.
-#   marker_method = one of "ratio", "diff", "p.value", or "regression", which
-#                   was used as the input to find_markers.
+#   marker_type = one of "dtangle", "autogenes", or "seurat" to indicate which
+#                 markers to load
+#   marker_subtype = the subtype of markers to load, specific to the marker_type.
+#                    For dtangle, one of "ratio", "diff", "p.value", or
+#                    "regression", which was used as the input to
+#                    dtangle::find_markers.
+#                    For autogenes, one of "correlation", "distance", or
+#                    "combined", specifying which weighting scheme was used to
+#                    pick markers.
+#                    Seurat doesn't have a subtype so this can be left as NULL.
+#   input_type = for marker_type == "dtangle" only, either "singlecell" or
+#                "pseudobulk", for which type of input was used to generate the
+#                markers. For other marker_types, leave as NULL.
 #
 # Returns:
-#   a list where each entry is a list of marker gene names for a given cell type
-Load_DtangleMarkers <- function(dataset, granularity, input_type, marker_method) {
-  marker_file_format <- paste0("dtangle_markers_{dataset}_{granularity}_",
-                               "input_{input_type}_method_{marker_method}.rds")
-  markers <- readRDS(file = file.path(dir_markers, str_glue(marker_file_format)))
-  markers <- lapply(markers$L, names)
+#   a named list where each entry is a list of marker gene names for a given
+#   cell type
+Load_Markers <- function(dataset, granularity, marker_type, marker_subtype = NULL,
+                         input_type = NULL) {
+  if (!(marker_type %in% c("dtangle", "autogenes", "seurat"))) {
+    print("marker_type must be one of \"dtangle\", \"autogenes\", or \"seurat\")")
+    return(NULL)
+  }
+
+  marker_file_format <- NULL
+  if (marker_type == "dtangle") {
+    marker_file_format <- paste0("dtangle_markers_{dataset}_{granularity}_",
+                                 "input_{input_type}_method_{marker_subtype}.rds")
+  }
+  else if (marker_type == "autogenes") {
+    marker_file_format <- "autogenes_markers_{dataset}_{granularity}_{marker_subtype}.rds"
+  }
+  else if (marker_type == "seurat") {
+    marker_file_format <- "seurat_markers_{dataset}_{granularity}.rds"
+  }
+
+  marker_file <- file.path(dir_markers, str_glue(marker_file_format))
+  if (!file.exists(marker_file)) {
+    print(str_glue("Marker file {marker_file} doesn't exist!"))
+    return(NULL)
+  }
+
+  markers <- readRDS(file = marker_file)
+
+  if (marker_type == "dtangle") {
+    markers <- lapply(markers$L, names)
+  }
+
   return(markers)
 }

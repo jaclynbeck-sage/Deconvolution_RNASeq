@@ -189,7 +189,9 @@ CalculateSignature <- function(sce, samples, celltypes) {
 # Returns:
 #   signature matrix containing only the genes that pass the specified filters.
 #   rows = genes, columns = cell types.
-FilterSignature <- function(signature, filter_level = 1, dataset = NULL, granularity = NULL, filt_percent = 1.0, marker_type = "p.value") {
+FilterSignature <- function(signature, filter_level = 1, dataset = NULL,
+                            granularity = NULL, filt_percent = 1.0,
+                            marker_type = "dtangle", marker_subtype = "p.value") {
   # Filter for genes where at least one cell type expresses at > 1 cpm
   if (filter_level == 1) {
     ok <- which(rowSums(signature >= 1) > 0)
@@ -203,7 +205,12 @@ FilterSignature <- function(signature, filter_level = 1, dataset = NULL, granula
   }
 
   else if (filter_level == 3 & !is.null(dataset) & !is.null(granularity)) {
-    markers <- Load_DtangleMarkers(dataset, granularity, "pseudobulk", marker_type)
+    markers <- Load_Markers(dataset, granularity, marker_type, marker_subtype,
+                            input_type = "pseudobulk")
+
+    if (is.null(markers)) {
+      return(NULL)
+    }
 
     if (filt_percent <= 1) {
       n_markers <- ceiling(lengths(markers) * filt_percent)

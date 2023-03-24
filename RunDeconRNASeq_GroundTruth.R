@@ -42,17 +42,28 @@ params_loop1 <- expand.grid(dataset = datasets,
 params_loop2 <- expand.grid(filter_level = c(0, 1, 2, 3),
                             n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
                                           10, 20, 50, 100, 200, 500),
-                            marker_type = c("ratio", "diff", "p.value", "regression"),
+                            marker_type = c("dtangle", "autogenes", "seurat"),
                             use_scale = c(TRUE, FALSE),
-                            stringsAsFactors = FALSE) %>% arrange(filter_level)
+                            stringsAsFactors = FALSE)
+
+marker_types <- list("dtangle" = c("ratio", "diff", "p.value", "regression"),
+                     "autogenes" = c("correlation", "distance", "combined"),
+                     "seurat" = c("None"))
+marker_types <- do.call(rbind, lapply(names(marker_types), function(N) {
+  data.frame(marker_type = N, marker_subtype = marker_types[[N]])
+}))
+
+params_loop2 <- merge(params_loop2, marker_types, by = "marker_type")
 
 # Some filter_type / n_markers combos are not valid, get rid of them
 # (filter levels 1 & 2 don't use n_markers or marker_type arguments)
-params_loop2 <- subset(params_loop2, !(filter_level < 3 &
-                                         (n_markers != 1 | marker_type != "ratio")))
+low_filt <- params_loop2$filter_level < 3
+params_loop2$marker_type[low_filt] <- "None"
+params_loop2$marker_subtype[low_filt] <- "None"
+params_loop2$n_markers[low_filt] <- -1
 
-params_loop2$marker_type[params_loop2$filter_level < 3] <- "None"
-params_loop2$n_markers[params_loop2$filter_level < 3] <- -1
+params_loop2 <- params_loop2 %>% distinct() %>% arrange(filter_level)
+
 
 #### Iterate through parameters ####
 
