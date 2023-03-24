@@ -24,7 +24,6 @@ FindMarkers_Seurat <- function(datasets, granluarities) {
       print(str_glue("Finding markers for {dataset} / {granularity}..."))
 
       sce <- Load_SingleCell(dataset, granularity, output_type = "counts")
-      counts(sce) <- as(counts(sce), "CsparseMatrix")
 
       seurat <- as.Seurat(sce, data = NULL)
       rm(sce)

@@ -138,7 +138,6 @@ CreatePseudobulk_Training <- function(singlecell_counts, cell_assigns,
   # This matrix multiplication adds the counts of the randomly-selected cells
   # for each created sample
   counts <- singlecell_counts %*% groups
-  counts <- as(counts, "CsparseMatrix") # For cases where counts is a DelayedMatrix
 
   return(list("counts" = counts, "propCells" = propCells, "pctRNA" = pctRNA))
 }

@@ -35,13 +35,6 @@ Get_DtangleHSPEInput <- function(dataset, datatype, granularity, input_type) {
   input_mat <- assay(input_obj, "counts")
   metadata <- colData(input_obj)
 
-  # TEMPORARY: dtangle code will not work with a DelayedArray.
-  # The seaRef dataset will fit in memory all at once, so this converts it
-  # to a sparse matrix. The seaAD data set will NOT fit so this won't work on it.
-  if (is(input_mat, "DelayedArray")) {
-    input_mat <- as(input_mat, "CsparseMatrix")
-  }
-
   ##### Get indices of pure samples #####
   celltypes <- levels(metadata$celltype)
   pure_samples <- lapply(celltypes, function(ct) {

@@ -39,7 +39,6 @@ CreatePseudobulk_ByDonor <- function(singlecell_counts, metadata, dataset) {
 
   y <- model.matrix(~0 + donor, data = metadata)
   counts <- singlecell_counts %*% y
-  counts <- as(counts, "CsparseMatrix") # For cases where counts is a DelayedMatrix
 
   # colnames end up as "donor<#>" because of model.matrix. Remove the "donor".
   colnames(counts) <- str_replace(colnames(counts), "donor", "")

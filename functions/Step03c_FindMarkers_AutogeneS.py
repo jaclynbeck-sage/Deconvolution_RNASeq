@@ -26,12 +26,7 @@ anndata2ri.activate()
 
 def find_ag_markers(dataset, granularity, output_filename_prefix):
   r('source(file.path("functions", "FileIO_HelperFunctions.R"))')
-  
-  # This is necessary to enable loading of seaRef, which is a DelayedArray
-  cmd = "sce = Load_SingleCell(\"" + dataset + "\",\"" + granularity + "\");" \
-             + "counts(sce) = as(counts(sce), \"CsparseMatrix\"); sce"
-  adata = r(cmd)
-  #adata = r['Load_SingleCell'](dataset, granularity, output_type = "counts")
+  adata = r['Load_SingleCell'](dataset, granularity, output_type = "counts")
   
   sc.pp.filter_cells(adata, min_genes=200)
   sc.pp.filter_genes(adata, min_cells=10)

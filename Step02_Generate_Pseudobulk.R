@@ -44,10 +44,6 @@ for (dataset in datasets) {
   sce <- Load_SingleCell(dataset, "broad", output_type = "counts")
   metadata <- colData(sce)
 
-  if (is(counts(sce), "DelayedMatrix")) {
-    counts(sce) <- as(counts(sce), "CsparseMatrix")
-  }
-
   print(str_glue("{dataset}: creating pseudobulk by donor..."))
   CreatePseudobulk_ByDonor(counts(sce), metadata, dataset)
 

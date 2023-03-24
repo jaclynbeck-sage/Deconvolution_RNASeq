@@ -16,11 +16,12 @@ source("Filenames.R")
 #   dataset = the name of the data set to load in
 #   granularity = either "broad" or "fine", for which level of cell types to
 #                 use in the metadata
-#   output_type = either "counts", "cpm", or "logcpm", to determine how the
-#                 counts are transformed:
+#   output_type = either "counts", "cpm", "logcpm", or "log1p_cpm" to determine
+#                  how the counts are transformed:
 #                   "counts" will return raw, unaltered counts
 #                   "cpm" will normalize the counts to counts per million
-#                   "logcpm" will take the log2(cpm) of non-zero entries
+#                   "logcpm" will take the log2(cpm) of non-zero cpm entries
+#                   "log1p_cpm" will take the log2(cpm+1) of cpms
 #
 # Returns:
 #   a SingleCellExperiment object that is the exact same as what was read from
@@ -54,11 +55,12 @@ Load_SingleCell <- function(dataset, granularity, output_type = "counts") {
 #   dataset = the name of the data set to load in
 #   granularity = either "broad" or "fine", for which level of cell types to
 #                 load in.
-#   output_type = either "counts", "cpm", or "logcpm", to determine how the
-#                 counts are transformed:
+#   output_type = either "counts", "cpm", "logcpm", or "log1p_cpm" to determine
+#                 how the counts are transformed:
 #                   "counts" will return raw, unaltered counts
 #                   "cpm" will normalize the counts to counts per million
-#                   "logcpm" will take the log2(cpm) of non-zero entries
+#                   "logcpm" will take the log2(cpm) of non-zero cpm entries
+#                   "log1p_cpm" will take the log2(cpm+1) of cpms
 #
 # Returns:
 #   a SummarizedExperiment object that is the exact same as what was read from
@@ -104,11 +106,12 @@ Save_PseudobulkPureSamples <- function(se, dataset, granularity) {
 #               load in.
 #   granularity = either "broad" or "fine", for which level of cell types to
 #                 load in.
-#   output_type = either "counts", "cpm", or "logcpm", to determine how the
-#                 counts are transformed:
+#   output_type = either "counts", "cpm", "logcpm", or "log1p_cpm to determine
+#                 how the counts are transformed:
 #                   "counts" will return raw, unaltered counts
 #                   "cpm" will normalize the counts to counts per million
-#                   "logcpm" will take the log2(cpm + 1)
+#                   "logcpm" will take the log2(cpm) of non-zero cpm entries
+#                   "log1p_cpm" will take the log2(cpm+1) of cpms
 #
 # Returns:
 #   a SummarizedExperiment object that is the exact same as what was read from
@@ -148,11 +151,12 @@ Save_Pseudobulk <- function(se, dataset, data_type, granularity) {
 #
 # Arguments:
 #   filename = the name of of the file to read in, including file path
-#   output_type = either "counts", "cpm", or "logcpm", to determine how the
-#                 counts are transformed:
+#   output_type = either "counts", "cpm", "logcpm", or "log1p_cpm" to determine
+#                 how the counts are transformed:
 #                   "counts" will return raw, unaltered counts
 #                   "cpm" will normalize the counts to counts per million
-#                   "logcpm" will take the log2(cpm) of non-zero entries
+#                   "logcpm" will take the log2(cpm) of non-zero cpm entries
+#                   "log1p_cpm" will take the log2(cpm+1) of cpms
 #
 # Returns:
 #   a SummarizedExperiment or SingleCellExperiment object that is the exact same
@@ -173,36 +177,49 @@ Load_CountsFile <- function(filename, output_type) {
     return(NULL)
   }
 
+  if (!(output_type %in% c("counts", "cpm", "logcpm", "log1p_cpm"))) {
+    print(paste0("Error! output_type should be either \"counts\", \"cpm\",",
+                 "\"logcpm\", or \"log1p_cpm\"."))
+    return(NULL)
+  }
+
   se_obj <- readRDS(filename)
+
+  # TODO seaRef only, this loads it all into memory
+  if (is(cpms, "DelayedArray")) {
+    cpms <- as(cpms, "CsparseMatrix")
+  }
 
   if (output_type == "counts") {
     return(se_obj)
   }
-  else if (output_type == "cpm" | output_type == "logcpm") {
-    cpms <- calculateCPM(se_obj)
 
-    if (output_type == "logcpm") {
-      # TODO seaRef only, this loads it all into memory
-      if (is(cpms, "DelayedArray")) {
-        cpms <- as(cpms, "CsparseMatrix")
-      }
+  # The other three output_types all need CPM calculation
+  cpms <- calculateCPM(se_obj)
 
-      if (is(cpms, "matrix")) {
-        cpms[cpms != 0] <- log2(cpms[cpms != 0])
-      }
-      else { # Sparse matrix
-        cpms@x <- log2(cpms@x)
-      }
+  # Log2 of non-zero entries, no pseudocount
+  if (output_type == "logcpm") {
+    if (is(cpms, "matrix")) {
+      cpms[cpms != 0] <- log2(cpms[cpms != 0])
     }
+    else { # Sparse matrix
+      cpms@x <- log2(cpms@x)
+    }
+  }
 
-    # Replace raw counts with 'cpms', which is either CPMs or log2(CPMs)
-    assays(se_obj)[["counts"]] <- cpms
-    return(se_obj)
+  # log2(x+1)
+  if (output_type == "log1p_cpm") {
+    if (is(cpms, "matrix")) {
+      cpms <- log2(cpms + 1)
+    }
+    else { # Sparse matrix
+      cpms@x <- log2(cpms@x+1)
+    }
   }
-  else {
-    print("Error! output_type should be either \"counts\", \"cpm\", or \"logcpm\".")
-    return(NULL)
-  }
+
+  # Replace raw counts with 'cpms', which is either CPMs or log2 values
+  assays(se_obj)[["counts"]] <- cpms
+  return(se_obj)
 }
 
 
