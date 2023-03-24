@@ -38,6 +38,7 @@ for (dset in datasets) {
 
   for (filename in files) {
     broadfine <- str_split(filename, "_", simplify = TRUE)[4]
+    broadfine <- str_replace(broadfine, "\\.rds", "")
     input_type <- str_split(filename, "_", simplify = TRUE)[6]
     provenance <- subset(provenance_df, dataset == dset & granularity == broadfine)
 
