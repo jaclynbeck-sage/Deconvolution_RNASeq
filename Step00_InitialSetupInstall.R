@@ -7,7 +7,7 @@ reticulate::install_miniconda()
 install.packages("synapser", repos = c("http://ran.synapse.org", "http://cran.fhcrc.org"))
 
 BiocManager::install(c("Biobase", "SingleCellExperiment", "TOAST", "scuttle",
-                       "DeconRNASeq", "Seurat", "GEOquery", "biomaRt",
+                       "DeconRNASeq", "Seurat", "MAST", "GEOquery", "biomaRt",
                        "rhdf5", "HDF5Array"))
 
 # install the MuSiC package

@@ -15,7 +15,7 @@ RUN R -e "install.packages('synapser', repos = c('http://ran.synapse.org', \
                                                  'http://cloud.r-project.org'))"
 RUN R -e "BiocManager::install(c('Biobase', 'SingleCellExperiment', 'scuttle'))"
 RUN R -e "BiocManager::install(c('TOAST', 'DeconRNASeq', 'Seurat', 'biomaRt'))"
-RUN R -e "BiocManager::install(c('GEOquery', 'rhdf5', 'HDF5Array'))"
+RUN R -e "BiocManager::install(c('MAST', 'GEOquery', 'rhdf5', 'HDF5Array'))"
 
 RUN R -e "devtools::install_github('xuranw/MuSiC')"
 
