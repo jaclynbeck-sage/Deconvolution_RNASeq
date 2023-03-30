@@ -22,6 +22,7 @@ source("Filenames.R")
 #                   "cpm" will normalize the counts to counts per million
 #                   "logcpm" will take the log2(cpm) of non-zero cpm entries
 #                   "log1p_cpm" will take the log2(cpm+1) of cpms
+#   remove_mito = TRUE or FALSE, whether to remove mitochondrial genes
 #
 # Returns:
 #   a SingleCellExperiment object that is the exact same as what was read from
@@ -29,10 +30,10 @@ source("Filenames.R")
 #   if applicable. The colData DataFrame also has a column added called
 #   "celltype", which is populated with either the broad or fine cell type
 #   assignments based on granularity.
-Load_SingleCell <- function(dataset, granularity, output_type = "counts") {
+Load_SingleCell <- function(dataset, granularity, output_type = "counts", remove_mito = TRUE) {
   sc_file <- file.path(dir_input, str_glue("{dataset}_sce.rds"))
 
-  singlecell <- Load_CountsFile(sc_file, output_type)
+  singlecell <- Load_CountsFile(sc_file, output_type, remove_mito)
   metadata <- colData(singlecell)
 
   # Assign the column "celltype" to be either the broad or fine cell types
@@ -61,6 +62,7 @@ Load_SingleCell <- function(dataset, granularity, output_type = "counts") {
 #                   "cpm" will normalize the counts to counts per million
 #                   "logcpm" will take the log2(cpm) of non-zero cpm entries
 #                   "log1p_cpm" will take the log2(cpm+1) of cpms
+#   remove_mito = TRUE or FALSE, whether to remove mitochondrial genes
 #
 # Returns:
 #   a SummarizedExperiment object that is the exact same as what was read from
@@ -68,12 +70,12 @@ Load_SingleCell <- function(dataset, granularity, output_type = "counts") {
 #   if applicable. It also gets colData set to a DataFrame containing one column
 #   for "celltype", which is populated with cell type assignments, which can be
 #   extracted from the sample names in the data set.
-Load_PseudobulkPureSamples <- function(dataset, granularity, output_type = "counts") {
+Load_PseudobulkPureSamples <- function(dataset, granularity, output_type = "counts", remove_mito = TRUE) {
   pb_file <- str_glue(paste0("pseudobulk_{dataset}_puresamples_",
                              "{granularity}.rds"))
   pb_file <- file.path(dir_pseudobulk, pb_file)
 
-  pseudobulk <- Load_CountsFile(pb_file, output_type)
+  pseudobulk <- Load_CountsFile(pb_file, output_type, remove_mito)
   return(pseudobulk)
 }
 
@@ -112,17 +114,18 @@ Save_PseudobulkPureSamples <- function(se, dataset, granularity) {
 #                   "cpm" will normalize the counts to counts per million
 #                   "logcpm" will take the log2(cpm) of non-zero cpm entries
 #                   "log1p_cpm" will take the log2(cpm+1) of cpms
+#   remove_mito = TRUE or FALSE, whether to remove mitochondrial genes
 #
 # Returns:
 #   a SummarizedExperiment object that is the exact same as what was read from
 #   the file, except that the "counts" slot is set with the transformed values
 #   if applicable.
-Load_Pseudobulk <- function(dataset, data_type, granularity, output_type = "counts") {
+Load_Pseudobulk <- function(dataset, data_type, granularity, output_type = "counts", remove_mito = TRUE) {
   pb_file <- str_glue(paste0("pseudobulk_{dataset}_{data_type}_",
                              "{granularity}.rds"))
   pb_file <- file.path(dir_pseudobulk, pb_file)
 
-  pseudobulk <- Load_CountsFile(pb_file, output_type)
+  pseudobulk <- Load_CountsFile(pb_file, output_type, remove_mito)
   return(pseudobulk)
 }
 
@@ -157,6 +160,7 @@ Save_Pseudobulk <- function(se, dataset, data_type, granularity) {
 #                   "cpm" will normalize the counts to counts per million
 #                   "logcpm" will take the log2(cpm) of non-zero cpm entries
 #                   "log1p_cpm" will take the log2(cpm+1) of cpms
+#   remove_mito = TRUE or FALSE, whether to remove mitochondrial genes
 #
 # Returns:
 #   a SummarizedExperiment or SingleCellExperiment object that is the exact same
@@ -171,7 +175,7 @@ Save_Pseudobulk <- function(se, dataset, data_type, granularity) {
 #       *and* the transformed values held in memory at the same time. Instead
 #       we overwrite the counts slot. To be consistent with single cell data and
 #       allow for inter-operability, pseudobulk data is treated the same way.
-Load_CountsFile <- function(filename, output_type) {
+Load_CountsFile <- function(filename, output_type, remove_mito = TRUE) {
   if (!file.exists(filename)) {
     print(str_glue("Error: {filename} doesn't exist!"))
     return(NULL)
@@ -188,6 +192,11 @@ Load_CountsFile <- function(filename, output_type) {
   # TODO seaRef only, this loads it all into memory
   if (is(assay(se_obj, "counts"), "DelayedArray")) {
     assay(se_obj, "counts") <- as(assay(se_obj, "counts"), "CsparseMatrix")
+  }
+
+  # Remove mitochondrial genes
+  if (remove_mito) {
+    se_obj <- se_obj[!grepl("^MT-", rownames(se_obj)), ]
   }
 
   if (output_type == "counts") {
@@ -234,7 +243,8 @@ Load_CountsFile <- function(filename, output_type) {
 #                   "counts" will return raw, unaltered counts
 #                   "cpm" will normalize the counts to counts per million
 #                   "logcpm" will take the log2(cpm)
-Load_BulkData <- function(dataset, genes, output_type = "counts") {
+#   remove_mito = TRUE or FALSE, whether to remove mitochondrial genes
+Load_BulkData <- function(dataset, genes, output_type = "counts", remove_mito = TRUE) {
   if (dataset == "ROSMAP") {
     bulk <- read.table(file_rosmap, header = TRUE, row.names = 1)
   } else if (dataset == "Mayo") {
@@ -242,19 +252,24 @@ Load_BulkData <- function(dataset, genes, output_type = "counts") {
   } else if (dataset == "MSBB") {
     # TODO
   } else {
-    print("Error! datset should be either \"ROSMAP\", \"Mayo\", or \"MSBB\".")
+    print("Error! datset should be either 'ROSMAP', 'Mayo', or 'MSBB'.")
     return(NULL)
   }
 
-  genes <- subset(genes, !is.na(Ensembl.ID))
+  genes <- subset(genes, Ensembl.ID %in% rownames(bulk))
   rownames(genes) <- genes$Ensembl.ID
+
+  bulk <- bulk[rownames(genes), ]
+  rownames(bulk) <- make.unique(genes[rownames(bulk), "Symbol"])
+
+  # Remove mitochondrial genes
+  if (remove_mito) {
+    bulk <- bulk[!grepl("^MT-", rownames(bulk)), ]
+  }
 
   # TODO refactor Load_CountsFile to be able to take this data, OR put these
   # data set counts in a SummarizedExperiment object
   if (output_type == "counts") {
-    bulk <- bulk[rownames(bulk) %in% genes$Ensembl.ID, ]
-    rownames(bulk) <- make.unique(genes[rownames(bulk), "Symbol"])
-
     return(bulk)
   }
   else if (output_type == "cpm" | output_type == "logcpm") {
@@ -264,12 +279,10 @@ Load_BulkData <- function(dataset, genes, output_type = "counts") {
       bulk_cpm[bulk_cpm != 0] <- log2(bulk_cpm[bulk_cpm != 0])
     }
 
-    bulk_cpm <- bulk_cpm[rownames(bulk_cpm) %in% genes$Ensembl.ID, ]
-    rownames(bulk_cpm) <- make.unique(genes[rownames(bulk_cpm), "Symbol"])
     return(bulk_cpm)
   }
   else {
-    print("Error! output_type should be either \"counts\", \"cpm\", or \"logcpm\".")
+    print("Error! output_type should be either 'counts', 'cpm', or 'logcpm'.")
     return(NULL)
   }
 }
