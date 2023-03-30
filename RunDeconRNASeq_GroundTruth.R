@@ -98,9 +98,13 @@ for (P in 1:nrow(params_loop1)) {
     return(res)
   }
 
+  # It's possible for some items in decon_list to be null if there was an error.
+  # Filter them out.
+  decon_list <- decon_list[lengths(decon_list) > 0]
+
   names(decon_list) <- paste0("deconRNASeq_",
                               str_glue("{dataset}_{datatype}_{granularity}_"),
-                              1:nrow(params_loop2))
+                              1:length(decon_list))
 
   # Save the completed list
   print(str_glue("Saving final list for {dataset} {datatype} {granularity}..."))

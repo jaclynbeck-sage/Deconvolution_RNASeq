@@ -39,12 +39,22 @@ DeconRNASeq_InnerLoop <- function(signature, bulk_df, params) {
   signature_filt <- signature_filt[keepgene,]
 
   # Run DeconRNASeq
-  res <- DeconRNASeq(bulk_df_filt, signature_filt, proportions = NULL,
-                     known.prop = FALSE, use.scale = use_scale, fig = FALSE)
+  tryCatch({
+    res <- DeconRNASeq(bulk_df_filt, signature_filt, proportions = NULL,
+                       known.prop = FALSE, use.scale = use_scale, fig = FALSE)
 
-  rownames(res$out.all) <- colnames(bulk_df_filt)
-  res$params <- params
+    rownames(res$out.all) <- colnames(bulk_df_filt)
+    res$params <- params
 
-  print(paste(res$params, collapse = "  "))
-  return(res)
+    print(paste(res$params, collapse = "  "))
+    return(res)
+  },
+  error = function(err) {
+    param_set <- paste(params, collapse = "  ")
+    print(c("*** Error running param set", param_set))
+    print(err)
+    print("*** skipping ***")
+
+    return(NULL)
+  })
 }
