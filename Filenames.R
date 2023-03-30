@@ -17,6 +17,10 @@ dir_mathys_raw <- file.path(dir_input, "mathys_raw")
 dir_morabito_raw <- file.path(dir_input, "morabito_raw")
 dir_seaad_raw <- file.path(dir_input, "sea-ad_raw")
 
+dir_mayo_raw <- file.path(dir_input, "mayo_raw")
+dir_msbb_raw <- file.path(dir_input, "msbb_raw")
+dir_rosmap_raw <- file.path(dir_input, "rosmap_raw")
+
 file_searef_h5 <- file.path(dir_seaad_raw, "ref_counts.h5ad")
 file_seaad_h5 <- file.path(dir_seaad_raw, "seaad_counts.h5ad")
 

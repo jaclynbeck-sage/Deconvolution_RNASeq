@@ -6,7 +6,14 @@ library(stringr)
 library(GEOquery)
 library(HDF5Array)
 library(rhdf5)
+library(reticulate)
 
+source("Filenames.R")
+
+# Needed for SEA-AD data
+if (!("anndata" %in% py_list_packages()$package)) {
+  py_install("anndata")
+}
 
 ##### Generic functions #####
 
@@ -24,6 +31,7 @@ DownloadFromSynapse <- function(synIDs, downloadLocation) {
   return(files)
 }
 
+# This function is unused, saving just in case.
 # gene.list is a vector of gene symbols
 # TODO: Seurat has a GeneSymbolThesaurus function to get aliases. Might be useful
 GeneSymbolToEnsembl_Biomart <- function(gene.list) {
@@ -45,6 +53,16 @@ GeneSymbolToEnsembl_Biomart <- function(gene.list) {
   return(genes)
 }
 
+# Mayo, MSBB, and ROSMAP all have files in Synapse with the conversion between
+# Ensembl ID and gene symbol, in the same format
+EnsemblIdToGeneSymbol_BulkData <- function(files) {
+  genes <- read.table(files[["genes"]]$path, header = TRUE)
+  genes <- genes[,c("hgnc_symbol", "ensembl_gene_id")]
+  colnames(genes) <- c("Symbol", "Ensembl.ID")
+  rownames(genes) <- genes$Ensembl.ID
+  return(genes)
+}
+
 
 ##### Functions that call dataset-specific functions #####
 
@@ -57,7 +75,11 @@ DownloadData <- function(dataset) {
                   "mathys" = DownloadData_Mathys(),
                   "morabito" = DownloadData_Morabito(),
                   "seaRef" = DownloadData_SEARef(),
-                  "seaAD" = DownloadData_SEAAD())
+                  "seaAD" = DownloadData_SEAAD(),
+                  "Mayo" = DownloadData_Mayo(),
+                  "MSBB" = DownloadData_MSBB(),
+                  "ROSMAP" = DownloadData_ROSMAP())
+
   return(files)
 }
 
@@ -70,7 +92,10 @@ ReadMetadata <- function(dataset, files) {
                      "mathys" = ReadMetadata_Mathys(files),
                      "morabito" = ReadMetadata_Morabito(files),
                      "seaRef" = ReadMetadata_SEARef(files),
-                     "seaAD" = ReadMetadata_SEAAD(files))
+                     "seaAD" = ReadMetadata_SEAAD(files),
+                     "Mayo" = ReadMetadata_BulkData(files),
+                     "MSBB" = ReadMetadata_BulkData(files),
+                     "ROSMAP" = ReadMetadata_BulkData(files))
   return(metadata)
 }
 
@@ -83,31 +108,31 @@ ReadCounts <- function(dataset, files, metadata) {
                    "mathys" = ReadCounts_Mathys(files),
                    "morabito" = ReadCounts_Morabito(files),
                    "seaRef" = ReadCounts_SEARef(files),
-                   "seaAD" = ReadCounts_SEAAD(files))
+                   "seaAD" = ReadCounts_SEAAD(files),
+                   "Mayo" = ReadCounts_BulkData(files),
+                   "MSBB" = ReadCounts_BulkData(files),
+                   "ROSMAP" = ReadCounts_BulkData(files))
   return(counts)
 }
 
-GeneSymbolToEnsembl <- function(dataset, files = NULL, gene.list = NULL) {
+EnsemblIdToGeneSymbol <- function(dataset, files = NULL, gene.list = NULL) {
   genes <- switch(dataset,
-                  "cain" = GeneSymbolToEnsembl_Biomart(gene.list),
-                  "lau" = GeneSymbolToEnsembl_Biomart(gene.list),
-                  "lengEC" = GeneSymbolToEnsembl_Biomart(gene.list), # TODO they provide the GTF with ID->Symbol mappings
-                  "lengSFG" = GeneSymbolToEnsembl_Biomart(gene.list),
-                  "mathys" = GeneSymbolToEnsembl_Mathys(files),
-                  "morabito" = GeneSymbolToEnsembl_Biomart(gene.list),
-                  "seaRef" = GeneSymbolToEnsembl_Biomart(gene.list),
-                  "seaAD" = GeneSymbolToEnsembl_Biomart(gene.list))
+                  "cain" = NULL,
+                  "lau" = NULL,
+                  "lengEC" = NULL,
+                  "lengSFG" = NULL,
+                  "mathys" = NULL,
+                  "morabito" = NULL,
+                  "seaRef" = NULL,
+                  "seaAD" = NULL,
+                  "Mayo" = EnsemblIdToGeneSymbol_BulkData(files),
+                  "MSBB" = EnsemblIdToGeneSymbol_BulkData(files),
+                  "ROSMAP" = EnsemblIdToGeneSymbol_BulkData(files))
   return(genes)
 }
 
 ##### Custom functions for each data set #####
-# Metadata columns must end up in the correct order to be renamed as follows:
-#   c("cellid", "donor", "diagnosis", "broadcelltype", "subcluster")
-#
-# For gene symbol -> Ensembl ID conversion:
-#   Symbols can map to multiple Ensembl IDs. For this application, we use the
-#   first Ensembl ID in the list for duplicate symbols, which is what Seurat
-#   does. Since most papers used Seurat, we assume this is consistent.
+
 
 ##### Cain, et al., 2020 [preprint] #####
 # https://doi.org/10.1101/2020.12.22.424084
@@ -282,6 +307,7 @@ ReadCounts_Mathys <- function(files) {
   return(counts)
 }
 
+# This function is now unused, saving just in case
 GeneSymbolToEnsembl_Mathys <- function(files) {
   # This file has mappings from Ensembl ID to gene symbol
   genes <- read.table(files[["genes_ensembl"]]$path, sep = "\t")
@@ -290,6 +316,8 @@ GeneSymbolToEnsembl_Mathys <- function(files) {
   dupes <- duplicated(genes$Symbol)
   genes <- genes[!dupes,]
   rownames(genes) <- genes$Symbol
+
+  genes <- genes[,c("Symbol", "Ensembl.ID")]
 
   return(genes)
 }
@@ -491,5 +519,80 @@ ReadCounts_SEAAD <- function(files) {
                                       file.path("obs", "sample_id")))
   dimnames(counts)[[2]] <- col_names
 
+  return(counts)
+}
+
+
+##### Mayo #####
+# Bulk RNA seq data from the Mayo RNA Seq Study:
+# https://adknowledgeportal.synapse.org/Explore/Studies/DetailsPage/StudyDetails?Study=syn5550404
+#
+# Metadata: https://www.synapse.org/#!Synapse:syn29855549
+# Filtered counts: https://www.synapse.org/#!Synapse:syn27024951
+# Biomart gene conversion: https://www.synapse.org/#!Synapse:syn27024953
+
+DownloadData_Mayo <- function() {
+  synIDs <- list("metadata" = "syn29855549",
+                 "counts" = "syn27024951",
+                 "genes" = "syn27024953")
+
+  files <- DownloadFromSynapse(synIDs, dir_mayo_raw)
+  return(files)
+}
+
+
+##### MSBB #####
+# Bulk RNA seq data from the Mount Sinai Brain Bank Study:
+# https://adknowledgeportal.synapse.org/Explore/Studies/DetailsPage/StudyDetails?Study=syn3159438
+#
+# Metadata: https://www.synapse.org/#!Synapse:syn29855570
+# Filtered counts: https://www.synapse.org/#!Synapse:syn27068754
+# Biomart gene conversion: https://www.synapse.org/#!Synapse:syn27068755
+
+DownloadData_MSBB <- function() {
+  synIDs <- list("metadata" = "syn29855570",
+                 "counts" = "syn27068754",
+                 "genes" = "syn27068755")
+
+  files <- DownloadFromSynapse(synIDs, dir_msbb_raw)
+  return(files)
+}
+
+
+##### ROSMAP #####
+# Bulk RNA seq data from the ROSMAP study:
+# https://adknowledgeportal.synapse.org/Explore/Studies/DetailsPage/StudyDetails?Study=syn3219045
+#
+# Metadata: https://www.synapse.org/#!Synapse:syn29855598
+# Filtered counts: https://www.synapse.org/#!Synapse:syn26967451
+# Biomart gene conversion: https://www.synapse.org/#!Synapse:syn26967452
+
+DownloadData_ROSMAP <- function() {
+  synIDs <- list("metadata" = "syn29855598",
+                 "counts" = "syn26967451",
+                 "genes" = "syn26967452")
+
+  files <- DownloadFromSynapse(synIDs, dir_rosmap_raw)
+  return(files)
+}
+
+
+##### Generic bulk functions #####
+# These functions all work on Mayo, MSBB, and ROSMAP since the files all come
+# from the harmonization effort
+
+ReadMetadata_BulkData <- function(files) {
+  metadata <- read.table(files[["metadata"]]$path, header = T)
+  metadata <- metadata[,c("specimenID", "diagnosis", "tissue", "sex")]
+
+  # Necessary because the column names of the counts matrix get converted this
+  # way automatically
+  metadata$specimenID <- make.names(metadata$specimenID)
+
+  return(metadata)
+}
+
+ReadCounts_BulkData <- function(files) {
+  counts <- read.table(files[["counts"]]$path, header = TRUE, row.names = 1)
   return(counts)
 }

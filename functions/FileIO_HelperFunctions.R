@@ -523,7 +523,7 @@ Save_DtangleMarkers <- function(markers, dataset, granularity, input_type, marke
 Load_Markers <- function(dataset, granularity, marker_type, marker_subtype = NULL,
                          input_type = NULL) {
   if (!(marker_type %in% c("dtangle", "autogenes", "seurat"))) {
-    print("marker_type must be one of \"dtangle\", \"autogenes\", or \"seurat\")")
+    print("marker_type must be one of 'dtangle', 'autogenes', or 'seurat')")
     return(NULL)
   }
 
