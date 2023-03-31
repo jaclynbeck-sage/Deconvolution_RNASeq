@@ -1,5 +1,6 @@
 install.packages(c("BiocManager", "devtools", "stringr", "Metrics",
-                   "readxl", "reticulate"))
+                   "readxl", "reticulate", "dplyr", "ggplot2",
+                   "DEoptimR", "nloptr"))
 
 reticulate::install_miniconda()
 
