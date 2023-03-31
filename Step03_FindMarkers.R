@@ -1,7 +1,6 @@
 library(dplyr)
 library(foreach)
 library(doParallel)
-library(reticulate)
 library(stringr)
 source("Filenames.R")
 
@@ -57,30 +56,10 @@ if ("seurat" %in% marker_types_run) {
 
 ##### AutogeneS markers (requires python/reticulate) #####
 
-# This section is a little janky to make R and Python work together without
-# crashing. We need to use reticulate to establish the conda environment but
-# then need to call the python script as a system command, because otherwise
-# reticulate/RStudio crashes when trying to call ag.optimize directly from R.
-# Assumes there is already a conda environment called "autogenes_env" that has
-# been set up with all needed packages (see Step00_InitialSetupInstall.R or
-# the dockerfile).
+# This section uses reticulate, so it's not run in parallel in case that causes
+# issues with python environments.
 
 if ("autogenes" %in% marker_types_run) {
-  # This activates the conda environment we need, and running the useless command
-  # somehow forces things to load properly for when we call the system command
-  use_condaenv("autogenes_env")
-  py_run_string("import os")
-
-  for (dataset in datasets) {
-    for (granularity in granularities) {
-      print(str_glue("Finding markers for {dataset} / {granularity}..."))
-      output_file_prefix <- file.path(dir_markers,
-                                      str_glue("autogenes_markers_{dataset}_{granularity}"))
-
-      python_file <- file.path("functions", "Step03c_FindMarkers_AutogeneS.py")
-
-      cmd <- str_glue("python {python_file} {dataset} {granularity} {output_file_prefix}")
-      system(cmd)
-    }
-  }
+  source(file.path("functions", "Step03c_FindMarkers_AutogeneS.R"))
+  FindMarkers_AutogeneS(datasets, granularities)
 }

@@ -4,7 +4,7 @@ source("Filenames.R")
 synLogin()
 
 # Deconvolution WG Synapse space
-sce.folder <- Folder("sce_objects", parent = "syn51119398")
+sce.folder <- Folder("sce_objects", parent = "syn51272799")
 sce.folder <- synStore(sce.folder, forceVersion = FALSE)
 
 provenance <- list("cain" = c("syn38609692", "syn38598183"),
@@ -16,10 +16,13 @@ provenance <- list("cain" = c("syn38609692", "syn38598183"),
                    "morabito" = c("syn22130806", "syn24978676", "syn24978737",
                                   "syn22130805"),
                    "seaRef" = c("syn31149116", url_searef_h5),
-                   "seaAD" = c("syn31149116", url_seaad_h5))
+                   "seaAD" = c("syn31149116", url_seaad_h5),
+                   "Mayo" = c("syn29855549", "syn27024951", "syn27024953"),
+                   "MSBB" = c("syn29855570", "syn27068754", "syn27068755"),
+                   "ROSMAP" = c("syn29855598", "syn26967451", "syn26967452"))
 
 datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
-              "seaRef", "seaAD")
+              "seaRef", "seaAD", "Mayo", "MSBB", "ROSMAP")
 
 for (dataset in datasets) {
   files <- list.files(dir_input, pattern = dataset, full.names = TRUE)

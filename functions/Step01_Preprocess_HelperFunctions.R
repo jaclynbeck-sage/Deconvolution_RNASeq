@@ -403,7 +403,7 @@ ReadMetadata_SEARef <- function(files) {
                     by.x = "external_donor_name_label", by.y = "individualID")
 
   metadata <- metadata[, c("sample_name", "external_donor_name_label",
-                           "diagnosis", "broadcelltype", "cluster_label" )]
+                           "diagnosis", "broadcelltype", "subclass_label" )]
 
   return(metadata)
 }
@@ -427,7 +427,7 @@ ReadMetadata_SEAAD <- function(files) {
                     by.x = "Donor.ID", by.y = "individualID")
 
   metadata <- metadata[, c("sample_id", "Donor.ID", "diagnosis",
-                           "broadcelltype", "Supertype")]
+                           "broadcelltype", "Subclass")]
   return(metadata)
 }
 
