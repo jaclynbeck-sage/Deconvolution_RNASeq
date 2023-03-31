@@ -1,15 +1,15 @@
 install.packages(c("BiocManager", "devtools", "stringr", "Metrics",
-                   "readxl", "reticulate", "dplyr", "ggplot2",
+                   "reticulate", "dplyr", "ggplot2",
                    "DEoptimR", "nloptr"))
 
-reticulate::install_miniconda()
-
-# requires install of several linux packages first
+# If synapser fails to install because it can't find "synapseclient", go to
+# RStudio options (Tools->Global Options) -> Python, uncheck "Automatically
+# activate project-local Python environments" and restart R.
 install.packages("synapser", repos = c("http://ran.synapse.org", "http://cran.fhcrc.org"))
 
-BiocManager::install(c("Biobase", "SingleCellExperiment", "TOAST", "scuttle",
-                       "DeconRNASeq", "Seurat", "MAST", "GEOquery", "biomaRt",
-                       "rhdf5", "HDF5Array"))
+BiocManager::install(c("Biobase", "SingleCellExperiment", "scuttle",
+                       "DeconRNASeq", "Seurat", "MAST", "GEOquery",
+                       "rhdf5", "HDF5Array", "zellkonverter"))
 
 # install the MuSiC package
 devtools::install_github('xuranw/MuSiC')
@@ -27,11 +27,10 @@ system("bash install_dtangle.sh")
 install.packages(file.path('~', 'dtangle', 'dtangleSparse_2.0.9.tar.gz'),
                  repos = NULL, type = "source")
 
-# Conda setup for AutogeneS
-reticulate::conda_create(envname = "autogenes_env",
-                         packages = c("python=3.10", "libffi=3.3"))
-reticulate::conda_install(envname = "autogenes_env",
-                          packages = c("scanpy", "pandas", "numpy", "scipy",
-                                       "anndata", "anndata2ri", "autogenes",
-                                       "rpy2", "scikit-misc"),
-                          pip = TRUE) # Needs to be pip, not conda
+# Extra package needed for pre-processing seaRef
+reticulate::virtualenv_install("r-reticulate", packages = c("anndata"))
+
+# virtualenv setup for AutogeneS
+reticulate::virtualenv_create("autogenes_env",
+                              packages = c("scanpy", "anndata", "autogenes",
+                                           "scikit-misc"))

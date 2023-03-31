@@ -1,10 +1,11 @@
-FROM rocker/rstudio
+FROM rocker/rstudio:4.2.3
 
 RUN apt-get update -y && apt-get upgrade -y
-RUN apt-get install -y dpkg-dev zlib1g-dev libssl-dev libffi-dev ssh
-RUN apt-get install -y curl libcurl4-openssl-dev
-RUN apt-get install -y build-essential nano less libxt-dev libxml2 liblzma-dev
-RUN apt-get install -y libglpk-dev libgeos-dev libhdf5-dev libbz2-dev
+RUN apt-get install -y ssh nano less python3 python3-pip python3-venv
+RUN apt-get install -y libpng-dev libglpk-dev curl
+
+# Unclear if these packages are still needed
+#RUN apt-get install -y libffi-dev libxt-dev libgeos-dev libhdf5-dev libbz2-dev
 
 USER rstudio
 
