@@ -60,7 +60,7 @@ for (dataset in datasets) {
   # Bulk only -- Convert bulk data Ensembl IDs to gene symbols. Some symbols are
   # not unique so we use the first entry in the list for duplicate symbols.
   # All single cell data has symbols as row names already.
-  if (is_bulk) {
+  if (is_bulk(dataset)) {
     genes <- EnsemblIdToGeneSymbol(dataset, files, rownames(counts))
     genes <- genes[rownames(counts),]
 

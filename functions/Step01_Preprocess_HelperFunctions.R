@@ -10,11 +10,6 @@ library(reticulate)
 
 source("Filenames.R")
 
-# Needed for SEA-AD data
-if (!("anndata" %in% py_list_packages()$package)) {
-  py_install("anndata")
-}
-
 ##### Generic functions #####
 
 # Assumes you have already authenticated a Synapse login or have a Synapse
@@ -359,41 +354,9 @@ ReadCounts_Morabito <- function(files) {
 
 # These files are h5ad (AnnData) files. There are several R libraries that can
 # read this type of file and output the full object with all fields populated
-# (e.g. anndata and zellkonverter), however most of them use reticulate, which
-# is incompatible with synapser/PythonEmbedInR, so we can't use them in the
-# same R session which makes it difficult to pipeline. So I read pieces by
-# hand.
-
-# Note: This function can't read fields that are ENUM type
-ReadH5Group <- function(filename, group.name, cols = NULL) {
-  if (is.null(cols)) {
-    attr <- h5readAttributes(filename, group.name)
-    cols <- c(attr[["_index"]], attr[["column-order"]])
-  }
-
-  col_list <- list()
-  for (column in cols) {
-    if (column != "__categories") {
-      col_list[[column]] <- HDF5Array(filename, file.path(group.name, column))
-    }
-  }
-
-  return(col_list)
-}
-
-# Note: This function doesn't work with fields that have -1 values
-ReplaceColWithCategory <- function(metadata, categories, column.names) {
-  if (is.null(column.names)) {
-    column.names <- names(categories)
-  }
-
-  for (column in column.names) {
-    column.safe <- make.names(column) # Replaces invalid characters
-    metadata[, column.safe] <- categories[[column]][metadata[, column.safe] + 1]
-  }
-
-  return(metadata)
-}
+# (e.g. anndata and zellkonverter), however they can't seem to read in these
+# particular files correctly, so I use a combination of reticulate and the
+# H5ADMatrix library in R to get all the data.
 
 DownloadData_SEARef <- function() {
   synIDs <- list("individual_metadata" = "syn31149116")
@@ -421,51 +384,18 @@ DownloadData_SEAAD <- function() {
   return(files)
 }
 
-# Testing calling python from R. Ended up not using this code but saving it
-# just in case.
-ReadMetadata_SEARef_old <- function(files) {
-  pytext <- paste0('import scanpy as sc \n',
-                   'data = sc.read_h5ad("', file_searef_h5, '", backed = "r") \n',
-                   'metadata = sc.get.obs_df(data, keys = ["sample_name", ',
-                   '"external_donor_name_label", "class_label", ',
-                   '"subclass_label", "cluster_label"]) \n')
-  pyExec(pytext)
-  metadata <- pyGet("metadata")
-
-  donor_metadata <- read.csv(files[["individual_metadata"]]$path)
-
-  orig_order <- metadata$sample_name
-  metadata <- merge(metadata, donor_metadata,
-                    by.x = "external_donor_name_label", by.y = "individualID")
-
-  rownames(metadata) <- metadata$sample_name
-  metadata <- metadata[orig_order,]
-
-  metadata$broadcelltype <- metadata$subclass_label
-  metadata$broadcelltype[metadata$class_label == "Neuronal: GABAergic"] = "GABA"
-  metadata$broadcelltype[metadata$class_label == "Neuronal: Glutamatergic"] = "Glut"
-
-  metadata <- metadata[, c("sample_name", "external_donor_name_label",
-                           "diagnosis", "broadcelltype", "cluster_label" )]
-
-  return(metadata)
-}
-
 ReadMetadata_SEARef <- function(files) {
   donor_metadata <- read.csv(files[["individual_metadata"]]$path)
 
-  # SEA-Ref specific columns
-  cols1 <- c("sample_name", "external_donor_name_label", "class_label",
-            "subclass_label", "cluster_label")
-  cols2 <- c("class_label", "cluster_label", "external_donor_name_label",
-             "subclass_label")
+  ad <- import("anndata")
+  adata <- ad$read_h5ad(files[["counts"]], backed = 'r')
 
-  metadata <- data.frame(ReadH5Group(files[["counts"]], "obs", cols1))
-  categories <- ReadH5Group(files[["counts"]], file.path("obs", "__categories"), cols2)
+  metadata <- adata$obs
 
-  metadata <- ReplaceColWithCategory(metadata, categories, cols2)
+  adata$file$close()
+  rm(adata)
 
-  metadata$broadcelltype <- metadata$subclass_label
+  metadata$broadcelltype <- as.character(metadata$subclass_label)
   metadata$broadcelltype[metadata$class_label == "Neuronal: GABAergic"] = "GABA"
   metadata$broadcelltype[metadata$class_label == "Neuronal: Glutamatergic"] = "Glut"
 
@@ -481,16 +411,15 @@ ReadMetadata_SEARef <- function(files) {
 ReadMetadata_SEAAD <- function(files) {
   donor_metadata <- read.csv(files[["individual_metadata"]]$path)
 
-  # SEA-AD specific columns
-  cols1 <- c("sample_id", "Donor ID", "Supertype", "Class", "Subclass")
-  cols2 <- c("Donor ID", "Supertype", "Class", "Subclass")
+  ad <- import("anndata")
+  adata <- ad$read_h5ad(files[["counts"]], backed = 'r')
 
-  metadata <- data.frame(ReadH5Group(files[["counts"]], "obs", cols1))
-  categories <- ReadH5Group(files[["counts"]], file.path("obs", "__categories"), cols2)
+  metadata <- adata$obs
 
-  metadata <- ReplaceColWithCategory(metadata, categories, cols2)
+  adata$file$close()
+  rm(adata)
 
-  metadata$broadcelltype <- metadata$Subclass
+  metadata$broadcelltype <- as.character(metadata$Subclass)
   metadata$broadcelltype[metadata$Class == "Neuronal: GABAergic"] = "GABA"
   metadata$broadcelltype[metadata$Class == "Neuronal: Glutamatergic"] = "Glut"
 
