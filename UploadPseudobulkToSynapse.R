@@ -4,7 +4,7 @@ source("Filenames.R")
 synLogin()
 
 # Deconvolution WG Synapse space
-pseudo.folder <- Folder("pseudobulk", parent = "syn51119398")
+pseudo.folder <- Folder("pseudobulk", parent = "syn51272799")
 pseudo.folder <- synStore(pseudo.folder, forceVersion = FALSE)
 
 provenance <- list("cain" = c("syn38609692", "syn38598183"),

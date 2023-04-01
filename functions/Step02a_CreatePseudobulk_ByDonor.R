@@ -42,6 +42,7 @@ CreatePseudobulk_ByDonor <- function(singlecell_counts, metadata, dataset) {
 
   # colnames end up as "donor<#>" because of model.matrix. Remove the "donor".
   colnames(counts) <- str_replace(colnames(counts), "donor", "")
+  counts <- as(counts, "matrix")
 
   propCells_broad <- table(metadata$donor, metadata$broadcelltype)
   propCells_broad <- sweep(propCells_broad, 1, rowSums(propCells_broad), "/")

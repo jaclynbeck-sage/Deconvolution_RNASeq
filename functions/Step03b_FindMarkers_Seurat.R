@@ -18,7 +18,7 @@ library(dplyr)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
 
-FindMarkers_Seurat <- function(datasets, granluarities) {
+FindMarkers_Seurat <- function(datasets, granularities) {
   for (dataset in datasets) {
     for (granularity in granularities) {
       print(str_glue("Finding markers for {dataset} / {granularity}..."))

@@ -53,6 +53,7 @@ CreatePseudobulk_PureSamples <- function(singlecell_counts, metadata, dataset) {
     colnames(y) <- str_replace(colnames(y), "celltypedonor", "puresample_")
 
     counts <- singlecell_counts %*% y
+    counts <- as(counts, "matrix")
 
     propCells <- table(metadata$celltypedonor, metadata$celltype)
     rownames(propCells) <- paste0("puresample_", rownames(propCells))

@@ -116,6 +116,8 @@ for (dataset in datasets) {
     propCells <- do.call(rbind, propCells)
     pctRNA <- do.call(rbind, pctRNA)
 
+    pseudobulk <- as(pseudobulk, "matrix")
+
     se <- SummarizedExperiment(assays = SimpleList(counts = pseudobulk),
                                metadata = list("propCells" = propCells,
                                                "pctRNA" = pctRNA))
