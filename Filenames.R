@@ -4,6 +4,8 @@ dir_data <- "data"
 dir_input <- file.path(dir_data, "input")
 dir_pseudobulk <- file.path(dir_data, "pseudobulk")
 dir_output <- file.path(dir_data, "output")
+dir_metadata <- file.path(dir_data, "metadata")
+
 dir_markers <- file.path(dir_output, "markers")
 dir_params_lists <- file.path(dir_output, "params_lists")
 dir_params_lists_tmp <- file.path(dir_params_lists, "tmp")
@@ -31,6 +33,9 @@ url_seaad_h5 <- "https://sea-ad-single-cell-profiling.s3.amazonaws.com/MTG/RNAse
 # processed from (syn3191087 and syn21323366) or syn11024258
 file_rosmap <- file.path(dir_input, "ROSMAP_DLPFC_Counts.tsv")
 dir_rosmap <- file.path(dir_output, "rosmap")
+
+file_gene_list <- file.path(dir_metadata, "ensembl_gene_list.csv")
+file_rosmap_ihc_proportions <- file.path(dir_metadata, "ihc_proportions_normalized.csv")
 
 # Make sure these directories exist
 for (D in ls(pattern = "dir_")) {
