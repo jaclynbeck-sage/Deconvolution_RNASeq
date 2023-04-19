@@ -67,6 +67,20 @@ FindMarkers_DtangleHSPE <- function(datasets, granularities, input_types) {
                               pure_samples = pure_samples,
                               marker_method = marker_meth)
 
+      # Filter the marker list to genes that meet certain criteria:
+      #   ratio: all Vs higher than the mean (there isn't an intuitive criteria for this one)
+      #   diff: all Vs with >= 1 log-fold change
+      #   p.value: all Vs >= 0.95 (signifying p <= 0.05)
+      #   regression: all Vs with >= 1 log-fold change
+      markers[["filtered"]] <- lapply(markers$V, function(vals) {
+        new_vals <- switch(marker_meth,
+                           "ratio" = vals[vals >= mean(vals)],
+                           "diff" = vals[vals >= 1],
+                           "p.value" = vals[vals >= 0.95],
+                           "regression" = vals[vals >= 1])
+        return(names(new_vals))
+      })
+
       Save_DtangleMarkers(markers, dataset, granularity, input_type, marker_meth)
 
       rm(markers)

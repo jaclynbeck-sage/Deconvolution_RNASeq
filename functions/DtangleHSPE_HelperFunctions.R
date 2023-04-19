@@ -51,11 +51,10 @@ Get_DtangleHSPEInput <- function(dataset, datatype, granularity, input_type) {
   }
   # ROSMAP, Mayo, or MSBB
   else {
-    genes <- Load_GeneConversion(dataset)
-    bulk_mat <- Load_BulkData(datatype, genes, output_type = "logcpm")
+    bulk_mat <- Load_BulkData(datatype, output_type = "logcpm")
+    bulk_mat <- assay(bulk_mat, "counts")
   }
 
-  # These SHOULD have the same rownames, but just in case.
   keepgene <- intersect(rownames(input_mat), rownames(bulk_mat))
 
   # Pre-combine matrices so this isn't repeatedly done on every dtangle call.

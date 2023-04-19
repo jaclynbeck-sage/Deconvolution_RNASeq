@@ -230,49 +230,17 @@ Load_CountsFile <- function(filename, output_type) {
 
 # Arguments:
 #   dataset = the name of the dataset ("ROSMAP", "Mayo", or "MSBB")
-#   genes = DataFrame with columns "Ensembl.ID" and "Symbol", used to convert
-#           between gene naming systems
 #   output_type = either "counts", "cpm", or "logcpm", to determine how the
 #                 counts are transformed:
 #                   "counts" will return raw, unaltered counts
 #                   "cpm" will normalize the counts to counts per million
 #                   "logcpm" will take the log2(cpm)
-Load_BulkData <- function(dataset, genes, output_type = "counts") {
-  if (dataset == "ROSMAP") {
-    bulk <- read.table(file_rosmap, header = TRUE, row.names = 1)
-  } else if (dataset == "Mayo") {
-    # TODO
-  } else if (dataset == "MSBB") {
-    # TODO
-  } else {
-    print("Error! datset should be either 'ROSMAP', 'Mayo', or 'MSBB'.")
-    return(NULL)
-  }
+Load_BulkData <- function(dataset, output_type = "counts") {
+  bulk_file <- str_glue(paste0("{dataset}_se.rds"))
+  bulk_file <- file.path(dir_input, bulk_file)
 
-  genes <- subset(genes, Ensembl.ID %in% rownames(bulk))
-  rownames(genes) <- genes$Ensembl.ID
-
-  bulk <- bulk[rownames(genes), ]
-  rownames(bulk) <- make.unique(genes[rownames(bulk), "Symbol"])
-
-  # TODO refactor Load_CountsFile to be able to take this data, OR put these
-  # data set counts in a SummarizedExperiment object
-  if (output_type == "counts") {
-    return(bulk)
-  }
-  else if (output_type == "cpm" | output_type == "logcpm") {
-    bulk_cpm <- calculateCPM(bulk)
-
-    if (output_type == "logcpm") {
-      bulk_cpm[bulk_cpm != 0] <- log2(bulk_cpm[bulk_cpm != 0])
-    }
-
-    return(bulk_cpm)
-  }
-  else {
-    print("Error! output_type should be either 'counts', 'cpm', or 'logcpm'.")
-    return(NULL)
-  }
+  bulk <- Load_CountsFile(bulk_file, output_type)
+  return(bulk)
 }
 
 
@@ -536,7 +504,7 @@ Load_Markers <- function(dataset, granularity, marker_type, marker_subtype = NUL
   markers <- readRDS(file = marker_file)
 
   if (marker_type == "dtangle") {
-    markers <- lapply(markers$L, names)
+    markers <- markers$filtered #lapply(markers$L, names)
   }
 
   return(markers)

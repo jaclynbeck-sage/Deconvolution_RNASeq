@@ -10,7 +10,8 @@ source("Filenames.R")
 marker_types_run <- c("dtangle", "seurat", "autogenes")
 
 # Run multiple parameter sets in parallel for dtangle/HSPE marker finding?
-# Assume most data sets use <20 GB of RAM per core, but seaRef will use ~50.
+# Assume most data sets use <20 GB of RAM per core, but seaRef will use > 100 GB
+# for single cell.
 dtangle_do_parallel <- TRUE
 dtangle_n_cores <- 4
 dtangle_clust_type <- "FORK" # Use PSOCK for non-Unix systems

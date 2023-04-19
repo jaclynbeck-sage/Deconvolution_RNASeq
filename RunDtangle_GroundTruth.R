@@ -51,19 +51,30 @@ params_loop1 <- expand.grid(dataset = datasets,
                             stringsAsFactors = FALSE) %>% arrange(datatype)
 
 if (algorithm == "dtangle") {
-  params_loop2 <- expand.grid(marker_method = c("ratio", "diff", "p.value", "regression"),
-                              gamma_name = c("auto", 0.5),
+  params_loop2 <- expand.grid(marker_type = c("autogenes", "dtangle", "seurat"),
+                              marker_input_type = c("singlecell", "pseudobulk"),
+                              gamma_name = c("auto"),
                               sum_fn_type = c("mean", "median"),
                               n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2,
                                             0.5, 0.75, 1.0,
-                                            10, 20, 50, 100, 200, 500),
+                                            5, 10, 20, 50, 100, 200, 500),
                               stringsAsFactors = FALSE)
+  marker_types <- list("dtangle" = c("ratio", "diff", "p.value", "regression"),
+                       "autogenes" = c("correlation", "distance", "combined"),
+                       "seurat" = c("None"))
+  marker_types <- do.call(rbind, lapply(names(marker_types), function(N) {
+    data.frame(marker_type = N, marker_subtype = marker_types[[N]])
+  }))
+
+  params_loop2 <- merge(params_loop2, marker_types, by = "marker_type")
+
 } else if (algorithm == "hspe") {
+  # Needs updating for marker_subtype
   params_loop2 <- expand.grid(marker_method = c("ratio", "diff", "p.value", "regression"),
                               loss_fn = c("var", "L2"),
                               n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2,
                                             0.5, 0.75, 1.0,
-                                            10, 20, 50, 100, 200, 500),
+                                            5, 10, 20, 50, 100, 200, 500),
                               stringsAsFactors = FALSE)
 }
 
@@ -88,18 +99,11 @@ for (P in 1:nrow(params_loop1)) {
     # Free up unused memory
     gc()
 
-    params_run <- params_loop2
-
-    # "p.value" and "regression" aren't feasible for single cell input
-    if (input_type == "singlecell") {
-      params_run <- subset(params_run, marker_method == "ratio" | marker_method == "diff")
-    }
-
     ##### Iterate through Dtangle/HSPE parameters in parallel #####
     # NOTE: the helper functions have to be sourced inside the foreach loop
     #       so they exist in each newly-created parallel environment
 
-    dtangle_list_tmp <- foreach (R = 1:nrow(params_run),
+    dtangle_list_tmp <- foreach (R = 1:nrow(params_loop2),
                                  .packages = required_libraries) %dopar% {
       source(file.path("functions", "DtangleHSPE_HelperFunctions.R"))
       source(file.path("functions", "DtangleHSPE_InnerLoop.R"))
@@ -109,7 +113,7 @@ for (P in 1:nrow(params_loop1)) {
                                    pure_samples = input_list[["pure_samples"]],
                                    params = cbind(params_loop1[P,],
                                                   "input_type" = input_type,
-                                                  params_run[R,]),
+                                                  params_loop2[R,]),
                                    algorithm = algorithm,
                                    limit_n_markers = TRUE)
 

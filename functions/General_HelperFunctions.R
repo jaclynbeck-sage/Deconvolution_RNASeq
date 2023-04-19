@@ -212,6 +212,8 @@ FilterSignature <- function(signature, filter_level = 1, dataset = NULL,
       return(NULL)
     }
 
+    markers <- lapply(markers, function(X) {intersect(X, rownames(signature))})
+
     if (filt_percent <= 1) {
       n_markers <- ceiling(lengths(markers) * filt_percent)
     }
@@ -249,3 +251,37 @@ ConvertPropCellsToPctRNA <- function(propCells, A) {
   pct <- sweep(pct, 1, rowSums(pct), "/")
   return(pct)
 }
+
+
+GetNMarkers_Optimal <- function(marker_list, signature, score = "correlation", filter = "percent") {
+  if (score == "correlation") {
+    score_fun <- function(sig_filt) {
+      tmp <- cor(sig_filt)
+      return(mean(abs(tmp[upper.tri(tmp)])))
+    }
+  }
+  else if (score == "condition" ) {
+    score_fun <- kappa
+  }
+
+  if (filter == "percent") {
+    incs <- seq(0.001, 1, 0.001)
+    filter_fun <- function(mkrs, inc) { mkrs[1:ceiling(length(mkrs)*inc)] }
+  }
+  else { # Fixed
+    incs <- seq(1, 500, 1)
+    filter_fun <- function(mkrs, inc) { mkrs[1:min(length(mkrs), inc)] }
+  }
+
+  vals <- sapply(incs, function(X) {
+    markers_filt <- lapply(marker_list, filter_fun, X)
+    sig_filt <- signature[unlist(markers_filt),]
+    return(score_fun(sig_filt))
+  })
+
+  ind <- which.min(vals)
+
+  return(incs[ind])
+}
+
+
