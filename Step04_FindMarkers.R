@@ -36,7 +36,7 @@ if ("dtangle" %in% marker_types_run) {
     registerDoParallel(cl)
   }
 
-  source(file.path("functions", "Step03a_FindMarkers_DtangleHSPE.R"))
+  source(file.path("functions", "Step04a_FindMarkers_DtangleHSPE.R"))
   FindMarkers_DtangleHSPE(datasets, granularities, dtangle_input_types)
 
   if (dtangle_do_parallel) {
@@ -50,7 +50,7 @@ if ("dtangle" %in% marker_types_run) {
 # Needs all available CPUs, so this isn't run in parallel.
 
 if ("seurat" %in% marker_types_run) {
-  source(file.path("functions", "Step03b_FindMarkers_Seurat.R"))
+  source(file.path("functions", "Step04b_FindMarkers_Seurat.R"))
   FindMarkers_Seurat(datasets, granularities)
 }
 
@@ -61,6 +61,6 @@ if ("seurat" %in% marker_types_run) {
 # issues with python environments.
 
 if ("autogenes" %in% marker_types_run) {
-  source(file.path("functions", "Step03c_FindMarkers_AutogeneS.R"))
+  source(file.path("functions", "Step04c_FindMarkers_AutogeneS.R"))
   FindMarkers_AutogeneS(datasets, granularities)
 }

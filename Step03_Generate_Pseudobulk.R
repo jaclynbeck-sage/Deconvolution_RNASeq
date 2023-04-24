@@ -33,9 +33,9 @@ library(SingleCellExperiment)
 library(stringr)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
-source(file.path("functions", "Step02a_CreatePseudobulk_ByDonor.R"))
-source(file.path("functions", "Step02b_CreatePseudobulk_PureSamples.R"))
-source(file.path("functions", "Step02c_CreatePseudobulk_Training.R"))
+source(file.path("functions", "Step03a_CreatePseudobulk_ByDonor.R"))
+source(file.path("functions", "Step03b_CreatePseudobulk_PureSamples.R"))
+source(file.path("functions", "Step03c_CreatePseudobulk_Training.R"))
 
 datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
               "seaRef") #, "seaAD")

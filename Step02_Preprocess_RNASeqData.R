@@ -7,7 +7,7 @@ library(Matrix)
 library(SummarizedExperiment)
 library(SingleCellExperiment)
 
-source(file.path("functions", "Step01_Preprocess_HelperFunctions.R"))
+source(file.path("functions", "Step02_Preprocess_HelperFunctions.R"))
 source(file.path("functions", "General_HelperFunctions.R"))
 
 ##### Setup #####
