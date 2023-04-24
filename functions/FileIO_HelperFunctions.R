@@ -366,7 +366,15 @@ Save_AlgorithmOutputList <- function(output_list, algorithm, dataset, datatype, 
 #   output run under different parameter sets
 Load_AlgorithmOutputList <- function(algorithm, dataset, datatype, granularity) {
   list_file_format <- "{algorithm}_list_{dataset}_{datatype}_{granularity}.rds"
-  params_file <- file.path(dir_params_lists, str_glue(list_file_format))
+
+  if (datatype == "ROSMAP") {
+    out_directory <- dir_rosmap
+  }
+  else {
+    out_directory <- dir_params_lists # TODO add Mayo and MSBB
+  }
+
+  params_file <- file.path(out_directory, str_glue(list_file_format))
 
   if (!file.exists(params_file)) {
     print(paste(params_file, "doesn't exist!"))

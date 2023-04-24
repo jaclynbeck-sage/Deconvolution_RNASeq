@@ -6,18 +6,15 @@
 #   2. Ground-truth cell type proportions for select ROSMAP samples, as
 #      determined by IHC on the same tissue as the RNA sequencing samples.
 #
-# For the gene list, we pull 3 sources of data to make sure we have as much
-# coverage as possible: All genes in the current Biomart database, the genes
-# used for ROSMAP/Mayo/MSBB in the RNASeq Harmonization Study, and the genes
-# used for the Mathys data set. The latter two sources contain genes from
-# previous versions of Ensembl, so some symbols are different and some
+# For the gene list, we pull multiple sources of data to make sure we have as
+# much coverage as possible: All genes in the current Biomart database, the
+# genes used for ROSMAP/Mayo/MSBB in the RNASeq Harmonization Study, the genes
+# used for the Mathys data set, and all genes from Ensembl versions 84, 93, 94,
+# and 98, corresponding to the versions used in the single cell data. Some
+# symbols from previous versions of Ensembl are different and some
 # Ensembl IDs exist in those lists that are no longer in Biomart. We merge
-# the three lists by Ensembl ID and create a list of all possible gene symbols
-# associated with each ID.
-# NOTE: Mathys is the only single cell data set to provide the mapping between
-# their gene symbols and Ensembl IDs, so the other single cell data sets may
-# still contain genes not in the created gene list, or have symbols that don't
-# map to the correct Ensembl ID used by their data processing pipeline.
+# the multiple lists by Ensembl ID and create a list of all possible gene
+# symbols associated with each ID.
 #
 # For the cell type proportions, the data was determined from separate stains,
 # so the proportions do not add up to 1 and some cell types are missing from
@@ -28,10 +25,15 @@
 # conversion between percent cells -> percent RNA for deconvolution algorithms
 # that output percent RNA. This conversion is handled downstream.
 
+# TODO compartment specific genes
+
 library(stringr)
 library(biomaRt)
+library(GenomicFeatures)
 library(synapser)
 library(dplyr)
+library(purrr)
+library(rtracklayer)
 source("Filenames.R")
 
 synLogin()
@@ -43,40 +45,83 @@ mart <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
 biomart_genes <- getBM(attributes = c("external_gene_name", "ensembl_gene_id"),
                        mart = mart)
 colnames(biomart_genes) <- c("symbol_Biomart", "ensembl_gene_id")
+biomart_genes <- subset(biomart_genes, symbol_Biomart != "")
+
+dir_gene_files <- file.path(dir_metadata, "gene_files")
+dir.create(dir_gene_files, showWarnings = FALSE)
 
 # Gene conversions used for ROSMAP, Mayo, and MSBB. The files from all three
 # studies (syn27024953, syn27068755, syn26967452) are identical so we just use
 # the one from ROSMAP.
-dir.create(file.path(dir_metadata, "gene_files"), showWarnings = FALSE)
-
-filename <- synGet("syn26967452",
-                   downloadLocation = file.path(dir_metadata, "gene_files"))
+filename <- synGet("syn26967452", downloadLocation = dir_gene_files)
 
 ros_genes <- read.table(filename$path, header = TRUE) %>%
                 select(ensembl_gene_id, hgnc_symbol) %>%
                 rename(symbol_RNASeq = hgnc_symbol)
 
-# Mathys genes
-filename <- synGet("syn18687959",
-                   downloadLocation = file.path(dir_metadata, "gene_files"))
+# Mathys genes -- this is the only single cell data set that provides their own
+# mapping from gene symbol to Ensembl ID
+filename <- synGet("syn18687959", downloadLocation = dir_gene_files)
 
 mathys_genes <- read.table(filename$path, header = FALSE) %>%
                     rename(ensembl_gene_id = V1, symbol_Mathys = V2)
 
+# GRCh38 Ensembl releases 84, 93, 94, and 98
+files <- list("symbol_v98" = c(filename = file.path(dir_gene_files, "Homo_sapiens.GRCh38.98.gtf.gz"),
+                               url = "https://ftp.ensembl.org/pub/release-98/gtf/homo_sapiens/Homo_sapiens.GRCh38.98.gtf.gz"),
+              "symbol_v94" = c(filename = file.path(dir_gene_files, "Homo_sapiens.GRCh38.94.gtf.gz"),
+                               url = "https://ftp.ensembl.org/pub/release-94/gtf/homo_sapiens/Homo_sapiens.GRCh38.94.gtf.gz"),
+              "symbol_v93" = c(filename = file.path(dir_gene_files, "Homo_sapiens.GRCh38.93.gtf.gz"),
+                               url = "https://ftp.ensembl.org/pub/release-93/gtf/homo_sapiens/Homo_sapiens.GRCh38.93.gtf.gz"),
+              "symbol_v84" = c(filename = file.path(dir_gene_files, "Homo_sapiens.GRCh38.84.gtf.gz"),
+                               url = "https://ftp.ensembl.org/pub/release-84/gtf/homo_sapiens/Homo_sapiens.GRCh38.84.gtf.gz"))
+
+gtf_genes <- lapply(names(files), function(version) {
+  file_info <- files[[version]]
+  if (!file.exists(file_info["filename"])) {
+    download.file(file_info["url"], destfile = file_info["filename"],
+                  method = "curl")
+  }
+
+  df <- rtracklayer::import(gzfile(file_info[["filename"]]), format = "gtf") %>%
+    as.data.frame() %>% select(gene_id, gene_name) %>% distinct()
+
+  colnames(df) <- c("ensembl_gene_id", version)
+  return(df)
+})
+
+gtf_genes <- reduce(gtf_genes, full_join, by = "ensembl_gene_id")
+
+# Merge all gene sets together
 all_genes <- merge(biomart_genes, ros_genes,
                    by = "ensembl_gene_id", all = TRUE) %>%
-             merge(mathys_genes, by = "ensembl_gene_id", all = TRUE)
+  merge(gtf_genes, by = "ensembl_gene_id", all = TRUE) %>%
+  merge(mathys_genes, by = "ensembl_gene_id", all = TRUE)
 
-# Combine the separate symbol fields into a string containing all the symbols
-# for each gene.
-combine_symbols <- function(...) {
-  return(paste(unique( na.omit(c(...)) ), collapse = "|"))
+# For each row/gene, take the first non-NA symbol. The symbol columns are
+# ordered left to right in order of priority (1 - Biomart, 2 - RNASeq, 3 - GTF
+# genes in descending version order, 4 - Mathys), so the first entry from
+# c_across with NAs removed will be the highest-priority non-NA gene symbol.
+first_symbol <- function(...) {
+  vec <- c_across(starts_with("symbol_"))
+  return( na.omit(vec)[1] )
 }
 
 all_genes <- all_genes %>% rowwise() %>%
-                mutate(hgnc_symbols = combine_symbols(symbol_Biomart, symbol_RNASeq, symbol_Mathys)) %>%
+                mutate(canonical_symbol = first_symbol()) %>%
                 arrange(ensembl_gene_id) %>% as.data.frame()
 
+# Get exon lengths for each gene
+#tx <- makeTxDbFromEnsembl(organism = "Homo sapiens")
+#ex <- exonsBy(tx, by = "gene")
+#ex <- reduce(ex)
+#exlen <- relist(width(unlist(ex)), ex)
+#exlens <- sapply(exlen, sum)
+#exlens <- data.frame(ensembl_gene_id = names(exlens), length = exlens)
+
+#all_genes <- merge(all_genes, exlens, by = "ensembl_gene_id")
+
+all_genes <- subset(all_genes, !is.na(canonical_symbol))
 write.csv(all_genes, file_gene_list, quote = FALSE, row.names = FALSE)
 
 
@@ -109,6 +154,8 @@ for (i in 2:length(props)) {
 rownames(props_df) <- str_replace(props_df$donor, "X", "")
 props_df <- select(props_df, -donor)
 
+colnames(props_df) <- c("Astro", "Endo", "Micro", "Neuro", "Oligo")
+
 # Save unaltered data to a file for reference
 write.csv(props_df, file = file.path(dir_metadata, "ihc_proportions_unnormalized.csv"),
           quote = FALSE, row.names = TRUE)
@@ -119,8 +166,6 @@ props_df <- props_df[good,]
 
 # Adjust all rows to sum to 1
 props_df <- sweep(props_df, 1, rowSums(props_df), "/")
-
-colnames(props_df) <- c("Astro", "Endo", "Micro", "Neuro", "Oligo")
 
 # Write normalized proportions file
 write.csv(props_df, file = file_rosmap_ihc_proportions,
