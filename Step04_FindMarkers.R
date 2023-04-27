@@ -17,8 +17,7 @@ dtangle_n_cores <- 4
 dtangle_clust_type <- "FORK" # Use PSOCK for non-Unix systems
 
 # Which datasets to run on
-datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
-              "seaRef") #, "seaAD"))
+datasets <- c("cain", "lau", "leng", "mathys", "morabito", "seaRef") #, "seaAD")
 
 # What granularities?
 granularities <- c("broad", "fine")

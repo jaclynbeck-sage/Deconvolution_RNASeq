@@ -34,23 +34,42 @@ FindMarkers_Seurat <- function(datasets, granularities) {
       markers <- FindAllMarkers(seurat, logfc.threshold = 0.5,
                                 only.pos = TRUE, test.use = "MAST",
                                 latent.vars = c("nCount_originalexp"))
-      markers <- subset(markers, p_val_adj <= 0.01)
+      markers <- subset(markers, p_val_adj <= 0.05)
+      dupes <- duplicated(markers$gene)
 
-      # Remove marker genes that are present in more than one cell type, so that
-      # each cell type has a set of unique marker genes
-      dupes <- markers$gene[duplicated(markers$gene)]
-      markers <- subset(markers, !(gene %in% dupes))
+      genes <- unique(markers$gene)
+      avgs <- AverageExpression(seurat, features = genes, slot = "data")
+      avgs <- as.data.frame(avgs[[1]])
+
+      getLog2FC <- function(cols) {
+        sorted <- sort(cols, decreasing = TRUE)
+        return(sorted[1] - sorted[2]) # Log space is subtraction
+      }
+
+      # Mark which cell type has the highest expression for each gene, get the
+      # log2-fold-change between the highest expression and the 2nd-highest
+      # expression for each gene, sort the dataframe with highest log2FC first.
+      avgs2 <- avgs %>% mutate(highest = colnames(avgs)[apply(., 1, which.max)],
+                               log2FC = apply(., 1, getLog2FC),
+                               gene = rownames(.)) %>%
+                subset(log2FC >= 1) %>% arrange(desc(log2FC)) %>%
+                select(gene, highest)
+
+      # Format in a way dtangle/HSPE understand -- one full list containing all
+      # genes, one list with genes which are markers for more than one cell type
+      # filtered out.
+      markers2 <- sapply(colnames(avgs), function(ct) {
+        return(avgs2$gene[avgs2$highest == ct])
+      })
+      markers_filt <- sapply(markers2, function(M) {
+        return(setdiff(M, dupes))
+      })
 
       print(str_glue("Markers for {dataset} / {granularity} cell types:"))
-      print(table(markers$cluster))
+      print(table(avgs2$highest))
 
-      # Format in a way dtangle/hspe understand
-      markers <- markers %>% group_by(cluster) %>% arrange(desc(avg_log2FC))
-
-      markers_list <- sapply(levels(markers$cluster), function(ct) {
-        m <- subset(markers, cluster == ct)
-        return(m$gene)
-      })
+      markers_list <- list("all" = markers2,
+                           "filtered" = markers_filt)
 
       saveRDS(markers_list, file.path(dir_markers,
                                       str_glue("seurat_markers_{dataset}_{granularity}.rds")))

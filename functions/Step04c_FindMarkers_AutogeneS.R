@@ -14,6 +14,7 @@
 library(reticulate)
 library(SingleCellExperiment)
 library(zellkonverter)
+library(dplyr)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
 
@@ -35,7 +36,7 @@ FindMarkers_AutogeneS <- function(datasets, granularities) {
       sc$pp$filter_cells(adata, min_genes=200)
       sc$pp$filter_genes(adata, min_cells=10)
       sc$pp$highly_variable_genes(adata, flavor='seurat_v3', n_top_genes=4000)
-      sc$pp$normalize_total(adata, target_sum=1e4)
+      sc$pp$normalize_total(adata, target_sum=1e6) # cpm
 
       ag$init(adata, use_highly_variable=TRUE, celltype_key='celltype')
       ag$optimize(ngen=5000L, seed=0L, mode='standard', offspring_size=100L,
@@ -59,33 +60,37 @@ FindMarkers_AutogeneS <- function(datasets, granularities) {
 
         # Which cell type has the highest expression for each gene
         maxs <- apply(X, 1, which.max)
-        cts <- sc_means$var_names[maxs-1]$to_list() # 0-index for python
+        log2FC <- apply(log2(X+1), 1, function(row) {
+          sorted <- sort(row, decreasing = TRUE)
+          return(sorted[1]-sorted[2]) # Log space is subtraction
+        })
+
+        markers2 <- data.frame(celltype = sc_means$var_names[maxs-1]$to_list(), # 0-index for python
+                               log2FC = log2FC,
+                               gene = markers) %>%
+                      arrange(desc(log2FC))
+
+        markers_filt <- subset(markers2, log2FC >= 1)
 
         print(str_glue("Markers for {dataset} / {granularity} cell types ({key}):"))
-        print(table(cts))
+        print(table(markers2$celltype))
 
-        # This isn't exactly FC because it uses the mean of means, but it's good
-        # enough for figuring out a relative ordering within each cell type
-        fc <- lapply(1:length(maxs), function(M) {
-          ct <- maxs[M]
-          val1 <- X[M, ct]
-          non_ct <- setdiff(1:ncol(X), ct)
-          val2 <- mean(X[M, non_ct])
-          return(val1 / max(val2, 0.001))
+        markers_list <- sapply(sort(unique(markers2$celltype)), function(ct) {
+          return(markers2$gene[markers2$celltype == ct])
         })
 
-        # Data frame ordered by fold-change -> collapsed to one row per cell type
-        # with a list of genes for each cell type -> dict
-        markers_df <- data.frame("gene" = markers,
-                                 "celltype" = cts,
-                                 "fc" = unlist(fc))
-        markers_df <- markers_df %>% arrange(desc(fc))
-        markers_list <- sapply(sort(unique(markers_df$celltype)), function(ct) {
-          return(markers_df$gene[markers_df$celltype == ct])
+        markers_filt_list <- sapply(markers_list, function(M) {
+          intersect(M, markers_filt$gene)
         })
 
-        saveRDS(markers_list, file.path(dir_markers,
-                                        str_glue("autogenes_markers_{dataset}_{granularity}_{key}.rds")))
+        # Save all the markers just for reference, but we also want a filtered
+        # list with genes where the log2FC between the highest and
+        # second-highest expressing cell type is >= 1
+        list_final <- list("all" = markers_list,
+                           "filtered" = markers_filt_list)
+
+        saveRDS(list_final, file.path(dir_markers,
+                                      str_glue("autogenes_markers_{dataset}_{granularity}_{key}.rds")))
       }
     }
   }

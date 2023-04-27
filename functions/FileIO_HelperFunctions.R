@@ -328,8 +328,9 @@ Save_AlgorithmIntermediate <- function(result, algorithm) {
 #                 which contains output run under different parameter sets
 #   algorithm = the name of the algorithm
 #   dataset = the name of the data set
-#   datatype = either "donors" or "training", to signify if the algorithm was
-#              run on donor or training pseudobulk
+#   datatype = either "donors" or "training", if the algorithm was run on donor
+#              or training pseudobulk, OR one of the bulk data sets ("Mayo",
+#              "MSBB", "ROSMAP")
 #   granularity = either "broad" or "fine", for which level of cell types was
 #                 used for markers and pseudobulk creation.
 #
@@ -338,12 +339,12 @@ Save_AlgorithmIntermediate <- function(result, algorithm) {
 Save_AlgorithmOutputList <- function(output_list, algorithm, dataset, datatype, granularity) {
   list_file_format <- "{algorithm}_list_{dataset}_{datatype}_{granularity}.rds"
 
-  if (datatype == "ROSMAP") {
-    out_directory <- dir_rosmap
-  }
-  else {
-    out_directory <- dir_params_lists # TODO add Mayo and MSBB
-  }
+  out_directory <- switch(datatype,
+                          "Mayo" = dir_mayo_output,
+                          "MSBB" = dir_msbb_output,
+                          "ROSMAP" = dir_rosmap_output,
+                          dir_params_lists
+  )
 
   saveRDS(output_list, file = file.path(out_directory,
                                         str_glue(list_file_format)))
@@ -356,8 +357,9 @@ Save_AlgorithmOutputList <- function(output_list, algorithm, dataset, datatype, 
 # Arguments:
 #   algorithm = the name of the algorithm
 #   dataset = the name of the data set
-#   datatype = either "donors" or "training", to signify if the algorithm was
-#              run on donor or training pseudobulk
+#   datatype = either "donors" or "training", if the algorithm was run on donor
+#              or training pseudobulk, OR one of the bulk data sets ("Mayo",
+#              "MSBB", "ROSMAP")
 #   granularity = either "broad" or "fine", for which level of cell types was
 #                 used for markers and pseudobulk creation.
 #
@@ -367,12 +369,12 @@ Save_AlgorithmOutputList <- function(output_list, algorithm, dataset, datatype, 
 Load_AlgorithmOutputList <- function(algorithm, dataset, datatype, granularity) {
   list_file_format <- "{algorithm}_list_{dataset}_{datatype}_{granularity}.rds"
 
-  if (datatype == "ROSMAP") {
-    out_directory <- dir_rosmap
-  }
-  else {
-    out_directory <- dir_params_lists # TODO add Mayo and MSBB
-  }
+  out_directory <- switch(datatype,
+                          "Mayo" = dir_mayo_output,
+                          "MSBB" = dir_msbb_output,
+                          "ROSMAP" = dir_rosmap_output,
+                          dir_params_lists
+  )
 
   params_file <- file.path(out_directory, str_glue(list_file_format))
 

@@ -37,8 +37,7 @@ source(file.path("functions", "Step03a_CreatePseudobulk_ByDonor.R"))
 source(file.path("functions", "Step03b_CreatePseudobulk_PureSamples.R"))
 source(file.path("functions", "Step03c_CreatePseudobulk_Training.R"))
 
-datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
-              "seaRef") #, "seaAD")
+datasets <- c("cain", "lau", "leng", "mathys", "morabito", "seaRef") #, "seaAD")
 
 for (dataset in datasets) {
   sce <- Load_SingleCell(dataset, "broad", output_type = "counts")
