@@ -8,6 +8,9 @@
 library(Matrix)
 library(stringr)
 library(scuttle)
+library(dplyr)
+library(tidyr)
+library(reshape2)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
 
@@ -75,6 +78,89 @@ Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
   test_obj <- test_obj[genes,]
 
   return(list("reference" = reference_obj, "test" = test_obj))
+}
+
+
+# CreateParams_MarkerTypes - Creates a parameter matrix using tidyr::expand_grid
+# (which can take data frames in the input) that has all variables required for
+# loading different combinations of markers: n_markers, marker_type,
+# marker_subtype, and marker_input_type. Invalid combinations of these variables
+# are removed from the parameter set before returning.
+#
+# Arguments:
+#   n_markers = a vector containing one or more percentages (range 0-1.0) and/or
+#               one or more integers (range 2-Inf) specifying how many markers
+#               per cell type to use.
+#   marker_types = a list where the names of the entries are one of "autogenes",
+#                  "dtangle", or "seurat", and the items in each entry are a
+#                  list of marker subtypes to use for that algorithm. See
+#                  Filter_Signature for more detail. Must be a list and not a
+#                  vector.
+#   marker_input_types = dtangle-specific: a vector of one or all of
+#                        c("singlecell", "pseudobulk") designating whether to
+#                        test dtangle marker sets from singlecell input,
+#                        pseudobulk input, or both
+#
+# Returns:
+#   a tibble containing all possible valid combinations of the arguments
+CreateParams_MarkerTypes <- function(n_markers, marker_types, marker_input_types) {
+  marker_types <- melt(marker_types) %>% dplyr::rename(marker_type = "L1",
+                                                       marker_subtype = "value")
+
+  params <- tidyr::expand_grid(n_markers = n_markers,
+                               marker_types,
+                               marker_input_type = marker_input_types)
+
+  # marker_input_type only applies to dtangle markers
+  params$marker_input_type[params$marker_type != "dtangle"] <- "None"
+
+  params <- params %>% distinct()
+  return(params)
+}
+
+
+# CreateParams_FilterableSignature - Creates a parameter matrix using
+# tidyr::expand_grid (which can take data frames in the input) that has all
+# variables required for filtering a signature matrix: filter_level, n_markers,
+# marker_type, marker_subtype, and marker_input_type. Invalid combinations of
+# these variables are removed from the parameter set before returning.
+#
+# Arguments:
+#   filter_levels = a vector containing one or more filter levels, as used in
+#                   the function Filter_Signature. Options are c(0, 1, 2, 3).
+#   The rest of these arguments are only relevant for filter_level = 3:
+#   n_markers = a vector containing one or more percentages (range 0-1.0) and/or
+#               one or more integers (range 2-Inf) specifying how many markers
+#               per cell type to use.
+#   marker_types = a list where the names of the entries are one of "autogenes",
+#                  "dtangle", or "seurat", and the items in each entry are a
+#                  list of marker subtypes to use for that algorithm. See
+#                  Filter_Signature for more detail. Must be a list and not a
+#                  vector.
+#   marker_input_types = dtangle-specific: a vector of one or all of
+#                        c("singlecell", "pseudobulk") designating whether to
+#                        test dtangle marker sets from singlecell input,
+#                        pseudobulk input, or both
+#
+# Returns:
+#   a tibble containing all possible valid combinations of the arguments
+CreateParams_FilterableSignature <- function(filter_levels, n_markers,
+                                             marker_types, marker_input_types) {
+  params_tmp <- CreateParams_MarkerTypes(n_markers, marker_types,
+                                         marker_input_types)
+
+  params <- tidyr::expand_grid(filter_level = filter_levels,
+                               params_tmp)
+
+  # Some filter_type / n_markers combos are not valid, get rid of them
+  # (filter levels 1 & 2 don't use n_markers or marker_type arguments)
+  low_filt <- params$filter_level < 3
+  params$marker_type[low_filt] <- "None"
+  params$marker_subtype[low_filt] <- "None"
+  params$n_markers[low_filt] <- -1
+
+  params <- params %>% distinct()
+  return(params)
 }
 
 
@@ -306,6 +392,11 @@ FilterSignature <- function(signature, filter_level = 1, reference_data_name = N
     else {
       n_markers <- sapply(lengths(markers), min, filt_percent)
     }
+
+    if (any(n_markers == 0)) {
+      return(NULL)
+    }
+
     markers <- lapply(names(markers), function(N) {
       markers[[N]][1:n_markers[N]]
     })

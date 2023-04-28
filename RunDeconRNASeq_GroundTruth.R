@@ -42,29 +42,18 @@ params_loop1 <- expand_grid(reference_data_name = datasets,
 marker_types <- list("dtangle" = c("diff"), #c("ratio", "diff", "p.value", "regression"),
                      "autogenes" = c("correlation", "distance", "combined"),
                      "seurat" = c("None"))
-marker_types <- melt(marker_types) %>% dplyr::rename(marker_type = "L1",
-                                                     marker_subtype = "value")
 
-params_loop2 <- expand_grid(filter_level = c(0, 1, 2, 3),
-                            n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
-                                          5, 10, 20, 50, 100, 200, 500),
-                            marker_types,
-                            marker_input_type = c("singlecell", "pseudobulk"),
+params_tmp <- CreateParams_FilterableSignature(
+                filter_level = c(0, 1, 2, 3),
+                n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
+                              5, 10, 20, 50, 100, 200, 500),
+                marker_types,
+                marker_input_type = c("singlecell", "pseudobulk")
+)
+
+params_loop2 <- expand_grid(params_tmp,
                             use_scale = c(TRUE, FALSE),
                             recalc_cpm = c(TRUE, FALSE))
-
-# Some filter_type / n_markers combos are not valid, get rid of them
-# (filter levels 1 & 2 don't use n_markers or marker_type arguments)
-low_filt <- params_loop2$filter_level < 3
-params_loop2$marker_type[low_filt] <- "None"
-params_loop2$marker_subtype[low_filt] <- "None"
-params_loop2$n_markers[low_filt] <- -1
-
-# marker_input_type only applies to dtangle markers
-params_loop2$marker_input_type[params_loop2$marker_type != "dtangle"] <- "None"
-
-params_loop2 <- params_loop2 %>% distinct() %>% arrange(filter_level)
-
 
 #### Iterate through parameters ####
 
@@ -111,7 +100,7 @@ for (P in 1:nrow(params_loop1)) {
   Save_AlgorithmOutputList(decon_list, "deconRNASeq", reference_data_name,
                            test_data_name, granularity)
 
-  rm(decon_list)
+  rm(decon_list, data)
   gc()
 }
 

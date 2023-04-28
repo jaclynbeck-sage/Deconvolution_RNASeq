@@ -41,6 +41,22 @@ DeconRNASeq_InnerLoop <- function(signature, bulk_df, params) {
                                     granularity, n_markers, marker_type,
                                     marker_subtype, marker_input_type)
 
+  if (is.null(signature_filt)) {
+    param_set <- paste(params, collapse = "  ")
+    print(c("*** Missing markers for at least one cell type for param set", param_set))
+    print("*** skipping ***")
+    return(NULL)
+  }
+
+  # We want at least ~3 markers per cell type or there isn't enough information
+  # to work from
+  if (nrow(signature_filt) < 3*ncol(signature_filt)) {
+    param_set <- paste(params, collapse = "  ")
+    print(c("*** Too few markers for param set", param_set))
+    print("*** skipping ***")
+    return(NULL)
+  }
+
   # Signature and bulk data should have the same rows post-filtering
   keepgene <- intersect(rownames(signature_filt), rownames(bulk_df))
   bulk_df_filt <- bulk_df[keepgene,]
