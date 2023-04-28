@@ -512,10 +512,7 @@ Load_Markers <- function(dataset, granularity, marker_type, marker_subtype = NUL
   }
 
   markers <- readRDS(file = marker_file)
-
-  if (marker_type == "dtangle") {
-    markers <- markers$filtered #lapply(markers$L, names)
-  }
+  markers <- markers$filtered # All 3 marker types have a 'filtered' list
 
   return(markers)
 }

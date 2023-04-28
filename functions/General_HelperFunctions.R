@@ -11,6 +11,73 @@ library(scuttle)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
 
+# Load_AlgorithmInputData: Ease-of-use function that gets both the reference
+# data and the test data from a set of different formats, and makes sure
+# both data sets have the same genes in the same order.
+#
+# Arguments:
+#   reference_data_name = the name of the reference singlecell data set
+#   test_data_name = the name of the test data set to deconvolve
+#   granularity = either "broad" or "fine", for the level of cell types used
+#   reference_input_type = the type of reference data to load. Options are:
+#                           "singlecell": the full single cell data set as a
+#                                         SingleCellExperiment object
+#                           "pseudobulk": pseudobulked "pure" samples as a
+#                                         SummarizedExperiment object
+#                           "signature": the signature matrix
+#   output_type = if reference_input_type is "singlecell" or "pseudobulk",
+#                 specifies how the counts are transformed:
+#                   "counts" will return raw, unaltered counts
+#                   "cpm" will normalize the counts to counts per million
+#                   "logcpm" will take the log2(cpm) of non-zero cpm entries
+#                   "log1p_cpm" will take the log2(cpm+1) of cpms
+#
+# Returns:
+#   a list with entries "reference" and "test", containing the reference data
+#   and the test data, respectively. Because different algorithms need the
+#   input data in different formats, the objects are returned in the format they
+#   originated in (a SingleCellExperiment, SummarizedExperiment, or matrix)
+#   and it is assumed that the individual algorithms will manipulate the formats
+#   afterward.
+Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
+                                    granularity = "broad",
+                                    reference_input_type = "singlecell",
+                                    output_type = "counts") {
+  # Reference input
+  if (reference_input_type == "singlecell") {
+    reference_obj <- Load_SingleCell(reference_data_name, granularity,
+                                     output_type)
+  }
+  else if (reference_input_type == "pseudobulk") {
+    reference_obj <- Load_PseudobulkPureSamples(reference_data_name,
+                                                granularity, output_type)
+  }
+  else if (reference_input_type == "signature") {
+    reference_obj <- Load_SignatureMatrix(reference_data_name, granularity)
+  }
+  else {
+    print("*** Error: Invalid reference_input_type specified! ***")
+    return(NULL)
+  }
+
+  # Test data
+  if (test_data_name == "donors" | test_data_name == "training") {
+    test_obj <- Load_Pseudobulk(reference_data_name, test_data_name,
+                                granularity, output_type)
+  }
+  # ROSMAP, Mayo, or MSBB
+  else {
+    test_obj <- Load_BulkData(test_data_name, output_type)
+  }
+
+  genes <- intersect(rownames(reference_obj), rownames(test_obj))
+  reference_obj <- reference_obj[genes,]
+  test_obj <- test_obj[genes,]
+
+  return(list("reference" = reference_obj, "test" = test_obj))
+}
+
+
 # CalculatePercentRNA: Calculates the percentage of RNA contributed by each cell
 # type to each sample as:
 #   (sum of RNA counts over all cells of type T in sample S) /
@@ -167,31 +234,46 @@ CalculateSignature <- function(sce, samples, celltypes) {
 #   Filter level 0 = don't filter at all
 #                1 = keep genes where at least one cell type has > 1 cpm
 #                2 = keep genes where at least one cell type has > 10 cpm
-#                3 = use Dtangle-determined markers, and filter the markers
+#                3 = use algorithm-determined markers, and filter the markers
 #                    further to use the top <filt_percent> genes of each cell
-#                    type (Dtangle lists markers in descending order of variance)
+#                    type (markers are in descending order of variance or logFC)
 #
 # Arguments:
 #   signature = signature matrix of cpm values for each gene for each cell type
 #               (rows = genes, columns = cell types)
 #   filter_level = the filter setting to use (range 0-3)
-#   dataset = the data set used to get Dtangle markers. Only applicable if
-#             filter_level = 3.
+#   The rest of the arguments are only used if filter_level == 3:
+#   reference_data_name = the name of the data set used to get markers.
 #   granularity = the level of cell types used ("broad" or "fine") to get
-#                 Dtangle markers. Only applicable if filter_level = 3.
-#   filt_percent = percent of Dtangle markers to keep (range 0-1) OR an integer
+#                 markers.
+#   filt_percent = percent of markers to keep (range 0-1) OR an integer
 #                  describing the number of markers to use per cell type
 #                  (range 2-Inf). For example, passing in 10 will use 10
 #                  markers for each cell type, while passing in 0.5 will use
 #                  50% of each cell type's markers (different number of markers
-#                  per cell type). Only applicable if filter_level = 3.
+#                  per cell type).
+#   marker_type = one of "autogenes", "dtangle", or "seurat", indicating which
+#                 algorithm's marker set to use.
+#   marker_subtype = the subtype of markers to load, specific to the marker_type.
+#                    For dtangle, one of "ratio", "diff", "p.value", or
+#                    "regression", which was used as the input to
+#                    dtangle::find_markers.
+#                    For autogenes, one of "correlation", "distance", or
+#                    "combined", specifying which weighting scheme was used to
+#                    pick markers.
+#                    Seurat doesn't have a subtype so this can be left as NULL.
+#   marker_input_type = for marker_type == "dtangle" only, either "singlecell"
+#                       or "pseudobulk", for which type of input was used to
+#                       generate the markers. For other marker_types, this
+#                       argument is ignored.
 #
 # Returns:
 #   signature matrix containing only the genes that pass the specified filters.
 #   rows = genes, columns = cell types.
-FilterSignature <- function(signature, filter_level = 1, dataset = NULL,
+FilterSignature <- function(signature, filter_level = 1, reference_data_name = NULL,
                             granularity = NULL, filt_percent = 1.0,
-                            marker_type = "dtangle", marker_subtype = "p.value") {
+                            marker_type = "dtangle", marker_subtype = "diff",
+                            marker_input_type = "pseudobulk") {
   # Filter for genes where at least one cell type expresses at > 1 cpm
   if (filter_level == 1) {
     ok <- which(rowSums(signature >= 1) > 0)
@@ -204,19 +286,23 @@ FilterSignature <- function(signature, filter_level = 1, dataset = NULL,
     signature <- signature[ok, ]
   }
 
-  else if (filter_level == 3 & !is.null(dataset) & !is.null(granularity)) {
-    markers <- Load_Markers(dataset, granularity, marker_type, marker_subtype,
-                            input_type = "pseudobulk")
+  # Filter for genes specific to cell-type marker sets
+  else if (filter_level == 3 & !is.null(reference_data_name) & !is.null(granularity)) {
+    markers <- Load_Markers(reference_data_name, granularity, marker_type,
+                            marker_subtype, input_type = marker_input_type)
 
     if (is.null(markers)) {
       return(NULL)
     }
 
+    # Remove genes that don't exist in the signature matrix
     markers <- lapply(markers, function(X) {intersect(X, rownames(signature))})
 
+    # Percentage of each cell type's markers
     if (filt_percent <= 1) {
       n_markers <- ceiling(lengths(markers) * filt_percent)
     }
+    # Fixed number of markers for each cell type
     else {
       n_markers <- sapply(lengths(markers), min, filt_percent)
     }

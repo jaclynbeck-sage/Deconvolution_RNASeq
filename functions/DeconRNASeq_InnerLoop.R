@@ -10,8 +10,9 @@
 #   bulk_df = a data.frame of bulk expression (rows = genes, columns = samples).
 #             Must be a data.frame, not a matrix.
 #   params = a single-row data frame or a named vector/list of parameters
-#            containing the following variables: dataset, granularity,
-#            filter_level, n_markers, marker_type, marker_subtype, and use_scale.
+#            containing the following variables: reference_data_name,
+#            test_data_name, granularity, filter_level, n_markers, marker_type,
+#            marker_subtype, marker_input_type, and use_scale.
 #
 # Returns:
 #   a list containing entries for "out.all" and "out.pca", which are output by
@@ -19,19 +20,26 @@
 DeconRNASeq_InnerLoop <- function(signature, bulk_df, params) {
 
   # Unpack variables for readability, enforce they are the correct types
-  dataset <- params$dataset
+  reference_data_name <- params$reference_data_name
   granularity <- params$granularity
 
   filter_level <- as.numeric( params$filter_level )
   n_markers <- as.numeric( params$n_markers )
   marker_type <- params$marker_type
   marker_subtype <- params$marker_subtype
+  marker_input_type <- params$marker_input_type
   use_scale <- as.logical( params$use_scale )
+  recalc_cpm <- as.logical( params$recalc_cpm )
+
+  if (recalc_cpm) {
+    signature <- as.data.frame(scuttle::calculateCPM(signature))
+    bulk_df <- as.data.frame(scuttle::calculateCPM(bulk_df))
+  }
 
   # Filter signature matrix according to parameters
-  signature_filt <- FilterSignature(signature, filter_level, dataset,
+  signature_filt <- FilterSignature(signature, filter_level, reference_data_name,
                                     granularity, n_markers, marker_type,
-                                    marker_subtype)
+                                    marker_subtype, marker_input_type)
 
   # Signature and bulk data should have the same rows post-filtering
   keepgene <- intersect(rownames(signature_filt), rownames(bulk_df))

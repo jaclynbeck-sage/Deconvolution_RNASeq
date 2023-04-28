@@ -9,12 +9,14 @@
 # change the inner foreach loop's "%dopar%" to "%do%".
 
 library(dplyr)
+library(tidyr)
 library(foreach)
 library(doParallel)
 library(SummarizedExperiment)
 library(stringr)
+library(reshape2)
 
-source(file.path("functions", "FileIO_HelperFunctions.R"))
+source(file.path("functions", "General_HelperFunctions.R"))
 
 ##### Parallel execution setup #####
 
@@ -22,38 +24,34 @@ source(file.path("functions", "FileIO_HelperFunctions.R"))
 #       so only use ~half the cores available on the machine.
 # NOTE: "FORK" is more memory-efficient but only works on Unix systems. For
 #       other systems, use "PSOCK" and reduce the number of cores.
-cores <- 2
+cores <- 8
 cl <- makeCluster(cores, type = "FORK", outfile = "")
 registerDoParallel(cl)
 
 # Libraries that need to be loaded into each parallel environment
-required_libraries <- c("DeconRNASeq")
+required_libraries <- c("DeconRNASeq", "scuttle")
 
 #### Parameter setup #####
 
-datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "morabito",
-              "seaRef") #, "seaAD")
+datasets <- c("cain", "lau", "leng", "mathys", "morabito", "seaRef") #, "seaAD")
 
-params_loop1 <- expand.grid(dataset = datasets,
-                            datatype = c("donors", "training"),
-                            granularity = c("broad", "fine"),
-                            stringsAsFactors = FALSE) %>% arrange(datatype)
+params_loop1 <- expand_grid(reference_data_name = datasets,
+                            test_data_name = c("Mayo", "MSBB", "ROSMAP"), #c("donors", "training"),
+                            granularity = c("broad")) %>% arrange(test_data_name)
 
-params_loop2 <- expand.grid(filter_level = c(0, 1, 2, 3),
-                            n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
-                                          10, 20, 50, 100, 200, 500),
-                            marker_type = c("dtangle", "autogenes", "seurat"),
-                            use_scale = c(TRUE, FALSE),
-                            stringsAsFactors = FALSE)
-
-marker_types <- list("dtangle" = c("ratio", "diff", "p.value", "regression"),
+marker_types <- list("dtangle" = c("diff"), #c("ratio", "diff", "p.value", "regression"),
                      "autogenes" = c("correlation", "distance", "combined"),
                      "seurat" = c("None"))
-marker_types <- do.call(rbind, lapply(names(marker_types), function(N) {
-  data.frame(marker_type = N, marker_subtype = marker_types[[N]])
-}))
+marker_types <- melt(marker_types) %>% dplyr::rename(marker_type = "L1",
+                                                     marker_subtype = "value")
 
-params_loop2 <- merge(params_loop2, marker_types, by = "marker_type")
+params_loop2 <- expand_grid(filter_level = c(0, 1, 2, 3),
+                            n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
+                                          5, 10, 20, 50, 100, 200, 500),
+                            marker_types,
+                            marker_input_type = c("singlecell", "pseudobulk"),
+                            use_scale = c(TRUE, FALSE),
+                            recalc_cpm = c(TRUE, FALSE))
 
 # Some filter_type / n_markers combos are not valid, get rid of them
 # (filter levels 1 & 2 don't use n_markers or marker_type arguments)
@@ -62,24 +60,26 @@ params_loop2$marker_type[low_filt] <- "None"
 params_loop2$marker_subtype[low_filt] <- "None"
 params_loop2$n_markers[low_filt] <- -1
 
+# marker_input_type only applies to dtangle markers
+params_loop2$marker_input_type[params_loop2$marker_type != "dtangle"] <- "None"
+
 params_loop2 <- params_loop2 %>% distinct() %>% arrange(filter_level)
 
 
 #### Iterate through parameters ####
 
 for (P in 1:nrow(params_loop1)) {
-  dataset <- params_loop1$dataset[P]
-  datatype <- params_loop1$datatype[P]
+  reference_data_name <- params_loop1$reference_data_name[P]
+  test_data_name <- params_loop1$test_data_name[P]
   granularity <- params_loop1$granularity[P]
 
-  # Input data
-  signature <- Load_SignatureMatrix(dataset, granularity)
-  signature <- as.data.frame(signature)
+  data <- Load_AlgorithmInputData(reference_data_name, test_data_name,
+                                  granularity,
+                                  reference_input_type = "signature",
+                                  output_type = "cpm")
 
-  # Test data
-  pseudobulk <- Load_Pseudobulk(dataset, datatype, granularity, output_type = "cpm")
-  pseudobulk <- assay(pseudobulk, "counts")
-  pseudobulk <- as.data.frame(as.matrix(pseudobulk))
+  data$reference <- as.data.frame(data$reference)
+  data$test <- as.data.frame(assay(data$test, "counts"))
 
   ##### Filter levels, number of markers, and DeconRNASeq arguments #####
   # NOTE: the helper functions have to be sourced inside the foreach loop
@@ -91,7 +91,7 @@ for (P in 1:nrow(params_loop1)) {
     source(file.path("functions", "General_HelperFunctions.R"))
 
     set.seed(12345)
-    res <- DeconRNASeq_InnerLoop(signature, pseudobulk,
+    res <- DeconRNASeq_InnerLoop(data$reference, data$test,
                                  cbind(params_loop1[P,], params_loop2[R,]))
 
     Save_AlgorithmIntermediate(res, "deconRNASeq")
@@ -103,12 +103,13 @@ for (P in 1:nrow(params_loop1)) {
   decon_list <- decon_list[lengths(decon_list) > 0]
 
   names(decon_list) <- paste0("deconRNASeq_",
-                              str_glue("{dataset}_{datatype}_{granularity}_"),
+                              str_glue("{reference_data_name}_{test_data_name}_{granularity}_"),
                               1:length(decon_list))
 
   # Save the completed list
-  print(str_glue("Saving final list for {dataset} {datatype} {granularity}..."))
-  Save_AlgorithmOutputList(decon_list, "deconRNASeq", dataset, datatype, granularity)
+  print(str_glue("Saving final list for {reference_data_name} {test_data_name} {granularity}..."))
+  Save_AlgorithmOutputList(decon_list, "deconRNASeq", reference_data_name,
+                           test_data_name, granularity)
 
   rm(decon_list)
   gc()
