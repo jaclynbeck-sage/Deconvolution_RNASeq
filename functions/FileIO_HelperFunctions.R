@@ -4,6 +4,8 @@ library(SummarizedExperiment)
 library(SingleCellExperiment)
 library(scuttle)
 library(stringr)
+library(DESeq2)
+library(preprocessCore)
 source("Filenames.R")
 
 ##### Single cell / Pseudobulk objects #####
@@ -16,12 +18,9 @@ source("Filenames.R")
 #   dataset = the name of the data set to load in
 #   granularity = either "broad" or "fine", for which level of cell types to
 #                 use in the metadata
-#   output_type = either "counts", "cpm", "logcpm", or "log1p_cpm" to determine
-#                  how the counts are transformed:
-#                   "counts" will return raw, unaltered counts
-#                   "cpm" will normalize the counts to counts per million
-#                   "logcpm" will take the log2(cpm) of non-zero cpm entries
-#                   "log1p_cpm" will take the log2(cpm+1) of cpms
+#   output_type = one of "counts", "vst", "cpm", "tmm", "log_cpm", "log_tmm",
+#                 "qn_cpm", "qn_tmm", "qn_log_cpm", or "qn_log_tmm". See
+#                 Load_CountsFile for description.
 #
 # Returns:
 #   a SingleCellExperiment object that is the exact same as what was read from
@@ -47,6 +46,7 @@ Load_SingleCell <- function(dataset, granularity, output_type = "counts") {
   return(singlecell)
 }
 
+
 # Load_PseudobulkPureSamples: reads a SummarizedExperiment data set from a file
 # and transforms the counts according to output_type. Pure sample pseudobulk-
 # specific wrapper function for Load_CountsFile.
@@ -55,19 +55,14 @@ Load_SingleCell <- function(dataset, granularity, output_type = "counts") {
 #   dataset = the name of the data set to load in
 #   granularity = either "broad" or "fine", for which level of cell types to
 #                 load in.
-#   output_type = either "counts", "cpm", "logcpm", or "log1p_cpm" to determine
-#                 how the counts are transformed:
-#                   "counts" will return raw, unaltered counts
-#                   "cpm" will normalize the counts to counts per million
-#                   "logcpm" will take the log2(cpm) of non-zero cpm entries
-#                   "log1p_cpm" will take the log2(cpm+1) of cpms
+#   output_type = one of "counts", "vst", "cpm", "tmm", "log_cpm", "log_tmm",
+#                 "qn_cpm", "qn_tmm", "qn_log_cpm", or "qn_log_tmm". See
+#                 Load_CountsFile for description.
 #
 # Returns:
 #   a SummarizedExperiment object that is the exact same as what was read from
 #   the file, except that the "counts" slot is set with the transformed values
-#   if applicable. It also gets colData set to a DataFrame containing one column
-#   for "celltype", which is populated with cell type assignments, which can be
-#   extracted from the sample names in the data set.
+#   if applicable.
 Load_PseudobulkPureSamples <- function(dataset, granularity, output_type = "counts") {
   pb_file <- str_glue(paste0("pseudobulk_{dataset}_puresamples_",
                              "{granularity}.rds"))
@@ -106,12 +101,9 @@ Save_PseudobulkPureSamples <- function(se, dataset, granularity) {
 #               load in.
 #   granularity = either "broad" or "fine", for which level of cell types to
 #                 load in.
-#   output_type = either "counts", "cpm", "logcpm", or "log1p_cpm to determine
-#                 how the counts are transformed:
-#                   "counts" will return raw, unaltered counts
-#                   "cpm" will normalize the counts to counts per million
-#                   "logcpm" will take the log2(cpm) of non-zero cpm entries
-#                   "log1p_cpm" will take the log2(cpm+1) of cpms
+#   output_type = one of "counts", "vst", "cpm", "tmm", "log_cpm", "log_tmm",
+#                 "qn_cpm", "qn_tmm", "qn_log_cpm", or "qn_log_tmm". See
+#                 Load_CountsFile for description.
 #
 # Returns:
 #   a SummarizedExperiment object that is the exact same as what was read from
@@ -151,12 +143,23 @@ Save_Pseudobulk <- function(se, dataset, data_type, granularity) {
 #
 # Arguments:
 #   filename = the name of of the file to read in, including file path
-#   output_type = either "counts", "cpm", "logcpm", or "log1p_cpm" to determine
-#                 how the counts are transformed:
+#   output_type = one of "counts", "vst", "cpm", "tmm", "log_cpm", "log_tmm",
+#                 "qn_cpm", "qn_tmm", "qn_log_cpm", or "qn_log_tmm":
 #                   "counts" will return raw, unaltered counts
+#                   "vst" will return the variance stabilized transform of the
+#                         counts, using DESeq2::vst()
 #                   "cpm" will normalize the counts to counts per million
-#                   "logcpm" will take the log2(cpm) of non-zero cpm entries
-#                   "log1p_cpm" will take the log2(cpm+1) of cpms
+#                   "tmm" will normalize using TMM factors from edgeR
+#                   "log_cpm" will take the log2(cpm+1)
+#                   "log_tmm" will take the log2(cpm+1)
+#                   "qn_cpm" will quantile normalize cpms
+#                   "qn_tmm" will quantile normalize tmms
+#                   "qn_log_cpm" will quantile normalize log_cpm values
+#                   "qn_log_tmm" will quantile normalize log_tmm values
+#                 Quantile normalization is done by diagnosis (bulk) or
+#                 diagnosis + celltype (single cell), where the expression data
+#                 is split by those categories, quantile normalized within each
+#                 category, and re-combined.
 #
 # Returns:
 #   a SummarizedExperiment or SingleCellExperiment object that is the exact same
@@ -177,9 +180,16 @@ Load_CountsFile <- function(filename, output_type) {
     return(NULL)
   }
 
-  if (!(output_type %in% c("counts", "cpm", "logcpm", "log1p_cpm"))) {
-    print(paste0("Error! output_type should be either \"counts\", \"cpm\",",
-                 "\"logcpm\", or \"log1p_cpm\"."))
+  output_opts <- expand.grid(norm = c("cpm", "tmm"),
+                             log = c("", "log_"),
+                             qn = c("", "qn_"))
+  output_opts <- c("counts", "vst",
+                   paste0(output_opts$qn, output_opts$log, output_opts$norm))
+
+  if (!(output_type %in% output_opts)) {
+    print(paste0("Error! output_type should be one of 'counts', 'vst', 'cpm', ",
+                 "'tmm', 'log_cpm', 'log_tmm', 'qn_cpm', 'qn_tmm', ",
+                 "'qn_log_cpm', or 'qn_log_tmm'."))
     return(NULL)
   }
 
@@ -197,31 +207,58 @@ Load_CountsFile <- function(filename, output_type) {
     return(se_obj)
   }
 
-  # The other three output_types all need CPM calculation
-  cpms <- calculateCPM(se_obj)
+  # VST returns log2-scale values
+  # TODO this doesn't work on single cell data
+  if (output_type == "vst") {
+    norm_counts <- DESeqDataSetFromMatrix(assay(se_obj, "counts"),
+                                          colData(se_obj),
+                                          design = ~1)
+    norm_counts <- vst(norm_counts)
+    assays(se_obj)[["counts"]] <- assay(norm_counts)
+    return(se_obj)
+  }
 
-  # Log2 of non-zero entries, no pseudocount
-  if (output_type == "logcpm") {
-    if (is(cpms, "matrix")) {
-      cpms[cpms != 0] <- log2(cpms[cpms != 0])
-    }
-    else { # Sparse matrix
-      cpms@x <- log2(cpms@x)
-    }
+  # The remaining output_types all need CPM or TMM
+  norm_counts <- calculateCPM(se_obj)
+
+  if (grepl("tmm", output_type)) {
+    # This is equivalent to counts * 1e6 / (libSize * tmm).
+    # Since norm_counts is already (counts * 1e6 / libSize), calling this
+    # function just divides by tmm, preserving sparse matrices.
+    norm_counts <- normalizeCounts(norm_counts, se_obj$tmm_factors,
+                                   log = FALSE, center.size.factors = FALSE)
   }
 
   # log2(x+1)
-  if (output_type == "log1p_cpm") {
-    if (is(cpms, "matrix")) {
-      cpms <- log2(cpms + 1)
+  if (grepl("log", output_type)) {
+    if (is(norm_counts, "matrix")) {
+      norm_counts <- log2(norm_counts + 1)
     }
     else { # Sparse matrix
-      cpms@x <- log2(cpms@x+1)
+      norm_counts@x <- log2(norm_counts@x+1)
     }
   }
 
-  # Replace raw counts with 'cpms', which is either CPMs or log2 values
-  assays(se_obj)[["counts"]] <- cpms
+  # Quantile normalize by class. For bulk data this is by diagnosis. For
+  # single cell data this is by cell type and diagnosis.
+  if (grepl("qn", output_type)) {
+    metadata <- colData(se_obj)
+    if ("celltype" %in% colnames(colData(se_obj))) {
+      metadata$group <- paste(metadata$celltype, metadata$diagnosis)
+    }
+    else {
+      metadata$group <- metadata$diagnosis
+    }
+
+    lapply(unique(metadata$group), function(G) {
+      sub <- subset(metadata, group == G)
+      q <- normalize.quantiles(norm_counts[,rownames(sub)], copy = FALSE)
+      norm_counts[,rownames(sub)] <- as(q, "CsparseMatrix")
+    })
+  }
+
+  # Replace raw counts with the normalized counts
+  assays(se_obj)[["counts"]] <- norm_counts
   return(se_obj)
 }
 
@@ -230,11 +267,9 @@ Load_CountsFile <- function(filename, output_type) {
 
 # Arguments:
 #   dataset = the name of the dataset ("ROSMAP", "Mayo", or "MSBB")
-#   output_type = either "counts", "cpm", or "logcpm", to determine how the
-#                 counts are transformed:
-#                   "counts" will return raw, unaltered counts
-#                   "cpm" will normalize the counts to counts per million
-#                   "logcpm" will take the log2(cpm)
+#   output_type = one of "counts", "vst", "cpm", "tmm", "log_cpm", "log_tmm",
+#                 "qn_cpm", "qn_tmm", "qn_log_cpm", or "qn_log_tmm". See
+#                 Load_CountsFile for description.
 Load_BulkData <- function(dataset, output_type = "counts") {
   bulk_file <- str_glue(paste0("{dataset}_se.rds"))
   bulk_file <- file.path(dir_input, bulk_file)
@@ -327,19 +362,23 @@ Save_AlgorithmIntermediate <- function(result, algorithm) {
 #   output_list = a list of outputs from one of the deconvolution algorithms,
 #                 which contains output run under different parameter sets
 #   algorithm = the name of the algorithm
-#   dataset = the name of the data set
-#   datatype = either "donors" or "training", if the algorithm was run on donor
-#              or training pseudobulk, OR one of the bulk data sets ("Mayo",
-#              "MSBB", "ROSMAP")
+#   reference_dataset = the name of the reference data set
+#   test_dataset = either "donors" or "training", if the algorithm was run on
+#                  donor or training pseudobulk, OR one of the bulk data sets
+#                  ("Mayo", "MSBB", "ROSMAP")
 #   granularity = either "broad" or "fine", for which level of cell types was
 #                 used for markers and pseudobulk creation.
+#   normalization = the normalization strategy used. Same as the 'output_type'
+#                   argument to Load_CountsFile.
 #
 # Returns:
 #   Nothing
-Save_AlgorithmOutputList <- function(output_list, algorithm, dataset, datatype, granularity) {
-  list_file_format <- "{algorithm}_list_{dataset}_{datatype}_{granularity}.rds"
+Save_AlgorithmOutputList <- function(output_list, algorithm, reference_dataset,
+                                     test_dataset, granularity, normalization) {
+  list_file_format <- paste0("estimates_{algorithm}_{reference_dataset}_",
+                             "{test_dataset}_{granularity}_{normalization}.rds")
 
-  out_directory <- switch(datatype,
+  out_directory <- switch(test_dataset,
                           "Mayo" = dir_mayo_output,
                           "MSBB" = dir_msbb_output,
                           "ROSMAP" = dir_rosmap_output,
@@ -356,20 +395,24 @@ Save_AlgorithmOutputList <- function(output_list, algorithm, dataset, datatype, 
 #
 # Arguments:
 #   algorithm = the name of the algorithm
-#   dataset = the name of the data set
-#   datatype = either "donors" or "training", if the algorithm was run on donor
-#              or training pseudobulk, OR one of the bulk data sets ("Mayo",
-#              "MSBB", "ROSMAP")
+#   reference_dataset = the name of the reference data set
+#   test_dataset = either "donors" or "training", if the algorithm was run on
+#                  donor or training pseudobulk, OR one of the bulk data sets
+#                  ("Mayo", "MSBB", "ROSMAP")
 #   granularity = either "broad" or "fine", for which level of cell types was
 #                 used for markers and pseudobulk creation.
+#   normalization = the normalization strategy used. Same as the 'output_type'
+#                   argument to Load_CountsFile.
 #
 # Returns:
 #   a list of outputs from one of the deconvolution algorithms, which contains
 #   output run under different parameter sets
-Load_AlgorithmOutputList <- function(algorithm, dataset, datatype, granularity) {
-  list_file_format <- "{algorithm}_list_{dataset}_{datatype}_{granularity}.rds"
+Load_AlgorithmOutputList <- function(algorithm, reference_dataset, test_dataset,
+                                     granularity, normalization) {
+  list_file_format <- paste0("estimates_{algorithm}_{reference_dataset}_",
+                             "{test_dataset}_{granularity}_{normalization}.rds")
 
-  out_directory <- switch(datatype,
+  out_directory <- switch(test_dataset,
                           "Mayo" = dir_mayo_output,
                           "MSBB" = dir_msbb_output,
                           "ROSMAP" = dir_rosmap_output,

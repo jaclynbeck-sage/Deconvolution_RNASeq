@@ -6,6 +6,7 @@
 library(Matrix)
 library(SummarizedExperiment)
 library(SingleCellExperiment)
+library(edgeR)
 
 source(file.path("functions", "Step02_Preprocess_HelperFunctions.R"))
 source(file.path("functions", "General_HelperFunctions.R"))
@@ -103,6 +104,16 @@ for (dataset in datasets) {
   for (col in colnames(metadata)) {
     metadata[,col] = factor(metadata[,col])
   }
+
+  # TMM normalization factors -- unfortunately will convert to dense matrix
+  if (is_singlecell(dataset)) {
+    tmm <- calcNormFactors(counts, method = "TMMwsp")
+  }
+  else {
+    tmm <- calcNormFactors(counts, method = "TMM")
+  }
+  gc()
+  metadata$tmm_factors <- tmm
 
   ##### Bulk data -- create SummarizedExperiment and save #####
 

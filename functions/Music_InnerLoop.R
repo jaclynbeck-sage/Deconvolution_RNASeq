@@ -29,6 +29,7 @@ Music_InnerLoop <- function(sce, bulk_mtx, A, params) {
   marker_type <- params$marker_type
   marker_subtype <- params$marker_subtype
   marker_input_type <- params$marker_input_type
+  marker_order <- params$marker_order
 
   ct_cov <- as.logical( params$ct.cov )
   centered <- as.logical( params$centered )
@@ -37,7 +38,7 @@ Music_InnerLoop <- function(sce, bulk_mtx, A, params) {
   # We can use the FilterSignature function to get the list of genes to use
   tmp <- FilterSignature(bulk_mtx[,1:2], filter_level, reference_data_name,
                          granularity, n_markers, marker_type, marker_subtype,
-                         marker_input_type)
+                         marker_input_type, marker_order, bulk_mtx)
 
   if (is.null(tmp)) {
     param_set <- paste(params, collapse = "  ")
@@ -64,7 +65,7 @@ Music_InnerLoop <- function(sce, bulk_mtx, A, params) {
     result <- music_prop(bulk.mtx = bulk_mtx, sc.sce = sce,
                          markers = markers_use,
                          clusters = "celltype",
-                         samples = "donor", verbose = TRUE,
+                         samples = "donor", verbose = FALSE,
                          ct.cov = ct_cov, centered = centered,
                          normalize = normalize)
 
@@ -80,6 +81,7 @@ Music_InnerLoop <- function(sce, bulk_mtx, A, params) {
     result$Est.pctRNA.allgene <- ConvertPropCellsToPctRNA(result$Est.prop.allgene, A)
 
     result$params <- params
+    result$markers <- markers_use
     print(paste(result$params, collapse = "  "))
 
     return(result)

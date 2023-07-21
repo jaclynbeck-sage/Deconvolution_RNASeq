@@ -28,6 +28,7 @@ DeconRNASeq_InnerLoop <- function(signature, bulk_df, params) {
   marker_type <- params$marker_type
   marker_subtype <- params$marker_subtype
   marker_input_type <- params$marker_input_type
+  marker_order <- params$marker_order
   use_scale <- as.logical( params$use_scale )
   recalc_cpm <- as.logical( params$recalc_cpm )
 
@@ -39,7 +40,8 @@ DeconRNASeq_InnerLoop <- function(signature, bulk_df, params) {
   # Filter signature matrix according to parameters
   signature_filt <- FilterSignature(signature, filter_level, reference_data_name,
                                     granularity, n_markers, marker_type,
-                                    marker_subtype, marker_input_type)
+                                    marker_subtype, marker_input_type, marker_order,
+                                    bulk_df)
 
   if (is.null(signature_filt)) {
     param_set <- paste(params, collapse = "  ")
@@ -69,6 +71,7 @@ DeconRNASeq_InnerLoop <- function(signature, bulk_df, params) {
 
     rownames(res$out.all) <- colnames(bulk_df_filt)
     res$params <- params
+    res$markers <- rownames(signature_filt)
 
     print(paste(res$params, collapse = "  "))
     return(res)

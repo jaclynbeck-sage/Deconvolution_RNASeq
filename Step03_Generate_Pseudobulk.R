@@ -31,6 +31,8 @@ library(Matrix)
 library(SummarizedExperiment)
 library(SingleCellExperiment)
 library(stringr)
+library(dplyr)
+library(edgeR)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
 source(file.path("functions", "Step03a_CreatePseudobulk_ByDonor.R"))
@@ -48,6 +50,8 @@ for (dataset in datasets) {
 
   print(str_glue("{dataset}: creating pseudobulk pure samples..."))
   CreatePseudobulk_PureSamples(counts(sce), metadata, dataset)
+
+  next
 
   for (granularity in c("broad", "fine")) {
     print(str_glue("{dataset}: creating pseudobulk training set for {granularity} cell types..."))
@@ -116,8 +120,10 @@ for (dataset in datasets) {
     pctRNA <- do.call(rbind, pctRNA)
 
     pseudobulk <- as(pseudobulk, "matrix")
+    tmm <- calcNormFactors(pseudobulk, method = "TMMwsp")
 
     se <- SummarizedExperiment(assays = SimpleList(counts = pseudobulk),
+                               colData = data.frame(tmm_factors = tmm),
                                metadata = list("propCells" = propCells,
                                                "pctRNA" = pctRNA))
 

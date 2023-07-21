@@ -1,23 +1,25 @@
-DtangleHSPE_InnerLoop <- function(Y, pure_samples, params, algorithm, limit_n_markers = FALSE) {
-  dataset <- params$dataset
+DtangleHSPE_InnerLoop <- function(Y, pure_samples, params, algorithm,
+                                  limit_n_markers = FALSE) {
+  reference_data_name <- params$reference_data_name
   granularity <- params$granularity
-  input_type <- params$input_type
+  reference_input_type <- params$reference_input_type
   marker_input_type <- params$marker_input_type
 
   marker_type <- params$marker_type
   marker_subtype <- params$marker_subtype
-  n_markers <- params$n_markers
+  n_markers <- as.numeric( params$n_markers )
+  marker_order <- params$marker_order
 
   # "p.value" and "regression" aren't feasible for single cell input
-  if (input_type == "singlecell" & marker_type == "dtangle") {
+  if (marker_input_type == "singlecell" & marker_type == "dtangle") {
     if (marker_subtype == "p.value" | marker_subtype == "regression") {
       print(str_glue("*** Skipping combination singlecell / dtangle / {marker_subtype}"))
       return(NULL)
     }
   }
 
-  markers <- Load_Markers(dataset, granularity, marker_type, marker_subtype,
-                          marker_input_type)
+  markers <- Load_Markers(reference_data_name, granularity, marker_type,
+                          marker_subtype, marker_input_type)
 
   markers <- lapply(markers, function(X) {intersect(X, colnames(Y))})
 
@@ -28,22 +30,18 @@ DtangleHSPE_InnerLoop <- function(Y, pure_samples, params, algorithm, limit_n_ma
     return(NULL)
   }
 
+  if (marker_order == "correlation") {
+    markers <- OrderMarkers_ByCorrelation(markers, t(Y[-unlist(pure_samples),]))
+  }
+
   n_markers_orig <- n_markers
   n_markers <- Get_NMarkers(markers, n_markers_orig)
 
   if (limit_n_markers) {
-    # For whole-number n_markers arguments, the n_markers argument (mostly)
-    # doubles each time. If there aren't enough markers in each cell type to do
-    # anything new with this n_markers value, skip testing.
-    if (is.vector(n_markers) & all(n_markers <= (n_markers_orig/2))) {
-      print(str_glue("*** Skipping n_markers {n_markers_orig}: Not enough total markers. ***"))
-      return(NULL)
-    }
-    # Early testing showed it's not useful to use a large number of markers, so
-    # if the total markers used is > 5000, don't test.
-    if ( (is.vector(n_markers) & (sum(n_markers) > 5000)) |
-         (!is.vector(n_markers) & (sum(lengths(markers) * n_markers) > 5000)) ) {
-      print(str_glue("*** Skipping n_markers {n_markers_orig}: Marker set too large. ***"))
+    err_string <- str_glue("*** Skipping {marker_type} / {marker_subtype} / {n_markers_orig}: ")
+    ok <- Check_NMarkers(n_markers_orig, n_markers, err_string)
+
+    if (ok == FALSE) {
       return(NULL)
     }
   }
@@ -77,11 +75,12 @@ DtangleHSPE_InnerLoop <- function(Y, pure_samples, params, algorithm, limit_n_ma
                    seed = 12345)
 
     # Get rid of "diag" (index 5), which is huge and unneeded
-    result <- result[1:4]
+    result <- result %>% select(-diag)
   }
 
   # Add the params we used to generate this run
   result$params <- params
+  result$markers <- unlist(result$markers)
   print(paste(result$params, collapse = "  "))
 
   return(result)

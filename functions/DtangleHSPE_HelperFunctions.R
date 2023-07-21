@@ -2,66 +2,49 @@
 # help clear up clutter in the main algorithm script and make it clearer
 # what is happening there.
 
-source(file.path("functions", "FileIO_HelperFunctions.R"))
+source(file.path("functions", "General_HelperFunctions.R"))
 
 # Get_DtangleHSPEInput: loads in single cell or pseudobulk pure sample data as
 # the reference set, loads in the test pseudobulk data, and combines the
 # reference and test data in the format dtangle/hspe expects.
 #
 # Arguments:
-#   dataset = the name of the data set to load
-#   datatype = either "donors" or "training", for which type of test pseudobulk
-#              data to load
+#   reference_data_name = the name of the data set to load
+#   test_data_name = either "donors" or "training", for testing on pseudobulk
+#                    data, or one of "Mayo", "MSBB", or "ROSMAP" to test on
+#                    bulk data
 #   granularity = either "broad" or "fine", for which level of cell types to
 #                 use as the reference
-#   input_type = either "singlecell" or "pseudobulk", for whether the reference
-#                data is single cell data or pseudobulk pure samples
+#   reference_input_type = either "singlecell" or "pseudobulk", for whether the
+#                          reference data is single cell data or pseudobulked
+#                          pure samples
 #
 # Returns:
 #   a list with entries for "Y", which is the combined reference + test data,
 #   and "pure_samples", which is a list of indices into Y that correspond to
 #   samples from each cell type.
-Get_DtangleHSPEInput <- function(dataset, datatype, granularity, input_type) {
+Get_DtangleHSPEInput <- function(reference_data_name, test_data_name,
+                                 granularity, reference_input_type, normalization) {
 
-  ##### Reference data set #####
-  if (input_type == "singlecell") {
-    input_obj <- Load_SingleCell(dataset, granularity, output_type = "logcpm")
-  }
-  else { # Input is pseudobulk pure samples
-    input_obj <- Load_PseudobulkPureSamples(dataset, granularity,
-                                            output_type = "logcpm")
-  }
-
-  input_mat <- assay(input_obj, "counts")
-  metadata <- colData(input_obj)
+  data <- Load_AlgorithmInputData(reference_data_name, test_data_name,
+                                  granularity, reference_input_type,
+                                  output_type = normalization)
 
   ##### Get indices of pure samples #####
+  metadata <- colData(data$reference)
+
   celltypes <- levels(metadata$celltype)
   pure_samples <- lapply(celltypes, function(ct) {
     which(metadata$celltype == ct)
   })
   names(pure_samples) <- celltypes
 
-  ##### Test data #####
-
-  # Ground truth pseudobulk sets
-  if (datatype == "donors" | datatype == "training") {
-    pseudobulk <- Load_Pseudobulk(dataset, datatype, granularity, "logcpm")
-    bulk_mat <- assay(pseudobulk, "counts")
-  }
-  # ROSMAP, Mayo, or MSBB
-  else {
-    bulk_mat <- Load_BulkData(datatype, output_type = "logcpm")
-    bulk_mat <- assay(bulk_mat, "counts")
-  }
-
-  keepgene <- intersect(rownames(input_mat), rownames(bulk_mat))
+  data$reference <- assay(data$reference, "counts")
+  data$test <- as(assay(data$test, "counts"), "matrix")
 
   # Pre-combine matrices so this isn't repeatedly done on every dtangle call.
   # Input data must be first so indices in pure_samples are correct.
-  Y <- t(cbind(input_mat[keepgene,],
-               bulk_mat[keepgene,]))
-
+  Y <- t(cbind(data$reference, data$test))
   return(list("Y" = Y, "pure_samples" = pure_samples))
 }
 
@@ -120,19 +103,66 @@ Get_SumFn <- function(sum_fn_type) {
 #               markers for each cell type (or less, if a cell type has fewer)
 #
 # Returns:
-#   a single number (for fraction) or a vector of whole numbers (for "all
-#   markers" or "same number of markers" conditions)
+#   a vector of whole numbers with the length of each marker list. If n_markers
+#   was a fraction, this fraction is converted to an integer number of markers
+#   for each cell type. This is done because the dtangle/HSPE code rounds DOWN
+#   for fractional numbers of markers, which can sometimes result in 0 markers
+#   for a cell type.
 Get_NMarkers <- function(markers, n_markers) {
   n_markers_new <- n_markers
 
-  # dtangle/hspe don't interpret "1" as 100%, so we need to input a list of
-  # the length of each marker set instead
-  if (n_markers == 1) {
-    n_markers_new <- lengths(markers)
+  # dtangle/hspe rounds down if length * n_markers is a decimal, so we need to
+  # input a list of the length of each marker set instead, rounded UP to ensure
+  # at least one marker per cell type
+  if (n_markers <= 1) {
+    n_markers_new <- ceiling(lengths(markers) * n_markers)
   }
   else if (n_markers > 1) {
     n_markers_new <- sapply(lengths(markers), min, n_markers)
   }
 
   return(n_markers_new)
+}
+
+
+# Check_NMarkers - checks that after filtering for genes that exist in both
+# data sets and subsetting to n_markers, there are still enough markers to be
+# useful and not too many markers to confuse the algorithm.
+#
+# Arguments:
+#   n_markers_orig - the original n_markers argument from the parameter set,
+#                    which may be a whole number or a fraction
+#   n_markers - a vector of the number of markers per cell type (integers),
+#               which was calculated using n_markers_orig
+#   err_string - The header for the error to print out if a check fails
+#
+# Returns:
+#   TRUE if n_markers passed all checks, FALSE otherwise
+Check_NMarkers <- function(n_markers_orig, n_markers, err_string) {
+  # For whole-number n_markers_orig arguments, the n_markers argument (mostly)
+  # doubles each time. If there aren't enough markers in each cell type to do
+  # anything new with this n_markers value, skip testing.
+  if (n_markers_orig > 1 & all(n_markers <= (n_markers_orig/2))) {
+    print(paste0(err_string, "Not enough total markers. ***"))
+    return(FALSE)
+  }
+
+  # If there's less than ~3 markers per cell type, this isn't useful
+  # information. Taking the mean still allows some leeway for rarer cell types
+  # to have less than 3 markers as long as the other cell types have enough.
+  if (mean(n_markers) < 3) {
+    print(paste0(err_string, "Not enough markers per cell type. ***"))
+    return(FALSE)
+  }
+
+  # Early testing showed it's not useful to use a large number of markers, so
+  # if the total markers used is > 5000, don't test. 5000 is pretty generous,
+  # and allows for 500 markers for 10 cell types.
+  if (sum(n_markers) > 5000) {
+    print(paste0(err_string, "Marker set too large. ***"))
+    return(FALSE)
+  }
+
+  # All checks passed
+  return(TRUE)
 }

@@ -55,6 +55,17 @@ CreatePseudobulk_PureSamples <- function(singlecell_counts, metadata, dataset) {
     counts <- singlecell_counts %*% y
     counts <- as(counts, "matrix")
 
+    pb_meta <- as.data.frame(metadata) %>%
+                  select(donor, diagnosis, celltypedonor) %>% distinct() %>%
+                  mutate(donor = paste0("puresample_", celltypedonor),
+                         celltype = str_replace(celltypedonor, "_.*", "")) %>%
+                  select(-celltypedonor)
+    pb_meta$celltype <- factor(pb_meta$celltype)
+    pb_meta$diagnosis <- factor(pb_meta$diagnosis)
+    rownames(pb_meta) <- pb_meta$donor
+    pb_meta <- pb_meta[colnames(counts),]
+    pb_meta$tmm_factors <- calcNormFactors(counts, method = "TMMwsp")
+
     propCells <- table(metadata$celltypedonor, metadata$celltype)
     rownames(propCells) <- paste0("puresample_", rownames(propCells))
     propCells <- sweep(propCells, 1, rowSums(propCells), "/")
@@ -64,18 +75,9 @@ CreatePseudobulk_PureSamples <- function(singlecell_counts, metadata, dataset) {
     pctRNA <- propCells
 
     pseudobulk <- SummarizedExperiment(assays = SimpleList(counts = counts),
+                                       colData = pb_meta,
                                        metadata = list("propCells" = propCells,
                                                        "pctRNA" = pctRNA))
-
-    # Make metadata with cell type assignments for each pure sample
-    tmp <- apply(propCells, 1, which.max)
-    celltypes <- colnames(propCells)[tmp]
-    celltypes <- factor(celltypes)
-
-    metadata_pb <- DataFrame(celltype = celltypes)
-    rownames(metadata_pb) <- colnames(pseudobulk)
-
-    colData(pseudobulk) <- metadata_pb
 
     Save_PseudobulkPureSamples(pseudobulk, dataset, granularity)
   }

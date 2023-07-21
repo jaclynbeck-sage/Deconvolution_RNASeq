@@ -94,7 +94,7 @@ Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
 #   marker_types = a list where the names of the entries are one of "autogenes",
 #                  "dtangle", or "seurat", and the items in each entry are a
 #                  list of marker subtypes to use for that algorithm. See
-#                  Filter_Signature for more detail. Must be a list and not a
+#                  FilterSignature for more detail. Must be a list and not a
 #                  vector.
 #   marker_input_types = dtangle-specific: a vector of one or all of
 #                        c("singlecell", "pseudobulk") designating whether to
@@ -127,7 +127,7 @@ CreateParams_MarkerTypes <- function(n_markers, marker_types, marker_input_types
 #
 # Arguments:
 #   filter_levels = a vector containing one or more filter levels, as used in
-#                   the function Filter_Signature. Options are c(0, 1, 2, 3).
+#                   the function FilterSignature. Options are c(0, 1, 2, 3).
 #   The rest of these arguments are only relevant for filter_level = 3:
 #   n_markers = a vector containing one or more percentages (range 0-1.0) and/or
 #               one or more integers (range 2-Inf) specifying how many markers
@@ -135,7 +135,7 @@ CreateParams_MarkerTypes <- function(n_markers, marker_types, marker_input_types
 #   marker_types = a list where the names of the entries are one of "autogenes",
 #                  "dtangle", or "seurat", and the items in each entry are a
 #                  list of marker subtypes to use for that algorithm. See
-#                  Filter_Signature for more detail. Must be a list and not a
+#                  FilterSignature for more detail. Must be a list and not a
 #                  vector.
 #   marker_input_types = dtangle-specific: a vector of one or all of
 #                        c("singlecell", "pseudobulk") designating whether to
@@ -352,6 +352,13 @@ CalculateSignature <- function(sce, samples, celltypes) {
 #                       or "pseudobulk", for which type of input was used to
 #                       generate the markers. For other marker_types, this
 #                       argument is ignored.
+#   marker_order = "distance" or "correlation". Whether the markers should be
+#                  ordered by distance (prioritize markers with the highest
+#                  expression difference between the cell type and all other
+#                  cell types) or correlation (prioritize markers with the
+#                  highest correlation to other markers for that cell type)
+#   test_data = a data.frame or matrix of expression data. Only used if
+#               marker_order is "correlation".
 #
 # Returns:
 #   signature matrix containing only the genes that pass the specified filters.
@@ -359,7 +366,8 @@ CalculateSignature <- function(sce, samples, celltypes) {
 FilterSignature <- function(signature, filter_level = 1, reference_data_name = NULL,
                             granularity = NULL, filt_percent = 1.0,
                             marker_type = "dtangle", marker_subtype = "diff",
-                            marker_input_type = "pseudobulk") {
+                            marker_input_type = "pseudobulk",
+                            marker_order = "distance", test_data = NULL) {
   # Filter for genes where at least one cell type expresses at > 1 cpm
   if (filter_level == 1) {
     ok <- which(rowSums(signature >= 1) > 0)
@@ -383,6 +391,17 @@ FilterSignature <- function(signature, filter_level = 1, reference_data_name = N
 
     # Remove genes that don't exist in the signature matrix
     markers <- lapply(markers, function(X) {intersect(X, rownames(signature))})
+
+    if (marker_order == "correlation") {
+      if (is.null(test_data)) {
+        print(paste0("Error! No data provided for calculating marker ",
+                     "correlation. Markers will be ordered by distance ",
+                     "instead of correlation."))
+      }
+      else {
+        markers <- OrderMarkers_ByCorrelation(markers, test_data)
+      }
+    }
 
     # Percentage of each cell type's markers
     if (filt_percent <= 1) {
@@ -461,4 +480,87 @@ GetNMarkers_Optimal <- function(marker_list, signature, score = "correlation", f
   return(incs[ind])
 }
 
+
+ConvertToROSMAPCelltypes <- function(df, remove_unused = TRUE) {
+  orig_cols <- colnames(df)
+
+  # Some datasets are missing one or more of these vascular types
+  for (col in c("Endo", "Peri", "VLMC")) {
+    if (!(col %in% colnames(df))) {
+      df <- cbind(df, rep(0, nrow(df)))
+      colnames(df)[ncol(df)] <- col
+    }
+  }
+
+  df <- as.data.frame(df) %>%
+    mutate(Neuro = Exc + Inh,
+           Oligo = Oligo + OPC,
+           Endo = Endo + Peri + VLMC)
+
+  cols <- c("Astro", "Endo", "Micro", "Neuro", "Oligo")
+
+  if (remove_unused == FALSE) {
+    cols <- sort(unique(c(orig_cols, cols)))
+  }
+
+  return(df %>% select(all_of(cols)))
+}
+
+
+# OrderMarkers_ByCorrelation: By default markers are ordered from highest to
+# lowest difference in expression between the target cell type and other cell
+# types. However this doesn't guarantee that the top markers are at all
+# correlated, or that the markers are the most informative for the data set
+# being tested. This function filters the marker list and re-orders it such
+# that for each cell type, the marker list is now the largest possible set of
+# marker genes that are all positively correlated with each other in the test
+# data set. The remaining markers are then ordered from highest to lowest
+# average correlation with each other.
+# NOTE: This problem can be solved exactly by treating the correlation matrix
+#       as an adjacency graph and using igraph::largest_cliques(), however the
+#       run-time increases exponentially with number of genes and isn't
+#       realistic for our needs. The code below is a greedy approximation.
+#
+# Arguments:
+#   marker_list = a list of marker gene names, one list entry per cell type
+#   data = a gene x sample expression matrix (or data.frame) for calculating
+#          correlation. This is usually the test data set.
+#
+# Returns:
+#   an updated list of marker genes, one list entry per cell type
+OrderMarkers_ByCorrelation <- function(marker_list, data) {
+  # Assumption that if the values in data aren't very large, this is log-scale
+  # data that needs to be put into linear scale
+  if (max(data) < 100) {
+    data <- 2^data-1
+  }
+
+  # For each cell type, update the marker list
+  new_list <- sapply(names(marker_list), function(N) {
+    markers <- marker_list[[N]]
+    markers <- markers[markers %in% rownames(data)]
+    corr_mat <- cor(as.matrix(t(data[markers,])))
+
+    # Re-order genes by average correlation, highest first
+    corr_means <- rowMeans(corr_mat)
+    corr_means <- sort(corr_means, decreasing = TRUE)
+
+    # Start at the most positively correlated genes, iteratively add genes that
+    # have only positive correlations with the existing set of genes
+    new_markers <- c(names(corr_means)[1])
+    for (m in 2:length(corr_means)) {
+      marker <- names(corr_means)[m]
+      tmp <- corr_mat[marker, new_markers]
+      if (all(tmp >= 0)) {
+        new_markers <- c(new_markers, marker)
+      }
+    }
+
+    # Sort by average correlation within this group of markers
+    new_means <- rowMeans(corr_mat[new_markers, new_markers])
+    return(new_markers[order(new_means, decreasing = TRUE)])
+  })
+
+  return(new_list)
+}
 

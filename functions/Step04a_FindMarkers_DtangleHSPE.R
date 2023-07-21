@@ -29,11 +29,11 @@ FindMarkers_DtangleHSPE <- function(datasets, granularities, input_types) {
     input_type <- params_data$input_type[R]
 
     if (input_type == "singlecell") {
-      input_obj <- Load_SingleCell(dataset, granularity, output_type = "logcpm")
+      input_obj <- Load_SingleCell(dataset, granularity, output_type = "log_cpm")
     }
     else { # Input is pseudobulk pure samples
       input_obj <- Load_PseudobulkPureSamples(dataset, granularity,
-                                              output_type = "logcpm")
+                                              output_type = "log_cpm")
     }
 
     metadata <- colData(input_obj)
