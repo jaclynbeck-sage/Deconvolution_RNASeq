@@ -32,8 +32,8 @@ algorithm <- "dtangle" # "dtangle" or "hspe", all lower case
 #       regardless of memory constraints.
 # NOTE: "FORK" is more memory-efficient but only works on Unix systems. For
 #       other systems, use "PSOCK" and reduce the number of cores.
-cores <- 4
-cl <- makeCluster(cores, type = "FORK", outfile = "")
+cores <- 6
+cl <- makeCluster(cores, type = "FORK", outfile = "dtangle_output.txt") #outfile = "")
 registerDoParallel(cl)
 
 # Libraries that need to be loaded into each parallel environment
@@ -48,7 +48,7 @@ reference_input_types = c("singlecell", "pseudobulk")
 params_loop1 <- expand_grid(reference_data_name = datasets,
                             test_data_name = c("Mayo", "MSBB", "ROSMAP"), #c("donors", "training"),
                             granularity = c("broad"),
-                            normalization = c("log_cpm", "log_tmm")) %>%
+                            normalization = c("log_cpm")) %>%
                     arrange(test_data_name)
 
 marker_types <- list("dtangle" = c("ratio", "diff", "p.value", "regression"),
@@ -56,14 +56,14 @@ marker_types <- list("dtangle" = c("ratio", "diff", "p.value", "regression"),
                      "seurat" = c("None"))
 params_markers <- CreateParams_MarkerTypes(
                     n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
-                                  2, 5, 10, 20, 50, 100, 200),
+                                  3, 5, 10, 20, 50, 100, 200),
                     marker_types = marker_types,
-                    marker_input_types = c("singlecell", "pseudobulk")
+                    marker_input_types = c("singlecell", "pseudobulk"),
+                    marker_order = c("distance", "correlation")
 )
 
 if (algorithm == "dtangle") {
   params_loop2 <- expand_grid(params_markers,
-                              marker_order = c("distance", "correlation"),
                               gamma_name = c("auto"),
                               sum_fn_type = c("mean"))
 } else if (algorithm == "hspe") {
@@ -122,8 +122,8 @@ for (P in 1:nrow(params_loop1)) {
     dtangle_list_tmp <- dtangle_list_tmp[lengths(dtangle_list_tmp) > 0]
 
     name_base <- str_glue("{reference_data_name}_{test_data_name}_{granularity}_{input_type}_{normalization}")
-    names(dtangle_list_tmp) <- paste0(algorithm, name,
-                                      1:length(dtangle_list_tmp), sep = "_")
+    names(dtangle_list_tmp) <- paste(algorithm, name_base,
+                                     1:length(dtangle_list_tmp), sep = "_")
 
     dtangle_list <- append(dtangle_list, dtangle_list_tmp)
 

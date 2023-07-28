@@ -100,19 +100,32 @@ Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
 #                        c("singlecell", "pseudobulk") designating whether to
 #                        test dtangle marker sets from singlecell input,
 #                        pseudobulk input, or both
+#   marker_order = "distance" or "correlation", whether markers should be
+#                  ordered by largest expression difference between cell types
+#                  or by correlation with other markers for the same cell type
 #
 # Returns:
 #   a tibble containing all possible valid combinations of the arguments
-CreateParams_MarkerTypes <- function(n_markers, marker_types, marker_input_types) {
+CreateParams_MarkerTypes <- function(n_markers, marker_types,
+                                     marker_input_types, marker_order) {
   marker_types <- melt(marker_types) %>% dplyr::rename(marker_type = "L1",
                                                        marker_subtype = "value")
 
   params <- tidyr::expand_grid(n_markers = n_markers,
                                marker_types,
-                               marker_input_type = marker_input_types)
+                               marker_input_type = marker_input_types,
+                               marker_order = marker_order)
 
   # marker_input_type only applies to dtangle markers
   params$marker_input_type[params$marker_type != "dtangle"] <- "None"
+
+  # We don't use dtangle 'p.value' and 'regression' markers for `singlecell`
+  # input because the compute time for these is too high
+  params <- subset(params, !(marker_input_type == "singlecell" &
+                               marker_subtype %in% c("regression", "p.value")))
+
+  # We don't need to re-order markers when we're using the whole marker set
+  params$marker_order[params$n_markers == 1] <- "None"
 
   params <- params %>% distinct()
   return(params)
@@ -141,13 +154,17 @@ CreateParams_MarkerTypes <- function(n_markers, marker_types, marker_input_types
 #                        c("singlecell", "pseudobulk") designating whether to
 #                        test dtangle marker sets from singlecell input,
 #                        pseudobulk input, or both
+#   marker_order = "distance" or "correlation", whether markers should be
+#                  ordered by largest expression difference between cell types
+#                  or by correlation with other markers for the same cell type
 #
 # Returns:
 #   a tibble containing all possible valid combinations of the arguments
 CreateParams_FilterableSignature <- function(filter_levels, n_markers,
-                                             marker_types, marker_input_types) {
+                                             marker_types, marker_input_types,
+                                             marker_order) {
   params_tmp <- CreateParams_MarkerTypes(n_markers, marker_types,
-                                         marker_input_types)
+                                         marker_input_types, marker_order)
 
   params <- tidyr::expand_grid(filter_level = filter_levels,
                                params_tmp)
@@ -158,6 +175,7 @@ CreateParams_FilterableSignature <- function(filter_levels, n_markers,
   params$marker_type[low_filt] <- "None"
   params$marker_subtype[low_filt] <- "None"
   params$n_markers[low_filt] <- -1
+  params$marker_order[low_filt] <- "None"
 
   params <- params %>% distinct()
   return(params)
@@ -563,4 +581,3 @@ OrderMarkers_ByCorrelation <- function(marker_list, data) {
 
   return(new_list)
 }
-

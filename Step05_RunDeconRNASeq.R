@@ -49,11 +49,11 @@ params_tmp <- CreateParams_FilterableSignature(
                 n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
                               3, 5, 10, 20, 50, 100, 200),
                 marker_types,
-                marker_input_type = c("singlecell", "pseudobulk")
+                marker_input_type = c("singlecell", "pseudobulk"),
+                marker_order = c("distance", "correlation")
 )
 
 params_loop2 <- expand_grid(params_tmp,
-                            marker_order = c("distance", "correlation"),
                             use_scale = c(TRUE, FALSE),
                             recalc_cpm = c(FALSE)) #c(TRUE, FALSE))
 
@@ -95,7 +95,7 @@ for (P in 1:nrow(params_loop1)) {
   decon_list <- decon_list[lengths(decon_list) > 0]
 
   name_base <- str_glue("{reference_data_name}_{test_data_name}_{granularity}_{normalization}")
-  names(decon_list) <- paste0("deconRNASeq",
+  names(decon_list) <- paste("deconRNASeq",
                               name_base,
                               1:length(decon_list), sep = "_")
 

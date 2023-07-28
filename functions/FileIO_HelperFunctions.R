@@ -243,18 +243,26 @@ Load_CountsFile <- function(filename, output_type) {
   # single cell data this is by cell type and diagnosis.
   if (grepl("qn", output_type)) {
     metadata <- colData(se_obj)
-    if ("celltype" %in% colnames(colData(se_obj))) {
-      metadata$group <- paste(metadata$celltype, metadata$diagnosis)
+    if ("broadcelltype" %in% colnames(colData(se_obj))) {
+      metadata$group <- paste(metadata$broadcelltype, metadata$diagnosis)
     }
     else {
       metadata$group <- metadata$diagnosis
     }
 
-    lapply(unique(metadata$group), function(G) {
+    for (G in unique(metadata$group)) {
       sub <- subset(metadata, group == G)
-      q <- normalize.quantiles(norm_counts[,rownames(sub)], copy = FALSE)
-      norm_counts[,rownames(sub)] <- as(q, "CsparseMatrix")
-    })
+      q <- normalize.quantiles(as.matrix(norm_counts[,rownames(sub)]),
+                               copy = FALSE,
+                               keep.names = TRUE)
+      #q <- limma::normalizeQuantiles(norm_counts[,rownames(sub)])
+      if (is(norm_counts, "matrix")) {
+        norm_counts[,rownames(sub)] <- q
+      }
+      else {
+        norm_counts[,rownames(sub)] <- as(q, "CsparseMatrix")
+      }
+    }
   }
 
   # Replace raw counts with the normalized counts
@@ -438,16 +446,21 @@ Load_AlgorithmOutputList <- function(algorithm, reference_dataset, test_dataset,
 #                by celltype, errors by subject, goodness-of-fit, and parameters
 #                for an algorithm / dataset / datatype / granularity combo
 #   algorithm = the name of the algorithm
-#   dataset = the name of the data set
-#   datatype = either "donors" or "training", to signify if the algorithm was
-#              run on donor or training pseudobulk
+#   reference_dataset = the name of the reference data set
+#   test_dataset = either "donors" or "training", to signify if the algorithm was
+#                  run on donor or training pseudobulk, or one of "Mayo",
+#                  "MSBB", or "ROSMAP" if the algorithm was run on bulk data
 #   granularity = either "broad" or "fine", for which level of cell types was
 #                 used for markers and pseudobulk creation.
+#   normalization = the type of normalization used. See Load_CountsFile
+#                   output_type parameter explanation for valid values.
 #
 # Returns:
 #   Nothing
-Save_ErrorList <- function(error_list, algorithm, dataset, datatype, granularity) {
-  error_file_format <- "errors_{algorithm}_{dataset}_{datatype}_{granularity}.rds"
+Save_ErrorList <- function(error_list, algorithm, reference_dataset, test_dataset,
+                           granularity, normalization) {
+  error_file_format <- paste0("errors_{algorithm}_{reference_dataset}_",
+                              "{test_dataset}_{granularity}_{normalization}.rds")
   saveRDS(error_list, file = file.path(dir_errors, str_glue(error_file_format)))
 }
 
@@ -457,18 +470,23 @@ Save_ErrorList <- function(error_list, algorithm, dataset, datatype, granularity
 #
 # Arguments:
 #   algorithm = the name of the algorithm
-#   dataset = the name of the data set
-#   datatype = either "donors" or "training", to signify if the algorithm was
-#              run on donor or training pseudobulk
+#   reference_dataset = the name of the reference data set
+#   test_dataset = either "donors" or "training", to signify if the algorithm was
+#                  run on donor or training pseudobulk, or one of "Mayo",
+#                  "MSBB", or "ROSMAP" if the algorithm was run on bulk data
 #   granularity = either "broad" or "fine", for which level of cell types was
 #                 used for markers and pseudobulk creation.
+#   normalization = the type of normalization used. See Load_CountsFile
+#                   output_type parameter explanation for valid values.
 #
 # Returns:
 #   a list of errors containing entries for mean errors, errors by celltype,
 #   errors by subject, goodness-of-fit, and parameters for an algorithm /
-#   dataset / datatype / granularity combo
-Load_ErrorList <- function(algorithm, dataset, datatype, granularity) {
-  error_file_format <- "errors_{algorithm}_{dataset}_{datatype}_{granularity}.rds"
+#   dataset / datatype / granularity / normalization combo
+Load_ErrorList <- function(algorithm, reference_dataset, test_dataset,
+                           granularity, normalization) {
+  error_file_format <- paste0("errors_{algorithm}_{reference_dataset}_",
+                              "{test_dataset}_{granularity}_{normalization}.rds")
   error_file <- file.path(dir_errors, str_glue(error_file_format))
 
   if (!file.exists(error_file)) {
