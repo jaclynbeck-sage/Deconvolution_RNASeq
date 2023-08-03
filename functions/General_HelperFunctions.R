@@ -173,6 +173,7 @@ CreateParams_FilterableSignature <- function(filter_levels, n_markers,
   # (filter levels 1 & 2 don't use n_markers or marker_type arguments)
   low_filt <- params$filter_level < 3
   params$marker_type[low_filt] <- "None"
+  params$marker_input_type[low_filt] <- "None"
   params$marker_subtype[low_filt] <- "None"
   params$n_markers[low_filt] <- -1
   params$marker_order[low_filt] <- "None"

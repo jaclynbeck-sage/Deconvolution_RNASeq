@@ -11,6 +11,7 @@
 #             Must be a matrix, not a data.frame.
 #   A = a named vector of the average expected library size of each cell type,
 #       normalized so sum(A) = 1.
+#   sc_basis = pre-computed list output from music_basis()
 #   params = a single-row data frame or a named vector/list of parameters
 #            containing the following variables: ct_cov, centered, normalize
 #
@@ -19,7 +20,7 @@
 #   which are output by MuSiC, "Est.pctRNA.weighted" and "Est.pctRNA.allgene",
 #   which are calculated based on the "A" matrix, and "params", which is the
 #   parameter set used for this run
-Music_InnerLoop <- function(sce, bulk_mtx, A, params) {
+Music_InnerLoop <- function(sce, bulk_mtx, A, sc_basis, params, verbose = FALSE) {
   # Unpack variables for readability, enforce they are the correct types
   reference_data_name <- params$reference_data_name
   granularity <- params$granularity
@@ -42,7 +43,8 @@ Music_InnerLoop <- function(sce, bulk_mtx, A, params) {
 
   if (is.null(tmp)) {
     param_set <- paste(params, collapse = "  ")
-    print(c("*** Missing markers for at least one cell type for param set", param_set))
+    print(paste("*** Missing markers for at least one cell type for param set",
+                param_set))
     print("*** skipping ***")
     return(NULL)
   }
@@ -53,10 +55,19 @@ Music_InnerLoop <- function(sce, bulk_mtx, A, params) {
   # to work from
   if (length(markers_use) < 3*length(A)) {
     param_set <- paste(params, collapse = "  ")
-    print(c("*** Too few markers for param set", param_set))
+    print(paste("*** Too few markers for param set", param_set))
     print("*** skipping ***")
     return(NULL)
   }
+
+  # Modify sc_basis for this set of markers.
+  # The "<<-" operator creates a global variable that can be used inside the
+  # modified music_basis function.
+  sc_basis_precomputed <<- sc_basis
+  sc_basis_precomputed$Sigma <<- sc_basis_precomputed$Sigma[markers_use,]
+  sc_basis_precomputed$Sigma.ct <<- sc_basis_precomputed$Sigma.ct[, markers_use]
+  sc_basis_precomputed$Disgn.mtx <<- sc_basis_precomputed$Disgn.mtx[markers_use,]
+  sc_basis_precomputed$M.theta <<- sc_basis_precomputed$M.theta[markers_use,]
 
   # Sometimes ct.cov = TRUE will produce too many NAs if too many cell types
   # are missing from too many donors, and this eventually throws errors. The
@@ -65,7 +76,8 @@ Music_InnerLoop <- function(sce, bulk_mtx, A, params) {
     result <- music_prop(bulk.mtx = bulk_mtx, sc.sce = sce,
                          markers = markers_use,
                          clusters = "celltype",
-                         samples = "donor", verbose = FALSE,
+                         samples = "donor", verbose = verbose,
+                         cell_size = data.frame(cells = names(A), sizes = A),
                          ct.cov = ct_cov, centered = centered,
                          normalize = normalize)
 
@@ -88,10 +100,11 @@ Music_InnerLoop <- function(sce, bulk_mtx, A, params) {
   },
   error = function(err) {
     param_set <- paste(params, collapse = "  ")
-    print(c("*** Error running param set", param_set))
+    print(paste("*** Error running param set", param_set))
     print(err)
     print("*** skipping ***")
 
     return(NULL)
   })
 }
+
