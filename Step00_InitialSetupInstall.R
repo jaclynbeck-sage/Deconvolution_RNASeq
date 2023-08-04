@@ -1,6 +1,6 @@
 install.packages(c("BiocManager", "devtools", "stringr", "Metrics",
                    "reticulate", "dplyr", "ggplot2",
-                   "DEoptimR", "nloptr"))
+                   "DEoptimR", "nloptr")) #, "RMariaDB"))
 
 # If synapser fails to install because it can't find "synapseclient", go to
 # RStudio options (Tools->Global Options) -> Python, uncheck "Automatically
@@ -9,7 +9,10 @@ install.packages("synapser", repos = c("http://ran.synapse.org", "http://cran.fh
 
 BiocManager::install(c("Biobase", "SingleCellExperiment", "TOAST", "scuttle",
                        "DeconRNASeq", "Seurat", "MAST", "GEOquery",
-                       "rhdf5", "HDF5Array", "zellkonverter"))
+                       "rhdf5", "HDF5Array", "zellkonverter")) #,
+                       #"GenomicFeatures"))
+
+#BiocManager::install("preprocessCore", configure.args="--disable-threading")
 
 # install the MuSiC package
 devtools::install_github('xuranw/MuSiC')
