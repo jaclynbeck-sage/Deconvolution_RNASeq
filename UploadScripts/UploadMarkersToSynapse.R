@@ -6,12 +6,12 @@ source("Filenames.R")
 synLogin()
 
 # Deconvolution WG Synapse space
-markers.folder <- Folder("markers", parent = "syn51119398")
+markers.folder <- Folder("markers", parent = "syn49332774")
 markers.folder <- synStore(markers.folder, forceVersion = FALSE)
 
 # Get provenance IDs
-sce_list <- as.list(synGetChildren("syn51119405")) # sce files
-pseudo_list <- as.list(synGetChildren("syn51119989")) # pseudobulk files
+sce_list <- as.list(synGetChildren("syn52245349")) # sce files
+pseudo_list <- as.list(synGetChildren("syn52245380")) # pseudobulk files
 
 sce_df <- data.frame(do.call(rbind, sce_list))
 pseudo_df <- data.frame(do.call(rbind, pseudo_list))
@@ -51,6 +51,7 @@ for (dset in datasets) {
 
     file <- File(path = filename, parent = markers.folder)
     file <- synStore(file, used = provenance, forceVersion = FALSE)
+    print(paste0(file$properties$id, ": ", file$properties$name))
   }
 }
 
