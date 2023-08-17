@@ -6,7 +6,7 @@ install.packages(c("BiocManager", "devtools", "stringr", "Metrics",
 # activate project-local Python environments" and restart R.
 install.packages("synapser", repos = c("http://ran.synapse.org", "http://cran.fhcrc.org"))
 
-BiocManager::install(c("Biobase", "SingleCellExperiment", "scuttle",
+BiocManager::install(c("Biobase", "SingleCellExperiment", "TOAST", "scuttle",
                        "DeconRNASeq", "Seurat", "MAST", "GEOquery", "biomaRt",
                        "DESeq2")) #,
                        #"GenomicFeatures", "rhdf5", "HDF5Array"))
