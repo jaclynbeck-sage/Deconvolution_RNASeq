@@ -1,18 +1,20 @@
 install.packages(c("BiocManager", "devtools", "stringr", "Metrics",
-                   "reticulate", "dplyr", "ggplot2",
-                   "DEoptimR", "nloptr")) #, "RMariaDB"))
+                   "dplyr", "ggplot2", "DEoptimR", "nloptr", "anndata")) #, "RMariaDB"))
 
 # If synapser fails to install because it can't find "synapseclient", go to
 # RStudio options (Tools->Global Options) -> Python, uncheck "Automatically
 # activate project-local Python environments" and restart R.
 install.packages("synapser", repos = c("http://ran.synapse.org", "http://cran.fhcrc.org"))
 
-BiocManager::install(c("Biobase", "SingleCellExperiment", "TOAST", "scuttle",
-                       "DeconRNASeq", "Seurat", "MAST", "GEOquery",
-                       "rhdf5", "HDF5Array", "zellkonverter")) #,
-                       #"GenomicFeatures"))
+BiocManager::install(c("Biobase", "SingleCellExperiment", "scuttle",
+                       "DeconRNASeq", "Seurat", "MAST", "GEOquery", "biomaRt",
+                       "DESeq2")) #,
+                       #"GenomicFeatures", "rhdf5", "HDF5Array"))
 
-#BiocManager::install("preprocessCore", configure.args="--disable-threading")
+BiocManager::install("preprocessCore", configure.args="--disable-threading")
+
+# Azimuth for mapping datasets to a reference
+devtools::install_github("satijalab/azimuth")
 
 # install the MuSiC package
 devtools::install_github('xuranw/MuSiC')
@@ -37,3 +39,6 @@ reticulate::virtualenv_install("r-reticulate", packages = c("anndata"))
 reticulate::virtualenv_create("autogenes_env",
                               packages = c("scanpy", "anndata", "autogenes",
                                            "scikit-misc"))
+
+#install.packages("pak")
+#pak::pkg_install("omnideconv/omnideconv", dependencies = c("Imports", "Remotes"))
