@@ -5,12 +5,16 @@ dir_input <- file.path(dir_data, "input")
 dir_pseudobulk <- file.path(dir_data, "pseudobulk")
 dir_output <- file.path(dir_data, "output")
 dir_metadata <- file.path(dir_data, "metadata")
+dir_tmp <- file.path(dir_data, "tmp")
 
 dir_markers <- file.path(dir_output, "markers")
 dir_params_lists <- file.path(dir_output, "params_lists")
 dir_params_lists_tmp <- file.path(dir_params_lists, "tmp")
 dir_errors <- file.path(dir_output, "errors")
 dir_figures <- "figures"
+
+dir_azimuth_reference <- file.path(dir_input, "azimuth_reference")
+dir_covariates <- file.path(dir_input, "covariate_metadata")
 
 dir_cain_raw <- file.path(dir_input, "cain_raw")
 dir_lau_raw <- file.path(dir_input, "lau_raw")

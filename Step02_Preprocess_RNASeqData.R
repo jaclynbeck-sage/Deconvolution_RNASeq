@@ -13,7 +13,7 @@ source(file.path("functions", "General_HelperFunctions.R"))
 
 ##### Setup #####
 
-datasets <- c("cain", "lau", "leng", "mathys", "morabito",
+datasets <- c("cain", "lau", "leng", "mathys", #"morabito",
               "seaRef", #"seaAD", # Single cell
               "Mayo", "MSBB", "ROSMAP") # Bulk
 
@@ -34,11 +34,25 @@ for (dataset in datasets) {
 
   ##### Read in metadata file #####
 
-  metadata <- ReadMetadata(dataset, files)
+  metadata_list <- ReadMetadata(dataset, files)
+  metadata <- metadata_list$cell_metadata
+
+  # For data privacy reasons, each data set's covariates are saved in a separate
+  # file from the main SingleCellExperiment object and are not uploaded anywhere
+  covariates <- metadata_list$covariates
+  saveRDS(covariates, file.path(dir_covariates,
+                                str_glue("{dataset}_covariates.rds")))
 
   if (is_singlecell(dataset)) {
-    colnames(metadata) <- c("cellid", "donor", "diagnosis", "broadcelltype", "subcluster")
-    rownames(metadata) <- metadata$cellid
+    colnames(metadata)[1:5] <- c("cell_id", "donor", "diagnosis", "broad_class",
+                                   "sub_class")
+
+    # seaRef and seaAD are special cases and have a 'fine_cluster' field
+    if (ncol(metadata) > 5) {
+      colnames(metadata)[6] <- "fine_cluster"
+    }
+
+    rownames(metadata) <- metadata$cell_id
   }
   else { # bulk
     colnames(metadata) <- c("donor", "specimenID", "diagnosis", "tissue", "sex")
