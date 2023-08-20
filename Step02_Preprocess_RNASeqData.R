@@ -111,9 +111,9 @@ for (dataset in datasets) {
   # Make sure metadata has the same samples and is in the same order as counts
   metadata <- metadata[colnames(counts), ]
 
-  if (is_singlecell(dataset)) {
-    metadata$broadcelltype <- RemapCelltypeNames(metadata$broadcelltype)
-  }
+  #if (is_singlecell(dataset)) {
+  #  metadata$broad_class <- RemapCelltypeNames(metadata$broad_class)
+  #}
 
   for (col in colnames(metadata)) {
     metadata[,col] = factor(metadata[,col])
@@ -158,19 +158,19 @@ for (dataset in datasets) {
     saveRDS(sce, file = file.path(dir_input, str_glue("{dataset}_sce.rds")))
 
     # Calculate the "A" matrix that is needed to convert propCells to pctRNA
-    A_broad <- CalculateA(sce, metadata$donor, metadata$broadcelltype)
-    A_fine <- CalculateA(sce, metadata$donor, metadata$subcluster)
+    #A_broad <- CalculateA(sce, metadata$donor, metadata$broad_class)
+    #A_fine <- CalculateA(sce, metadata$donor, metadata$sub_class)
 
-    saveRDS(list("A_broad" = A_broad, "A_fine" = A_fine),
-            file = file.path(dir_input, str_glue("{dataset}_A_matrix.rds")))
+    #saveRDS(list("A_broad" = A_broad, "A_fine" = A_fine),
+    #        file = file.path(dir_input, str_glue("{dataset}_A_matrix.rds")))
 
     # Calculate a signature for each cell type. This matrix includes all genes in
     # the data set and isn't filtered at this point.
-    sig_broad <- CalculateSignature(sce, metadata$donor, metadata$broadcelltype)
-    sig_fine <- CalculateSignature(sce, metadata$donor, metadata$subcluster)
+    #sig_broad <- CalculateSignature(sce, metadata$donor, metadata$broad_class)
+    #sig_fine <- CalculateSignature(sce, metadata$donor, metadata$sub_class)
 
-    saveRDS(list("sig_broad" = sig_broad, "sig_fine" = sig_fine),
-            file = file.path(dir_input, str_glue("{dataset}_signature.rds")))
+    #saveRDS(list("sig_broad" = sig_broad, "sig_fine" = sig_fine),
+    #        file = file.path(dir_input, str_glue("{dataset}_signature.rds")))
   }
 
   print("Done")

@@ -210,15 +210,19 @@ ReadMetadata_Cain <- function(files) {
 }
 
 ReadCounts_Cain <- function(files, metadata) {
-  counts <- read.csv(gzfile(files[["counts"]]$path), row.names = 1)
-  counts <- sparseMatrix(i = counts$i, j = counts$j, x = counts$x)
+  counts <- ReadMtx(mtx = files$counts$path,
+                    cells = files$metadata$path,
+                    features = files$genes$path,
+                    feature.column = 1,
+                    skip.cell = 1,
+                    skip.feature = 1)
 
-  genes <- read.csv(files[["genes"]]$path, row.names = 1)
+  # The column names and genes don't get read in correctly by ReadMtx because
+  # the input csvs aren't formatted as expected for MTX
+  colnames(counts) <- str_replace(colnames(counts), ",.*", "")
+  rownames(counts) <- str_replace(rownames(counts), ".*,", "")
 
-  colnames(counts) <- metadata$cell_id
-  rownames(counts) <- genes$x
-
-  counts <- counts[,metadata$broadcelltype != "None"]
+  #counts <- counts[,metadata$broadcelltype != "None"]
 
   return(counts)
 }
