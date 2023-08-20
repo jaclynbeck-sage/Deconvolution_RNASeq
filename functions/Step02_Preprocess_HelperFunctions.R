@@ -3,7 +3,8 @@ library(Seurat)
 library(reshape2)
 library(stringr)
 library(GEOquery)
-library(anndata)
+library(reticulate)
+library(HDF5Array)
 library(dplyr)
 library(readxl)
 
@@ -388,9 +389,9 @@ ReadMetadata_Mathys <- function(files) {
 }
 
 ReadCounts_Mathys <- function(files) {
-  counts <- ReadMtx(mtx = files[["counts"]]$path,
-                    cells = files[["metadata"]]$path,
-                    features = files[["genes"]]$path,
+  counts <- ReadMtx(mtx = files$counts$path,
+                    cells = files$cell_metadata$path,
+                    features = files$genes$path,
                     feature.column = 1, skip.cell = 1)
   return(counts)
 }
@@ -449,10 +450,13 @@ ReadCounts_Morabito <- function(files) {
 # Full data set (84 donors): https://portal.brain-map.org/explore/seattle-alzheimers-disease/seattle-alzheimers-disease-brain-cell-atlas-download?edit&language=en
 # Metadata: https://www.synapse.org/#!Synapse:syn28256462
 
-# These files are h5ad (AnnData) files. I read the metadata part in with the
-# "anndata" package, which handles all the categorical renaming from the file.
-# However, referencing the "X" matrix via the anndata package loads the whole
-# thing into memory, so I use H5ADMatrix to read the counts.
+# These files are h5ad (AnnData) files. I read the metadata part in with
+# reticulate and the "anndata" package, which handles all the categorical
+# renaming from the file.
+# However, the easiest way to get the data matrix is to use the HDF5Array
+# package instead of reticulate. We can't use the R packages that read in
+# AnnData (zellkonverter or anndata) because they clobber something from the
+# synapser package that makes it not work right.
 
 DownloadData_SEARef <- function() {
   synIDs <- list("individual_metadata" = "syn31149116")
@@ -483,7 +487,8 @@ DownloadData_SEAAD <- function() {
 ReadMetadata_SEARef <- function(files) {
   donor_metadata <- read.csv(files$individual_metadata$path)
 
-  adata <- read_h5ad(files$counts, backed = 'r')
+  ad <- import("anndata")
+  adata <- ad$read_h5ad(files$counts, backed = 'r')
 
   metadata <- adata$obs
 
@@ -507,7 +512,8 @@ ReadMetadata_SEARef <- function(files) {
 ReadMetadata_SEAAD <- function(files) {
   donor_metadata <- read.csv(files$individual_metadata$path)
 
-  adata <- read_h5ad(files$counts, backed = 'r')
+  ad <- import("anndata")
+  adata <- ad$read_h5ad(files$counts, backed = 'r')
 
   metadata <- adata$obs
 

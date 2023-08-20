@@ -35,7 +35,7 @@ for (dataset in datasets) {
   ##### Read in metadata file #####
 
   metadata_list <- ReadMetadata(dataset, files)
-  metadata <- metadata_list$cell_metadata
+  metadata <- metadata_list$metadata
 
   # For data privacy reasons, each data set's covariates are saved in a separate
   # file from the main SingleCellExperiment object and are not uploaded anywhere
