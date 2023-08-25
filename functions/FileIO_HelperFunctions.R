@@ -16,8 +16,8 @@ source("Filenames.R")
 #
 # Arguments:
 #   dataset = the name of the data set to load in
-#   granularity = either "broad" or "fine", for which level of cell types to
-#                 use in the metadata
+#   granularity = either "broad_class" or "sub_class", for which level of cell
+#                 types to use in the metadata
 #   output_type = one of "counts", "vst", "cpm", "tmm", "log_cpm", "log_tmm",
 #                 "qn_cpm", "qn_tmm", "qn_log_cpm", or "qn_log_tmm". See
 #                 Load_CountsFile for description.
@@ -34,13 +34,12 @@ Load_SingleCell <- function(dataset, granularity, output_type = "counts") {
   singlecell <- Load_CountsFile(sc_file, output_type)
   metadata <- colData(singlecell)
 
+  if (!(granularity %in% c("broad_class", "sub_class"))) {
+    stop("Error! 'granularity' should be either 'broad_class' or 'sub_class'.")
+  }
+
   # Assign the column "celltype" to be either the broad or fine cell types
-  if (granularity == "broad") {
-    metadata$celltype <- metadata$broadcelltype
-  }
-  else {
-    metadata$celltype <- metadata$subcluster
-  }
+  metadata$celltype <- metadata[,granularity]
 
   colData(singlecell) <- metadata
   return(singlecell)

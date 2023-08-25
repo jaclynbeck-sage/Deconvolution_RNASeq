@@ -269,7 +269,7 @@ ReadMetadata_Lau <- function(files) {
     bc <- read.table(gzfile(filename)) %>% dplyr::rename(barcode = V1)
     file_info <- str_split(filename, pattern = "_", simplify = TRUE)
     bc$donor <- file_info[,3]
-    bc$barcode <- str_replace(bc$barcode, pattern = "1$", bc$donor)
+    bc$barcode <- paste(bc$barcode, bc$donor, sep = "_")
     return(bc)
   })
 
