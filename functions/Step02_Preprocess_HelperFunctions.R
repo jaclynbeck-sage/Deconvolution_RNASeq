@@ -7,6 +7,7 @@ library(reticulate)
 library(HDF5Array)
 library(dplyr)
 library(readxl)
+library(SingleCellExperiment)
 
 source("Filenames.R")
 
@@ -113,20 +114,20 @@ UpdateGeneSymbols <- function(dataset, gene_list) {
 }
 
 
-##### Functions that call dataset-specific functions #####
+##### Generic functions that call dataset-specific functions #####
 
-DownloadData <- function(dataset) {
+DownloadData <- function(dataset, metadata_only = FALSE) {
   files <- switch(dataset,
-                  "cain" = DownloadData_Cain(),
-                  "lau" = DownloadData_Lau(),
-                  "leng" = DownloadData_Leng(),
-                  "mathys" = DownloadData_Mathys(),
-                  "morabito" = DownloadData_Morabito(),
-                  "seaRef" = DownloadData_SEARef(),
-                  "seaAD" = DownloadData_SEAAD(),
-                  "Mayo" = DownloadData_Mayo(),
-                  "MSBB" = DownloadData_MSBB(),
-                  "ROSMAP" = DownloadData_ROSMAP())
+                  "cain" = DownloadData_Cain(metadata_only),
+                  "lau" = DownloadData_Lau(metadata_only),
+                  "leng" = DownloadData_Leng(metadata_only),
+                  "mathys" = DownloadData_Mathys(metadata_only),
+                  "morabito" = DownloadData_Morabito(metadata_only),
+                  "seaRef" = DownloadData_SEARef(metadata_only),
+                  "seaAD" = DownloadData_SEAAD(metadata_only),
+                  "Mayo" = DownloadData_Mayo(metadata_only),
+                  "MSBB" = DownloadData_MSBB(metadata_only),
+                  "ROSMAP" = DownloadData_ROSMAP(metadata_only))
 
   return(files)
 }
@@ -144,6 +145,21 @@ ReadMetadata <- function(dataset, files) {
                      "MSBB" = ReadMetadata_BulkData(files),
                      "ROSMAP" = ReadMetadata_BulkData(files))
   return(metadata)
+}
+
+ReadCovariates <- function(dataset, files) {
+  covariates <- switch(dataset,
+                       "cain" = ReadMetadata_Cain(files)$covariates,
+                       "lau" = ReadCovariates_Lau(files),
+                       "leng" = ReadMetadata_Leng(files)$covariates,
+                       "mathys" = ReadMetadata_Mathys(files)$covariates,
+                       "morabito" = ReadMetadata_Morabito(files),
+                       "seaRef" = ReadMetadata_SEARef(files)$covariates,
+                       "seaAD" = ReadMetadata_SEAAD(files)$covariates,
+                       "Mayo" = ReadMetadata_BulkData(files)$covariates,
+                       "MSBB" = ReadMetadata_BulkData(files)$covariates,
+                       "ROSMAP" = ReadMetadata_BulkData(files)$covariates)
+  return(covariates)
 }
 
 ReadCounts <- function(dataset, files, metadata) {
@@ -168,12 +184,16 @@ ReadCounts <- function(dataset, files, metadata) {
 ##### Cain, et al., 2020 [preprint] #####
 # https://doi.org/10.1101/2020.12.22.424084
 
-DownloadData_Cain <- function() {
+DownloadData_Cain <- function(metadata_only = FALSE) {
   synIDs <- list("metadata" = "syn23554294",
                  "biospecimen_metadata" = "syn21323366",
                  "clinical_metadata" = "syn3191087",
                  "counts" = "syn23554292",
                  "genes" = "syn23554293")
+
+  if (metadata_only) {
+    synIDs <- synIDs[1:3]
+  }
 
   files <- DownloadFromSynapse(synIDs, dir_cain_raw)
   return(files)
@@ -245,23 +265,25 @@ ReadCounts_Cain <- function(files, metadata) {
 ##### Lau, et al., 2020 #####
 # https://doi.org/10.1073/pnas.2008762117
 
-DownloadData_Lau <- function() {
+DownloadData_Lau <- function(metadata_only = FALSE) {
   gse <- getGEO("GSE157827", destdir = dir_lau_raw)
 
   geo_metadata <- pData(phenoData(gse[[1]]))
   file_geo_metadata <- file.path(dir_lau_raw, "geo_metadata.csv")
   write.csv(geo_metadata, file_geo_metadata)
 
-  # For some reason this function call is failing
-  #geo <- getGEOSuppFiles(GEO = "GSE157827", makeDirectory = FALSE,
-  #                       baseDir = dir_lau_raw)
-  #untar(rownames(geo)[1], exdir = dir_lau_raw)
+  if (!metadata_only) {
+    # For some reason this function call is failing
+    #geo <- getGEOSuppFiles(GEO = "GSE157827", makeDirectory = FALSE,
+    #                       baseDir = dir_lau_raw)
+    #untar(rownames(geo)[1], exdir = dir_lau_raw)
 
-  url_geo_tar <- "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE157827&format=file"
-  destfile_tar <- file.path(dir_lau_raw, "GSE157827.tar")
-  download.file(url_geo_tar, destfile_tar)
+    url_geo_tar <- "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE157827&format=file"
+    destfile_tar <- file.path(dir_lau_raw, "GSE157827.tar")
+    download.file(url_geo_tar, destfile_tar)
 
-  untar(file.path(dir_lau_raw, "GSE157827.tar"), exdir = dir_lau_raw)
+    untar(file.path(dir_lau_raw, "GSE157827.tar"), exdir = dir_lau_raw)
+  }
 
   synIDs <- list("clinical_metadata" = "syn52308080")
 
@@ -295,10 +317,15 @@ ReadMetadata_Lau <- function(files) {
   metadata$broad_class <- NA
   metadata$sub_class <- NA
 
-  clinical <- read_excel(files$clinical_metadata$path, sheet = "Patient_info")
-  clinical <- as.data.frame(clinical) %>% dplyr::rename(donor = ID)
+  clinical <- Read_Covariates_Lau(files)
 
   return(list("metadata" = metadata, "covariates" = clinical))
+}
+
+ReadCovariates_Lau <- function(files) {
+  clinical <- read_excel(files$clinical_metadata$path, sheet = "Patient_info")
+  clinical <- as.data.frame(clinical) %>% dplyr::rename(donor = ID)
+  return(clinical)
 }
 
 ReadCounts_Lau <- function(files, metadata) {
@@ -328,7 +355,9 @@ ReadCounts_Lau <- function(files, metadata) {
 ##### Leng, et al., 2021 #####
 # https://doi.org/10.1038/s41593-020-00764-7
 
-DownloadData_Leng <- function() {
+# metadata_only is an unused variable for this dataset as the metadata is
+# embedded in the counts RDS files
+DownloadData_Leng <- function(metadata_only = FALSE) {
   synIDs <- list("counts_ec" = "syn22722817",
                  "counts_sfg" = "syn22722860")
   files <- DownloadFromSynapse(synIDs, dir_leng_raw)
@@ -373,11 +402,15 @@ ReadCounts_Leng <- function(files) {
 ##### Mathys, et al., 2019 #####
 # http://dx.doi.org/10.1038/s41586-019-1195-2
 
-DownloadData_Mathys <- function() {
+DownloadData_Mathys <- function(metadata_only = FALSE) {
   synIDs <- list("clinical_metadata" = "syn3191087",
                  "cell_metadata" = "syn18686372",
                  "counts" = "syn18686381",
                  "genes" = "syn18686382")
+
+  if (metadata_only) {
+    synIDs <- synIDs[1:2]
+  }
 
   files <- DownloadFromSynapse(synIDs, dir_mathys_raw)
   return(files)
@@ -486,7 +519,9 @@ ReadCounts_Morabito <- function(files) {
 # AnnData (zellkonverter or anndata) because they clobber something from the
 # synapser package that makes it not work right.
 
-DownloadData_SEARef <- function() {
+# metadata_only is an unused variable for this data set, as we need to download
+# the data to access the metadata in the anndata file.
+DownloadData_SEARef <- function(metadata_only = FALSE) {
   synIDs <- list("individual_metadata" = "syn31149116")
   files <- DownloadFromSynapse(synIDs, downloadLocation = dir_seaad_raw)
 
@@ -496,10 +531,13 @@ DownloadData_SEARef <- function() {
     download.file(url_searef_h5,
                   destfile = files[["counts"]], method = "curl")
   }
+
   return(files)
 }
 
-DownloadData_SEAAD <- function() {
+# metadata_only is an unused variable for this data set, as we need to download
+# the data to access the metadata in the anndata file.
+DownloadData_SEAAD <- function(metadata_only = FALSE) {
   synIDs <- list("individual_metadata" = "syn31149116")
   files <- DownloadFromSynapse(synIDs, downloadLocation = dir_seaad_raw)
 
@@ -509,6 +547,7 @@ DownloadData_SEAAD <- function() {
     download.file(url_seaad_h5,
                   destfile = files[["counts"]], method = "curl")
   }
+
   return(files)
 }
 
@@ -595,12 +634,14 @@ ReadCounts_SEAAD <- function(files) {
 # Filtered counts: https://www.synapse.org/#!Synapse:syn27024951
 # Biomart gene conversion: https://www.synapse.org/#!Synapse:syn27024953
 
-DownloadData_Mayo <- function() {
+DownloadData_Mayo <- function(metadata_only = FALSE) {
   synIDs <- list("metadata" = "syn29855549",
-                 "counts" = "syn27024951",
-                 "normalized" = "syn27024965",
-                 "residuals" = "syn27024967",
-                 "biospecimen_metadata" = "syn20827192")
+                 "biospecimen_metadata" = "syn20827192",
+                 "counts" = "syn27024951")
+
+  if (metadata_only) {
+    synIDs <- synIDs[1:2]
+  }
 
   files <- DownloadFromSynapse(synIDs, dir_mayo_raw)
   return(files)
@@ -615,12 +656,14 @@ DownloadData_Mayo <- function() {
 # Filtered counts: https://www.synapse.org/#!Synapse:syn27068754
 # Biomart gene conversion: https://www.synapse.org/#!Synapse:syn27068755
 
-DownloadData_MSBB <- function() {
+DownloadData_MSBB <- function(metadata_only = FALSE) {
   synIDs <- list("metadata" = "syn29855570",
-                 "counts" = "syn27068754",
-                 "normalized" = "syn27068756",
-                 "residuals" = "syn27068760",
-                 "biospecimen_metadata" = "syn21893059")
+                 "biospecimen_metadata" = "syn21893059",
+                 "counts" = "syn27068754")
+
+  if (metadata_only) {
+    synIDs <- synIDs[1:2]
+  }
 
   files <- DownloadFromSynapse(synIDs, dir_msbb_raw)
   return(files)
@@ -635,13 +678,15 @@ DownloadData_MSBB <- function() {
 # Filtered counts: https://www.synapse.org/#!Synapse:syn26967451
 # Biomart gene conversion: https://www.synapse.org/#!Synapse:syn26967452
 
-DownloadData_ROSMAP <- function() {
+DownloadData_ROSMAP <- function(metadata_only = FALSE) {
   synIDs <- list("metadata" = "syn29855598",
-                 "counts" = "syn26967451",
-                 "normalized" = "syn26967453",
-                 "residuals" = "syn26967455",
                  "biospecimen_metadata" = "syn21323366",
-                 "clinical_metadata" = "syn3191087")
+                 "clinical_metadata" = "syn3191087",
+                 "counts" = "syn26967451")
+
+  if (metadata_only) {
+    synIDs <- synIDs[1:3]
+  }
 
   files <- DownloadFromSynapse(synIDs, dir_rosmap_raw)
   return(files)
