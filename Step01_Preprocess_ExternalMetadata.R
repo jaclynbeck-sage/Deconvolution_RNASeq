@@ -2,7 +2,8 @@
 # to deconvolve data sets:
 #   1. A list of Ensembl ID / gene symbol pairings. The single-cell data sets
 #      all use gene symbols while the bulk data sets use Ensembl IDs, so we
-#      need this list for conversion.
+#      need this list for conversion. We also need exon lengths of genes from
+#      the bulk data sets for calculating TPM normalization.
 #   2. Ground-truth cell type proportions for select ROSMAP samples, as
 #      determined by IHC on the same tissue as the RNA sequencing samples.
 #
@@ -111,15 +112,16 @@ all_genes <- all_genes %>% rowwise() %>%
                 mutate(canonical_symbol = first_symbol()) %>%
                 arrange(ensembl_gene_id) %>% as.data.frame()
 
-# Get exon lengths for each gene
-#tx <- makeTxDbFromEnsembl(organism = "Homo sapiens")
-#ex <- exonsBy(tx, by = "gene")
-#ex <- reduce(ex)
-#exlen <- relist(width(unlist(ex)), ex)
-#exlens <- sapply(exlen, sum)
-#exlens <- data.frame(ensembl_gene_id = names(exlens), length = exlens)
+# Get exon lengths for each gene, for the purpose of calculating TPM on the
+# bulk datasets. The bulk datasets were aligned to Ensembl release 97.
+tx <- makeTxDbFromEnsembl(organism = "Homo sapiens", release = 97)
+ex <- exonsBy(tx, by = "gene")
+ex <- GenomicRanges::reduce(ex)
+exlen <- relist(width(unlist(ex)), ex)
+exlens <- sapply(exlen, sum)
+exlens <- data.frame(ensembl_gene_id = names(exlens), exon_length = exlens)
 
-#all_genes <- merge(all_genes, exlens, by = "ensembl_gene_id")
+all_genes <- merge(all_genes, exlens, by = "ensembl_gene_id", all = TRUE)
 
 all_genes <- subset(all_genes, !is.na(canonical_symbol))
 write.csv(all_genes, file_gene_list, quote = FALSE, row.names = FALSE)

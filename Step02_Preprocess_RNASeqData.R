@@ -6,7 +6,7 @@
 library(Matrix)
 library(SummarizedExperiment)
 library(SingleCellExperiment)
-library(edgeR)
+#library(edgeR)
 
 source(file.path("functions", "Step02_Preprocess_HelperFunctions.R"))
 source(file.path("functions", "General_HelperFunctions.R"))
@@ -104,6 +104,11 @@ for (dataset in datasets) {
   mt_genes <- grepl("^MT-", rownames(counts))
   pct <- colSums(counts[mt_genes,]) / colSums(counts)
   counts <- counts[!mt_genes, pct <= 0.5] # Remove mito genes
+
+  # Remove non-coding genes
+  nc_genes <- grepl("^(AC\\d+{3}|AL\\d+{3}|AP\\d+{3}|LINC\\d+{3})", rownames(counts))
+  counts <- counts[!nc_genes,]
+
   genes <- genes[rownames(counts),]
 
   ##### Final modifications to metadata #####
@@ -120,25 +125,24 @@ for (dataset in datasets) {
   }
 
   # TMM normalization factors -- unfortunately will convert to dense matrix
-  if (is_singlecell(dataset)) {
-    tmm <- calcNormFactors(counts, method = "TMMwsp")
-  }
-  else {
-    tmm <- calcNormFactors(counts, method = "TMM")
-  }
-  gc()
-  metadata$tmm_factors <- tmm
+  #if (is_singlecell(dataset)) {
+  #  tmm <- calcNormFactors(counts, method = "TMMwsp")
+  #}
+  #else {
+  #  tmm <- calcNormFactors(counts, method = "TMM")
+  #}
+  #gc()
+  #metadata$tmm_factors <- tmm
 
   ##### Bulk data -- create SummarizedExperiment and save #####
 
-  # Bulk data also has two more assays in addition to raw counts
   if (is_bulk(dataset)) {
-    normalized <- ReadNormCounts_BulkData(files, "normalized", genes, colnames(counts))
-    residuals <- ReadNormCounts_BulkData(files, "residuals", genes, colnames(counts))
+    #normalized <- ReadNormCounts_BulkData(files, "normalized", genes, colnames(counts))
+    #residuals <- ReadNormCounts_BulkData(files, "residuals", genes, colnames(counts))
 
-    se <- SummarizedExperiment(assays = list(counts = counts,
-                                             normalized = normalized,
-                                             residuals = residuals),
+    se <- SummarizedExperiment(assays = list(counts = counts),
+                                             #normalized = normalized,
+                                             #residuals = residuals),
                                colData = metadata,
                                rowData = genes)
 

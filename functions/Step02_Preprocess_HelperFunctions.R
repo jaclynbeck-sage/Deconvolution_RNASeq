@@ -79,7 +79,8 @@ EnsemblIdToGeneSymbol <- function(gene_list) {
 
   gene_conversions <- gene_conversions[overlap,]
 
-  genes <- gene_conversions %>% select(ensembl_gene_id, canonical_symbol) %>%
+  genes <- gene_conversions %>%
+              select(ensembl_gene_id, canonical_symbol, exon_length) %>%
               dplyr::rename(hgnc_symbol = canonical_symbol) %>%
               arrange(ensembl_gene_id)
   return(genes)
@@ -198,13 +199,26 @@ ReadMetadata_Cain <- function(files) {
   metadata <- metadata[, c("cell_name", "specimenID", "diagnosis",
                            "Cell.Type", "sub.cluster" )]
 
+  metadata$Cell.Type <- RemapCelltypeNames(metadata$Cell.Type)
+
+  # Fix the 'no.clus' label for sub.cluster
+  no_clust <- metadata$sub.cluster == "no.clus"
+  metadata$sub.cluster[no_clust] <- metadata$Cell.Type[no_clust]
+
   biospecimen <- read.csv(files$biospecimen_metadata$path)
   biospecimen <- subset(biospecimen, specimenID %in% metadata$specimenID) %>%
                     select(individualID, specimenID)
 
   clinical <- read.csv(files$clinical_metadata$path)
   clinical <- subset(clinical, individualID %in% biospecimen$individualID)
-  clinical <- merge(clinical, biospecimen, by = "individualID")
+  clinical <- merge(clinical, biospecimen, by = "individualID") %>%
+                  dplyr::rename(donor = specimenID)
+
+  # Fix age fields to be numeric
+  clinical$age_death[clinical$age_death == "90+"] <- 90
+  clinical$age_death <- as.numeric(clinical$age_death)
+  clinical$age_at_visit_max[clinical$age_at_visit_max == "90+"] <- 90
+  clinical$age_at_visit_max <- as.numeric(clinical$age_at_visit_max)
 
   return(list("metadata" = metadata, "covariates" = clinical))
 }
@@ -282,7 +296,7 @@ ReadMetadata_Lau <- function(files) {
   metadata$sub_class <- NA
 
   clinical <- read_excel(files$clinical_metadata$path, sheet = "Patient_info")
-  clinical <- as.data.frame(clinical)
+  clinical <- as.data.frame(clinical) %>% dplyr::rename(donor = ID)
 
   return(list("metadata" = metadata, "covariates" = clinical))
 }
@@ -338,7 +352,9 @@ ReadMetadata_Leng <- function(files) {
   metadata <- as.data.frame(metadata)
 
   covariates <- metadata %>% select(SampleID, BrainRegion, SampleBatch,
-                                    BraakStage, diagnosis) %>% distinct()
+                                    BraakStage, diagnosis) %>%
+                    distinct() %>%
+                    dplyr::rename(donor = SampleID)
 
   metadata <- metadata %>% select(cell_id, SampleID, diagnosis,
                                   clusterCellType, sub_cluster)
@@ -385,7 +401,15 @@ ReadMetadata_Mathys <- function(files) {
 
   metadata <- merge(metadata, diagnosis.codes, by = "cogdx")
 
-  covariates <- metadata[, c(colnames(clinical), "diagnosis")] %>% distinct()
+  covariates <- metadata[, c(colnames(clinical), "diagnosis")] %>%
+                    distinct() %>%
+                    dplyr::rename(donor = projid)
+
+  # Fix age fields to be numeric
+  covariates$age_death[covariates$age_death == "90+"] <- 90
+  covariates$age_death <- as.numeric(covariates$age_death)
+  covariates$age_at_visit_max[covariates$age_at_visit_max == "90+"] <- 90
+  covariates$age_at_visit_max <- as.numeric(covariates$age_at_visit_max)
 
   metadata <- metadata %>% select(TAG, projid, diagnosis, broad.cell.type, Subcluster)
 
@@ -508,7 +532,10 @@ ReadMetadata_SEARef <- function(files) {
                            "cluster_label")]
 
   covariates <- subset(donor_metadata,
-                       individualID %in% metadata$external_donor_name_label)
+                       individualID %in% metadata$external_donor_name_label) %>%
+                    dplyr::rename(donor = individualID)
+
+  covariates$ageDeath <- as.numeric(covariates$ageDeath)
 
   return(list("metadata" = metadata, "covariates" = covariates))
 }
@@ -532,7 +559,10 @@ ReadMetadata_SEAAD <- function(files) {
                            "broad_class", "Subclass", "Cluster")] # TODO what is the cluster field called?
 
   covariates <- subset(donor_metadata,
-                       individualID %in% metadata$Donor.ID)
+                       individualID %in% metadata$Donor.ID) %>%
+                    dplyr::rename(donor = individualID)
+
+  covariates$ageDeath <- as.numeric(covariates$ageDeath)
 
   return(metadata)
 }
