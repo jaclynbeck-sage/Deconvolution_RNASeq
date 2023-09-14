@@ -1,6 +1,6 @@
 install.packages(c("BiocManager", "devtools", "stringr", "Metrics",
                    "dplyr", "ggplot2", "DEoptimR", "nloptr", "anndata",
-                   "readxl")) #, "RMariaDB"))
+                   "readxl", "Hmisc", "RMariaDB", "lme4"))
 
 # If synapser fails to install because it can't find "synapseclient", go to
 # RStudio options (Tools->Global Options) -> Python, uncheck "Automatically
@@ -9,13 +9,10 @@ install.packages("synapser", repos = c("http://ran.synapse.org", "http://cran.fh
 
 BiocManager::install(c("Biobase", "SingleCellExperiment", "TOAST", "scuttle",
                        "DeconRNASeq", "Seurat", "MAST", "GEOquery", "biomaRt",
-                       "DESeq2", "edgeR")) #,
-                       #"GenomicFeatures", "rhdf5", "HDF5Array"))
+                       "DESeq2", "edgeR", "GenomicFeatures")) #,
+                       #"rhdf5", "HDF5Array"))
 
 BiocManager::install("preprocessCore", configure.args="--disable-threading")
-
-# Azimuth for mapping datasets to a reference
-devtools::install_github("satijalab/azimuth")
 
 # install the MuSiC package
 devtools::install_github('xuranw/MuSiC')

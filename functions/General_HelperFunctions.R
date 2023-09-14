@@ -1,7 +1,7 @@
 # Helper functions that are used in multiple scripts.
 # NOTE: For the calculations below that use model.matrix and matrix
 # multiplication, using this method to sum counts is way faster than iterating
-# over cell type/donor combos and using sum(), colSums(), or rowSums(). We do
+# over cell type/sample combos and using sum(), colSums(), or rowSums(). We do
 # it this way even though it's less readable, because for data sets this large
 # the decrease in run-time is significant.
 
@@ -205,11 +205,11 @@ CreateParams_FilterableSignature <- function(filter_levels, n_markers,
 #   matrix of percentages (rows = samples, cols = cell types), whose rows sum
 #   to 1.
 CalculatePercentRNA <- function(singlecell_counts, samples, celltypes) {
-  # Sum all counts per gene for each donor/celltype combination
+  # Sum all counts per gene for each sample/celltype combination
   y <- model.matrix(~0 + samples:celltypes)
   count_sums <- singlecell_counts %*% y
 
-  # Sum over all genes for each donor/celltype combination
+  # Sum over all genes for each sample/celltype combination
   count_sums <- colSums(count_sums)
 
   # names are of the format "samples<sample>:celltypes<celltype>", split
@@ -218,7 +218,7 @@ CalculatePercentRNA <- function(singlecell_counts, samples, celltypes) {
   sample_list <- unique(col_info[,1])
 
   pctRNA <- sapply(sample_list, function (samp) {
-    # All entries for this donor = 1 entry per cell type
+    # All entries for this sample = 1 entry per cell type
     cols <- which(col_info[,1] == samp)
     pct <- count_sums[cols] / sum(count_sums[cols])
 
@@ -256,11 +256,11 @@ CalculatePercentRNA <- function(singlecell_counts, samples, celltypes) {
 # Returns:
 #   vector of average library size of each cell type, normalized to sum to 1.
 CalculateA <- function(sce, samples, celltypes) {
-  # Sum all counts per gene for each donor/celltype combination
+  # Sum all counts per gene for each sample/celltype combination
   y <- model.matrix(~0 + samples:celltypes)
   count_sums <- counts(sce) %*% y
 
-  # Sum over all genes for each donor/celltype combination
+  # Sum over all genes for each sample/celltype combination
   count_sums <- colSums(count_sums)
 
   # For each sample
@@ -270,16 +270,16 @@ CalculateA <- function(sce, samples, celltypes) {
       name <- str_glue("samples{samp}:celltypes{ct}")
       cells <- celltypes == ct & samples == samp
 
-      # Average library size = sum over all genes for this donor/celltype
-      # divided by number of cells for this donor/celltype
+      # Average library size = sum over all genes for this sample/celltype
+      # divided by number of cells for this sample/celltype
       return(as.numeric(count_sums[name] / sum(cells)))
     })
   })
 
-  # Normalize each donor row to sum to 1
+  # Normalize each sample row to sum to 1
   A_s <- t(sweep(A_s, 2, colSums(A_s, na.rm = TRUE), "/"))
 
-  # Take the means but exclude entries for donors who don't have a certain cell type
+  # Take the means but exclude entries for samples who don't have a certain cell type
   A_s[A_s == 0] <- NA
   A <- colMeans(A_s, na.rm = TRUE)
   A <- A / sum(A) # Enforce sum to 1
@@ -308,11 +308,11 @@ CalculateA <- function(sce, samples, celltypes) {
 #   matrix of average CPMs for each gene, for each cell type (rows = genes,
 #   columns = cell types)
 CalculateSignature <- function(sce, samples, celltypes) {
-  # Sum all counts per gene for each donor/celltype combination
+  # Sum all counts per gene for each sample/celltype combination
   y <- model.matrix(~0 + samples:celltypes)
   count_sums <- counts(sce) %*% y
 
-  # Remove columns where a donor doesn't have the specified cell type
+  # Remove columns where a sample doesn't have the specified cell type
   count_sums <- count_sums[,colSums(count_sums) > 0]
 
   # Convert to CPM -- creates an "average" profile in CPM for each cell type
@@ -322,7 +322,7 @@ CalculateSignature <- function(sce, samples, celltypes) {
   # "<celltype>" as a vector
   cts <- str_replace(colnames(count_sums), ".*:celltypes", "")
 
-  # Get the mean over all donors, for each gene and cell type
+  # Get the mean over all samples, for each gene and cell type
   sig <- sapply(levels(celltypes), function(ct) {
     cols <- which(cts == ct)
     rowMeans(count_sums[,cols], na.rm = TRUE)

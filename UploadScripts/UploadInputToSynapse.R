@@ -23,7 +23,7 @@ provenance <- list("cain" = c("syn23554294", "syn23554292", "syn23554293"),
                    "ROSMAP" = c("syn29855598", "syn26967451", "syn26967453",
                                 "syn26967455", "syn21323366", "syn3191087"))
 
-datasets <- c("cain", "lau", "leng", "mathys", "morabito",
+datasets <- c("cain", "lau", "leng", "mathys", #"morabito",
               "seaRef", "seaAD", "Mayo", "MSBB", "ROSMAP")
 
 for (dataset in datasets) {

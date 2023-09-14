@@ -338,6 +338,111 @@ Load_GeneConversion <- function(dataset) {
 }
 
 
+# Save_Covariates: saves a dataframe of covariates to a file with a specific
+# filename format.
+#
+# Arguments:
+#   dataset_name = the name of the data set
+#   covariates = a data frame of covariates
+#
+# Returns:
+#   nothing
+Save_Covariates <- function(dataset_name, covariates) {
+  saveRDS(covariates, file.path(dir_covariates,
+                                str_glue("{dataset_name}_covariates.rds")))
+}
+
+# Load_Covariates: loads a dataframe of covariates from a file with a specific
+# filename format.
+#
+# Arguments:
+#   dataset_name = the name of the data set
+#
+# Returns:
+#   a data frame of covariates
+Load_Covariates <- function(dataset_name) {
+  return(readRDS(file.path(dir_covariates,
+                           str_glue("{dataset_name}_covariates.rds"))))
+}
+
+
+# Save_MapReference: saves a reference data set for cell type mapping to a
+# file with a specific filename format.
+#
+# Arguments:
+#   dataset_name = the name of the single cell dataset
+#   seurat_object = Either a single Seurat object (broad_class) or a list of
+#                   Seurat objects (sub_class). Seurat object(s) should be
+#                   SCTransform-ed, and have PCA and UMAP dimension reductions.
+#                   Run_UMAP needs to be run with 'return.model = TRUE' in order
+#                   for this object to work as a reference.
+#   granularity = either 'broad_class' or 'sub_class', for whether the
+#                 Seurat object(s) have been prepared for broad class mapping or
+#                 sub class mapping.
+#
+# Returns:
+#   Nothing
+Save_MapReference <- function(dataset_name, seurat_object, granularity) {
+  saveRDS(seurat_object,
+          file.path(dir_map_reference,
+                    str_glue("reference_{dataset_name}_{granularity}.rds")))
+}
+
+
+# Load_MapReference: loads a reference data set for cell type mapping from a
+# file with a specific filename format.
+#
+# Arguments:
+#   dataset_name = the name of the single cell dataset
+#   granularity = either 'broad_class' or 'sub_class', for whether the
+#                 Seurat object(s) have been prepared for broad class mapping or
+#                 sub class mapping.
+#
+# Returns:
+#   a single Seurat object (if granularity = "broad_class") or a list of
+#   Seurat objects (if granularity = "sub_class")
+Load_MapReference <- function(dataset_name, granularity) {
+  readRDS(file.path(dir_map_reference,
+                    str_glue("reference_{dataset_name}_{granularity}.rds")))
+}
+
+
+# Save_PreprocessedData: Saves single cell or bulk RNA seq data that has been
+# pre-processed (run through Step02) but has not had cell types mapped or
+# normalization applied.
+#
+# Arguments:
+#   dataset_name = the name of the dataset to load
+#   se_object = a SummarizedExperiment or SingleCellExperiment object
+#
+# Returns:
+#   Nothing
+Save_PreprocessedData <- function(dataset_name, se_object) {
+  saveRDS(se_object,
+          file = file.path(dir_preprocessed,
+                           str_glue("{dataset_name}_preprocessed.rds")))
+}
+
+
+# Load_PreprocessedData: Loads single cell or bulk RNA seq data that has been
+# pre-processed (run through Step02) but has not had cell types mapped or
+# normalization applied.
+#
+# Arguments:
+#   dataset_name = the name of the dataset to load
+#
+# Returns:
+#   A SummarizedExperiment (or SingleCellExperiment)
+Load_PreprocessedData <- function(dataset_name) {
+  data <- readRDS(file.path(dir_preprocessed,
+                            str_glue("{dataset_name}_preprocessed.rds")))
+  if (is(assay(data, "counts"), "DelayedMatrix")) {
+    assay(data, "counts") <- as(assay(data, "counts"), "CsparseMatrix")
+  }
+  return(data)
+}
+
+
 ##### General algorithm I/O #####
 
 # Save_AlgorithmIntermediate: saves a single output from an algorithm to

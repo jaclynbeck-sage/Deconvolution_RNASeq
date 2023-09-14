@@ -1,6 +1,8 @@
 # Filenames that are used in multiple files
 
 dir_data <- "data"
+dir_figures <- "figures"
+
 dir_input <- file.path(dir_data, "input")
 dir_pseudobulk <- file.path(dir_data, "pseudobulk")
 dir_output <- file.path(dir_data, "output")
@@ -9,23 +11,25 @@ dir_tmp <- file.path(dir_data, "tmp")
 
 dir_markers <- file.path(dir_output, "markers")
 dir_params_lists <- file.path(dir_output, "params_lists")
-dir_params_lists_tmp <- file.path(dir_params_lists, "tmp")
 dir_errors <- file.path(dir_output, "errors")
-dir_figures <- "figures"
 
-dir_azimuth_reference <- file.path(dir_input, "azimuth_reference")
-dir_covariates <- file.path(dir_input, "covariate_metadata")
+dir_params_lists_tmp <- file.path(dir_params_lists, "tmp")
 
-dir_cain_raw <- file.path(dir_input, "cain_raw")
-dir_lau_raw <- file.path(dir_input, "lau_raw")
-dir_leng_raw <- file.path(dir_input, "leng_raw")
-dir_mathys_raw <- file.path(dir_input, "mathys_raw")
-dir_morabito_raw <- file.path(dir_input, "morabito_raw")
-dir_seaad_raw <- file.path(dir_input, "sea-ad_raw")
+dir_raw_data <- file.path(dir_input, "raw_data")
+dir_preprocessed <- file.path(dir_input, "preprocessed")
+dir_map_reference <- file.path(dir_input, "map_reference")
+dir_covariates <- file.path(dir_metadata, "covariates")
 
-dir_mayo_raw <- file.path(dir_input, "mayo_raw")
-dir_msbb_raw <- file.path(dir_input, "msbb_raw")
-dir_rosmap_raw <- file.path(dir_input, "rosmap_raw")
+dir_cain_raw <- file.path(dir_raw_data, "cain_raw")
+dir_lau_raw <- file.path(dir_raw_data, "lau_raw")
+dir_leng_raw <- file.path(dir_raw_data, "leng_raw")
+dir_mathys_raw <- file.path(dir_raw_data, "mathys_raw")
+dir_morabito_raw <- file.path(dir_raw_data, "morabito_raw")
+dir_seaad_raw <- file.path(dir_raw_data, "sea-ad_raw")
+
+dir_mayo_raw <- file.path(dir_raw_data, "mayo_raw")
+dir_msbb_raw <- file.path(dir_raw_data, "msbb_raw")
+dir_rosmap_raw <- file.path(dir_raw_data, "rosmap_raw")
 
 file_searef_h5 <- file.path(dir_seaad_raw, "ref_counts.h5ad")
 file_seaad_h5 <- file.path(dir_seaad_raw, "seaad_counts.h5ad")

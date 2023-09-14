@@ -21,7 +21,8 @@ DownloadFromSynapse <- function(synIDs, downloadLocation) {
   files <- list()
 
   for (name in names(synIDs)) {
-    files[[name]] <- synGet(synIDs[[name]], downloadLocation = downloadLocation)
+    files[[name]] <- synGet(synIDs[[name]]$id, version = synIDs[[name]]$version,
+                            downloadLocation = downloadLocation)
   }
 
   return(files)
@@ -33,14 +34,14 @@ RemapCelltypeNames <- function(celltypes) {
   # Reduces the number of possible variations
   celltypes_mod <- str_to_lower(str_sub(celltypes, end = 2))
 
-  remap <- melt(list(Astro = c("as"),
-                     Endo = c("en"),
-                     Exc = c("ex", "gl"), # gl = Glut
-                     Inh = c("in", "ga"), # ga = GABA
-                     Micro = c("mg", "mi"),
-                     Oligo = c("od", "ol"),
+  remap <- melt(list(Astrocyte = c("as"),
+                     Endothelial = c("en"),
+                     Excitatory = c("ex", "gl"), # gl = Glut
+                     Inhibitory = c("in", "ga"), # ga = GABA
+                     Microglia = c("mg", "mi"),
+                     Oligodendrocyte = c("od", "ol"),
                      OPC = c("op"),
-                     Peri = c("pe"),
+                     Pericyte = c("pe"),
                      VLMC = c("vl")))
   rownames(remap) <- remap$value
 
@@ -185,11 +186,11 @@ ReadCounts <- function(dataset, files, metadata) {
 # https://doi.org/10.1101/2020.12.22.424084
 
 DownloadData_Cain <- function(metadata_only = FALSE) {
-  synIDs <- list("metadata" = "syn23554294",
-                 "biospecimen_metadata" = "syn21323366",
-                 "clinical_metadata" = "syn3191087",
-                 "counts" = "syn23554292",
-                 "genes" = "syn23554293")
+  synIDs <- list("metadata" = list(id = "syn23554294", version = 5),
+                 "biospecimen_metadata" = list(id = "syn21323366", version = 17),
+                 "clinical_metadata" = list(id = "syn3191087", version = 11),
+                 "counts" = list(id = "syn23554292", version = 3),
+                 "genes" = list(id = "syn23554293", version = 2))
 
   if (metadata_only) {
     synIDs <- synIDs[1:3]
@@ -216,14 +217,24 @@ ReadMetadata_Cain <- function(files) {
   tmp <- paste(tmp$V4, tmp$V5, sep = "-")
 
   metadata$diagnosis <- dx_defs[tmp]
-  metadata <- metadata[, c("cell_name", "specimenID", "diagnosis",
-                           "Cell.Type", "sub.cluster" )]
 
   metadata$Cell.Type <- RemapCelltypeNames(metadata$Cell.Type)
 
   # Fix the 'no.clus' label for sub.cluster
   no_clust <- metadata$sub.cluster == "no.clus"
   metadata$sub.cluster[no_clust] <- metadata$Cell.Type[no_clust]
+
+  # Assign oligodendrocyte subtypes based on the oligodendrocyte 'topic weights'
+  # in the metadata. The paper notes that oligo subtypes are more of a spectrum
+  # than discrete subtypes, however for our purposes we partition into discrete
+  # subtypes by using the highest-weighted 'topic'.
+  cols <- paste0("oligodendrocytes.topicweight.", 1:4)
+  oligos <- which(metadata$Cell.Type == "Oligodendrocyte")
+  olig_types <- apply(metadata[oligos,cols], 1, which.max)
+  metadata$sub.cluster[oligos] <- paste0("Oligo.", olig_types)
+
+  metadata <- metadata[, c("cell_name", "specimenID", "diagnosis",
+                           "Cell.Type", "sub.cluster" )]
 
   biospecimen <- read.csv(files$biospecimen_metadata$path)
   biospecimen <- subset(biospecimen, specimenID %in% metadata$specimenID) %>%
@@ -232,7 +243,7 @@ ReadMetadata_Cain <- function(files) {
   clinical <- read.csv(files$clinical_metadata$path)
   clinical <- subset(clinical, individualID %in% biospecimen$individualID)
   clinical <- merge(clinical, biospecimen, by = "individualID") %>%
-                  dplyr::rename(donor = specimenID)
+                  dplyr::rename(sample = specimenID)
 
   # Fix age fields to be numeric
   clinical$age_death[clinical$age_death == "90+"] <- 90
@@ -255,8 +266,6 @@ ReadCounts_Cain <- function(files, metadata) {
   # the input csvs aren't formatted as expected for MTX
   colnames(counts) <- str_replace(colnames(counts), ",.*", "")
   rownames(counts) <- str_replace(rownames(counts), ".*,", "")
-
-  #counts <- counts[,metadata$broadcelltype != "None"]
 
   return(counts)
 }
@@ -285,7 +294,7 @@ DownloadData_Lau <- function(metadata_only = FALSE) {
     untar(file.path(dir_lau_raw, "GSE157827.tar"), exdir = dir_lau_raw)
   }
 
-  synIDs <- list("clinical_metadata" = "syn52308080")
+  synIDs <- list("clinical_metadata" = list(id = "syn52308080", version = 1))
 
   files <- DownloadFromSynapse(synIDs, dir_lau_raw)
 
@@ -297,34 +306,36 @@ ReadMetadata_Lau <- function(files) {
   # We have to get the barcodes from individual files
   geo_metadata <- read.csv(files$geo_metadata, row.names = 1) %>%
                     select(title, diagnosis.ch1) %>%
-                    dplyr::rename(donor = title, diagnosis = diagnosis.ch1)
+                    dplyr::rename(sample = title, diagnosis = diagnosis.ch1)
 
   barcode_files <- list.files(path = dir_lau_raw, pattern = "barcodes",
                               full.names = TRUE)
   barcodes <- lapply(barcode_files, function(filename) {
     bc <- read.table(gzfile(filename)) %>% dplyr::rename(barcode = V1)
-    file_info <- str_split(filename, pattern = "_", simplify = TRUE)
-    bc$donor <- file_info[,3]
-    bc$barcode <- paste(bc$barcode, bc$donor, sep = "_")
+    file_info <- str_split(filename, pattern = "/", simplify = TRUE)
+    file_info <- str_split(file_info[,length(file_info)], pattern = "_",
+                           simplify = TRUE)
+    bc$sample <- file_info[,2]
+    bc$barcode <- paste(bc$barcode, bc$sample, sep = "_")
     return(bc)
   })
 
   metadata <- do.call(rbind, barcodes) %>%
-                merge(geo_metadata, by = "donor") %>%
-                select(barcode, donor, diagnosis)
+                merge(geo_metadata, by = "sample") %>%
+                select(barcode, sample, diagnosis)
 
   # This data set doesn't come with pre-labeled cells
   metadata$broad_class <- NA
   metadata$sub_class <- NA
 
-  clinical <- Read_Covariates_Lau(files)
+  clinical <- ReadCovariates_Lau(files)
 
   return(list("metadata" = metadata, "covariates" = clinical))
 }
 
 ReadCovariates_Lau <- function(files) {
   clinical <- read_excel(files$clinical_metadata$path, sheet = "Patient_info")
-  clinical <- as.data.frame(clinical) %>% dplyr::rename(donor = ID)
+  clinical <- as.data.frame(clinical) %>% dplyr::rename(sample = ID)
   return(clinical)
 }
 
@@ -346,9 +357,28 @@ ReadCounts_Lau <- function(files, metadata) {
     counts_list[[sample]] <- counts
   }
 
-  counts <- do.call(cbind, counts_list) # Genes are in the same order for each data frame. Should probably write more robust code to explicitly ensure this.
+  # Make sure all counts are in the same gene order
+  genes <- unique(unlist(lapply(counts_list, rownames)))
+  counts_list <- lapply(counts_list, function(X) {
+    X[genes,]
+  })
 
-  return(counts)
+  counts <- do.call(cbind, counts_list)
+
+  # Filter as in the paper
+  n_genes <- colSums(counts > 0)
+  n_umi <- colSums(counts)
+
+  mt_genes <- grepl("^MT-", rownames(counts))
+  pct_mt <- colSums(counts[mt_genes,]) / n_umi
+
+  # For some reason this gives 10 more cells than stated in the paper
+  # (169,506 instead of 169,496).They don't specify which mitochondrial genes
+  # they use, so if they used something other than "^MT-", that may account for
+  # the difference.
+  cells_keep <- (n_genes > 200) & (n_umi < 20000) & (pct_mt < 0.2)
+
+  return(counts[,cells_keep])
 }
 
 
@@ -358,8 +388,8 @@ ReadCounts_Lau <- function(files, metadata) {
 # metadata_only is an unused variable for this dataset as the metadata is
 # embedded in the counts RDS files
 DownloadData_Leng <- function(metadata_only = FALSE) {
-  synIDs <- list("counts_ec" = "syn22722817",
-                 "counts_sfg" = "syn22722860")
+  synIDs <- list("counts_ec" = list(id = "syn22722817", version = 1),
+                 "counts_sfg" = list(id = "syn22722860", version = 1))
   files <- DownloadFromSynapse(synIDs, dir_leng_raw)
   return(files)
 }
@@ -380,10 +410,10 @@ ReadMetadata_Leng <- function(files) {
 
   metadata <- as.data.frame(metadata)
 
-  covariates <- metadata %>% select(SampleID, BrainRegion, SampleBatch,
-                                    BraakStage, diagnosis) %>%
+  covariates <- metadata %>% select(SampleID, PatientID, BrainRegion,
+                                    BraakStage, SampleBatch, diagnosis) %>%
                     distinct() %>%
-                    dplyr::rename(donor = SampleID)
+                    dplyr::rename(sample = SampleID)
 
   metadata <- metadata %>% select(cell_id, SampleID, diagnosis,
                                   clusterCellType, sub_cluster)
@@ -395,6 +425,7 @@ ReadCounts_Leng <- function(files) {
   sce_ec <- readRDS(files[["counts_ec"]]$path)
   sce_sfg <- readRDS(files[["counts_sfg"]]$path)
 
+  # Both counts matrices have the same genes in the same order already
   return(cbind(counts(sce_ec), counts(sce_sfg)))
 }
 
@@ -403,10 +434,10 @@ ReadCounts_Leng <- function(files) {
 # http://dx.doi.org/10.1038/s41586-019-1195-2
 
 DownloadData_Mathys <- function(metadata_only = FALSE) {
-  synIDs <- list("clinical_metadata" = "syn3191087",
-                 "cell_metadata" = "syn18686372",
-                 "counts" = "syn18686381",
-                 "genes" = "syn18686382")
+  synIDs <- list("clinical_metadata" = list(id = "syn3191087", version = 11),
+                 "cell_metadata" = list(id = "syn18686372", version = 1),
+                 "counts" = list(id = "syn18686381", version = 1),
+                 "genes" = list(id = "syn18686382", version = 1))
 
   if (metadata_only) {
     synIDs <- synIDs[1:2]
@@ -436,7 +467,7 @@ ReadMetadata_Mathys <- function(files) {
 
   covariates <- metadata[, c(colnames(clinical), "diagnosis")] %>%
                     distinct() %>%
-                    dplyr::rename(donor = projid)
+                    dplyr::rename(sample = projid)
 
   # Fix age fields to be numeric
   covariates$age_death[covariates$age_death == "90+"] <- 90
@@ -455,21 +486,6 @@ ReadCounts_Mathys <- function(files) {
                     features = files$genes$path,
                     feature.column = 1, skip.cell = 1)
   return(counts)
-}
-
-# This function is now unused, saving just in case
-GeneSymbolToEnsembl_Mathys <- function(files) {
-  # This file has mappings from Ensembl ID to gene symbol
-  genes <- read.table(files[["genes_ensembl"]]$path, sep = "\t")
-  colnames(genes) <- c("Ensembl.ID", "Symbol")
-
-  dupes <- duplicated(genes$Symbol)
-  genes <- genes[!dupes,]
-  rownames(genes) <- genes$Symbol
-
-  genes <- genes[,c("Symbol", "Ensembl.ID")]
-
-  return(genes)
 }
 
 
@@ -522,12 +538,12 @@ ReadCounts_Morabito <- function(files) {
 # metadata_only is an unused variable for this data set, as we need to download
 # the data to access the metadata in the anndata file.
 DownloadData_SEARef <- function(metadata_only = FALSE) {
-  synIDs <- list("individual_metadata" = "syn31149116")
+  synIDs <- list("individual_metadata" = list(id = "syn31149116", version = 5))
   files <- DownloadFromSynapse(synIDs, downloadLocation = dir_seaad_raw)
 
   files[["counts"]] = file_searef_h5
 
-  if (!file.exists(files[["counts"]])) { # Don't re-download, this file is large
+  if (!file.exists(files[["counts"]]) & !metadata_only) { # Don't re-download, this file is large
     download.file(url_searef_h5,
                   destfile = files[["counts"]], method = "curl")
   }
@@ -538,12 +554,12 @@ DownloadData_SEARef <- function(metadata_only = FALSE) {
 # metadata_only is an unused variable for this data set, as we need to download
 # the data to access the metadata in the anndata file.
 DownloadData_SEAAD <- function(metadata_only = FALSE) {
-  synIDs <- list("individual_metadata" = "syn31149116")
+  synIDs <- list("individual_metadata" = list(id = "syn31149116", version = 5))
   files <- DownloadFromSynapse(synIDs, downloadLocation = dir_seaad_raw)
 
   files[["counts"]] = file_seaad_h5
 
-  if (!file.exists(files[["counts"]])) { # Don't re-download, this file is large
+  if (!file.exists(files[["counts"]]) & !metadata_only) { # Don't re-download, this file is large
     download.file(url_seaad_h5,
                   destfile = files[["counts"]], method = "curl")
   }
@@ -552,7 +568,7 @@ DownloadData_SEAAD <- function(metadata_only = FALSE) {
 }
 
 ReadMetadata_SEARef <- function(files) {
-  donor_metadata <- read.csv(files$individual_metadata$path)
+  donor_metadata <- read.csv(files$individual_metadata$path, row.names = 1)
 
   ad <- import("anndata")
   adata <- ad$read_h5ad(files$counts, backed = 'r')
@@ -567,12 +583,12 @@ ReadMetadata_SEARef <- function(files) {
                     by.x = "external_donor_name_label", by.y = "individualID")
 
   metadata <- metadata[, c("sample_name", "external_donor_name_label",
-                           "diagnosis", "broad_class", "subclass_label",
-                           "cluster_label")]
+                           "diagnosis", "broad_class", "subclass_label")]
+                           #"cluster_label")]
 
   covariates <- subset(donor_metadata,
                        individualID %in% metadata$external_donor_name_label) %>%
-                    dplyr::rename(donor = individualID)
+                    dplyr::rename(sample = individualID)
 
   covariates$ageDeath <- as.numeric(covariates$ageDeath)
 
@@ -580,7 +596,7 @@ ReadMetadata_SEARef <- function(files) {
 }
 
 ReadMetadata_SEAAD <- function(files) {
-  donor_metadata <- read.csv(files$individual_metadata$path)
+  donor_metadata <- read.csv(files$individual_metadata$path, row.names = 1)
 
   ad <- import("anndata")
   adata <- ad$read_h5ad(files$counts, backed = 'r')
@@ -595,11 +611,11 @@ ReadMetadata_SEAAD <- function(files) {
                     by.x = "Donor.ID", by.y = "individualID")
 
   metadata <- metadata[, c("sample_id", "Donor.ID", "diagnosis",
-                           "broad_class", "Subclass", "Cluster")] # TODO what is the cluster field called?
+                           "broad_class", "Subclass")]
 
   covariates <- subset(donor_metadata,
                        individualID %in% metadata$Donor.ID) %>%
-                    dplyr::rename(donor = individualID)
+                    dplyr::rename(sample = individualID)
 
   covariates$ageDeath <- as.numeric(covariates$ageDeath)
 
@@ -635,9 +651,8 @@ ReadCounts_SEAAD <- function(files) {
 # Biomart gene conversion: https://www.synapse.org/#!Synapse:syn27024953
 
 DownloadData_Mayo <- function(metadata_only = FALSE) {
-  synIDs <- list("metadata" = "syn29855549",
-                 "biospecimen_metadata" = "syn20827192",
-                 "counts" = "syn27024951")
+  synIDs <- list("metadata" = list(id = "syn29855549", version = 1),
+                 "counts" = list(id = "syn27024951", version = 1))
 
   if (metadata_only) {
     synIDs <- synIDs[1:2]
@@ -657,9 +672,8 @@ DownloadData_Mayo <- function(metadata_only = FALSE) {
 # Biomart gene conversion: https://www.synapse.org/#!Synapse:syn27068755
 
 DownloadData_MSBB <- function(metadata_only = FALSE) {
-  synIDs <- list("metadata" = "syn29855570",
-                 "biospecimen_metadata" = "syn21893059",
-                 "counts" = "syn27068754")
+  synIDs <- list("metadata" = list(id = "syn29855570", version = 1),
+                 "counts" = list(id = "syn27068754", version = 1))
 
   if (metadata_only) {
     synIDs <- synIDs[1:2]
@@ -679,10 +693,9 @@ DownloadData_MSBB <- function(metadata_only = FALSE) {
 # Biomart gene conversion: https://www.synapse.org/#!Synapse:syn26967452
 
 DownloadData_ROSMAP <- function(metadata_only = FALSE) {
-  synIDs <- list("metadata" = "syn29855598",
-                 "biospecimen_metadata" = "syn21323366",
-                 "clinical_metadata" = "syn3191087",
-                 "counts" = "syn26967451")
+  synIDs <- list("metadata" = list(id = "syn29855598", version = 1),
+                 "clinical_metadata" = list(id = "syn3191087", version = 11),
+                 "counts" = list(id = "syn26967451", version = 1))
 
   if (metadata_only) {
     synIDs <- synIDs[1:3]
@@ -701,30 +714,17 @@ ReadMetadata_BulkData <- function(files) {
   metadata <- read.table(files$metadata$path, header = T)
 
   covariates <- metadata
-  metadata <- metadata[,c("specimenID", "diagnosis", "tissue", "sex")]
-
-  # Convert specimenID (e.g. sample name) to individualID (the donor the sample
-  # came from)
-  biospecimens <- read.csv(files$biospecimen_metadata$path) %>%
-                    select(individualID, specimenID) %>% distinct()
-
-  # Cerebellum tissue code is different in the RNA harmonization study (only
-  # the Mayo dataset has CBE tissue so this does nothing on the other two sets)
-  biospecimens$specimenID <- str_replace(biospecimens$specimenID, "_CER", "_CBE")
+  metadata <- metadata[,c("specimenID", "diagnosis", "tissue")]
 
   # ROSMAP needs an extra step to go from biospecimen -> projid, which is needed
   # for comparison with the IHC data
   if ("clinical_metadata" %in% names(files)) {
     clinical <- read.csv(files$clinical_metadata$path) %>%
                       select(projid, individualID) %>% distinct()
-    biospecimens <- merge(clinical, biospecimens, by = "individualID") %>%
-                      select(-individualID) %>%
-                      dplyr::rename(individualID = projid) %>%
-                      subset(specimenID %in% metadata$specimenID)
-  }
 
-  metadata <- merge(metadata, biospecimens, by = "specimenID") %>%
-                  select(individualID, specimenID, diagnosis, tissue, sex)
+    covariates <- merge(covariates, clinical,
+                        by = c("individualID"))
+  }
 
   # Necessary because the column names of the counts matrix get converted this
   # way automatically
