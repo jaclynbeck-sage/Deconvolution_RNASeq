@@ -27,7 +27,7 @@
 # Arguments:
 #   singlecell_counts - a gene x cell matrix of counts
 #   metadata - a cell x feature dataframe describing the cells. Must contain
-#              columns "broadcelltype" and "subcluster", corresponding to
+#              columns "broad_class" and "sub_class", corresponding to
 #              the broad and fine cell type assignments, respectively, for each
 #              cell
 #   dataset - the name of the dataset

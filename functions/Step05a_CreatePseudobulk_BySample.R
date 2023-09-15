@@ -24,7 +24,7 @@
 # Arguments:
 #   singlecell_counts - a gene x cell matrix of counts
 #   metadata - a cell x feature dataframe describing the cells. Must contain
-#              columns "broadcelltype" and "subcluster", corresponding to
+#              columns "broad_class" and "sub_class", corresponding to
 #              the broad and fine cell type assignments, respectively, for each
 #              cell
 #   dataset - the name of the dataset
@@ -50,11 +50,11 @@ CreatePseudobulk_BySample <- function(singlecell_counts, metadata, dataset) {
   pb_meta <- pb_meta[colnames(counts),]
   pb_meta$tmm_factors <- calcNormFactors(counts, method = "TMMwsp")
 
-  propCells_broad <- table(metadata$sample, metadata$broadcelltype)
+  propCells_broad <- table(metadata$sample, metadata$broad_class)
   propCells_broad <- sweep(propCells_broad, 1, rowSums(propCells_broad), "/")
 
   pctRNA_broad <- CalculatePercentRNA(singlecell_counts, metadata$sample,
-                                      metadata$broadcelltype)
+                                      metadata$broad_class)
 
   pseudobulk <- SummarizedExperiment(assays = SimpleList(counts = counts),
                                      colData = pb_meta,
@@ -65,11 +65,11 @@ CreatePseudobulk_BySample <- function(singlecell_counts, metadata, dataset) {
   # The counts for the fine cell types pseudobulk set are the same, only the
   # metadata changes. But we create it as a separate file to make looping
   # easier further down the pipeline.
-  propCells_fine <- table(metadata$sample, metadata$subcluster)
+  propCells_fine <- table(metadata$sample, metadata$sub_class)
   propCells_fine <- sweep(propCells_fine, 1, rowSums(propCells_fine), "/")
 
   pctRNA_fine <- CalculatePercentRNA(singlecell_counts, metadata$sample,
-                                     metadata$subcluster)
+                                     metadata$sub_class)
 
   pseudobulk_fine <- SummarizedExperiment(assays = SimpleList(counts = counts),
                                           colData = pb_meta,

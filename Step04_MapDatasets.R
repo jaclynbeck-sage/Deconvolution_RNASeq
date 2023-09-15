@@ -119,8 +119,8 @@ for (query_dataset in query_datasets) {
   query_sce$original_broad_class <- query_sce$broad_class
   query_sce$original_sub_class <- query_sce$sub_class
 
-  query_sce$broad_class <- metadata$predicted.broad_class
-  query_sce$sub_class <- metadata$predicted.sub_class
+  query_sce$broad_class <- factor(metadata$predicted.broad_class)
+  query_sce$sub_class <- factor(metadata$predicted.sub_class)
 
   Save_SingleCell(query_dataset, query_sce)
 

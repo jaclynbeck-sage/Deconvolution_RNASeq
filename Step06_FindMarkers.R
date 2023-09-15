@@ -2,7 +2,6 @@ library(dplyr)
 library(foreach)
 library(doParallel)
 library(stringr)
-source("Filenames.R")
 
 ##### Settings #####
 
