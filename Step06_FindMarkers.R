@@ -17,10 +17,10 @@ dtangle_n_cores <- 4
 dtangle_clust_type <- "FORK" # Use PSOCK for non-Unix systems
 
 # Which datasets to run on
-datasets <- c("cain", "lau", "leng", "mathys", "morabito", "seaRef") #, "seaAD")
+datasets <- c("cain", "lau", "leng", "mathys", "seaRef") #, "morabito", "seaAD")
 
 # What granularities?
-granularities <- c("broad", "fine")
+granularities <- c("broad_class", "sub_class")
 
 # Dtangle/HSPE only: input types
 dtangle_input_types <- c("singlecell", "pseudobulk")
@@ -35,7 +35,7 @@ if ("dtangle" %in% marker_types_run) {
     registerDoParallel(cl)
   }
 
-  source(file.path("functions", "Step04a_FindMarkers_DtangleHSPE.R"))
+  source(file.path("functions", "Step06a_FindMarkers_DtangleHSPE.R"))
   FindMarkers_DtangleHSPE(datasets, granularities, dtangle_input_types)
 
   if (dtangle_do_parallel) {
@@ -49,7 +49,7 @@ if ("dtangle" %in% marker_types_run) {
 # Needs all available CPUs, so this isn't run in parallel.
 
 if ("seurat" %in% marker_types_run) {
-  source(file.path("functions", "Step04b_FindMarkers_Seurat.R"))
+  source(file.path("functions", "Step06b_FindMarkers_Seurat.R"))
   FindMarkers_Seurat(datasets, granularities)
 }
 
@@ -60,6 +60,6 @@ if ("seurat" %in% marker_types_run) {
 # issues with python environments.
 
 if ("autogenes" %in% marker_types_run) {
-  source(file.path("functions", "Step04c_FindMarkers_AutogeneS.R"))
+  source(file.path("functions", "Step06c_FindMarkers_AutogeneS.R"))
   FindMarkers_AutogeneS(datasets, granularities)
 }

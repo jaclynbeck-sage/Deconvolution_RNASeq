@@ -6,8 +6,8 @@
 # the resulting markers to files for later usage. This is done outside the
 # main algorithm loops because both algorithms can use the same markers file for
 # the same parameters, so this removes redundancy. Additionally, we use Dtangle
-# markers for some of the cell type signature options for DeconRNASeq, so these
-# need to be available before running that algorithm.
+# markers for the other deconvolution algorithms, so these markers need to be
+# available before running the algorithms.
 
 # Libraries that need to be loaded into each parallel environment
 required_libraries <- c("hspeSparse", "SingleCellExperiment",
@@ -31,7 +31,7 @@ FindMarkers_DtangleHSPE <- function(datasets, granularities, input_types) {
     if (input_type == "singlecell") {
       input_obj <- Load_SingleCell(dataset, granularity, output_type = "log_cpm")
     }
-    else { # Input is pseudobulk pure samples
+    else { # pseudobulk pure samples
       input_obj <- Load_PseudobulkPureSamples(dataset, granularity,
                                               output_type = "log_cpm")
     }

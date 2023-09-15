@@ -35,7 +35,7 @@ FindMarkers_AutogeneS <- function(datasets, granularities) {
 
       sc$pp$filter_cells(adata, min_genes=200)
       sc$pp$filter_genes(adata, min_cells=10)
-      sc$pp$highly_variable_genes(adata, flavor='seurat_v3', n_top_genes=4000)
+      sc$pp$highly_variable_genes(adata, flavor='seurat_v3', n_top_genes=6000)
       sc$pp$normalize_total(adata, target_sum=1e6) # cpm
 
       ag$init(adata, use_highly_variable=TRUE, celltype_key='celltype')

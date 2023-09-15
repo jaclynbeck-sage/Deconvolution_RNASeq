@@ -26,7 +26,7 @@ source("Filenames.R")
 #   a SingleCellExperiment object that is the exact same as what was read from
 #   the file, except that the "counts" slot is set with the transformed values
 #   if applicable. The colData DataFrame also has a column added called
-#   "celltype", which is populated with either the broad or fine cell type
+#   "celltype", which is populated with either the broad or subclass cell type
 #   assignments based on granularity.
 Load_SingleCell <- function(dataset, granularity, output_type = "counts") {
   sc_file <- file.path(dir_input, str_glue("{dataset}_sce.rds"))
@@ -106,17 +106,19 @@ Save_PseudobulkPureSamples <- function(se, dataset, granularity) {
 
 
 # Load_Pseudobulk: reads a SummarizedExperiment data set from a file and
-# transforms the counts according to output_type. Donor or training pseudobulk-
+# transforms the counts according to output_type. Sample or training pseudobulk-
 # specific wrapper function for Load_CountsFile.
 #
 # Arguments:
 #   dataset = the name of the data set to load in
-#   data_type = either "donors" or "training", for which type of pseudobulk to
-#               load in.
-#   granularity = either "broad" or "fine", for which level of cell types to
-#                 load in.
-#   output_type = one of "counts", "vst", "cpm", "tmm", "log_cpm", "log_tmm",
-#                 "qn_cpm", "qn_tmm", "qn_log_cpm", or "qn_log_tmm". See
+#   data_type = either "sc_samples" or "training", for which type of pseudobulk
+#               to load in.
+#   granularity = either "broad_class" or "sub_class", for which level of cell
+#                 types to load in.
+#   output_type = one of "counts", "cpm", "tpm", "tmm",
+#                 "log_cpm", "log_tpm", "log_tmm",
+#                 "qn_cpm", "qn_tpm", "qn_tmm",
+#                 "qn_log_cpm", "qn_log_tpm", or "qn_log_tmm". See
 #                 Load_CountsFile for description.
 #
 # Returns:
@@ -139,10 +141,10 @@ Load_Pseudobulk <- function(dataset, data_type, granularity, output_type = "coun
 # Arguments:
 #   se = a SummarizedExperiment object
 #   dataset = the name of the data set to load in
-#   data_type = either "donors" or "training", for which type of pseudobulk to
-#               load in.
-#   granularity = either "broad" or "fine", for which level of cell types to
-#                 load in.
+#   data_type = either "sc_samples" or "training", for which type of pseudobulk
+#               to load in.
+#   granularity = either "broad_class" or "sub_class", for which level of cell
+#                 types to load in.
 #
 # Returns:
 #   nothing
@@ -625,8 +627,8 @@ Load_ErrorList <- function(algorithm, reference_dataset, test_dataset,
 # Arguments:
 #   markers = the output of hspe::find_markers, which is a list.
 #   dataset = the name of the data set
-#   granularity = either "broad" or "fine", for which level of cell types was
-#                 used to generate the markers.
+#   granularity = either "broad_class" or "sub_class", for which level of cell
+#                 types was used to generate the markers.
 #   input_type = either "singlecell" or "pseudobulk", for which type of input
 #                was used to generate the markers.
 #   marker_method = one of "ratio", "diff", "p.value", or "regression", which
@@ -647,8 +649,8 @@ Save_DtangleMarkers <- function(markers, dataset, granularity, input_type, marke
 #
 # Arguments:
 #   dataset = the name of the data set
-#   granularity = either "broad" or "fine", for which level of cell types was
-#                 used to generate the markers.
+#   granularity = either "broad_class" or "sub_class", for which level of cell
+#                 types was used to generate the markers.
 #   marker_type = one of "dtangle", "autogenes", or "seurat" to indicate which
 #                 markers to load
 #   marker_subtype = the subtype of markers to load, specific to the marker_type.

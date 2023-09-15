@@ -1,8 +1,8 @@
 ##### Generation of pseudobulk data sets from single cell data #####
 # This script creates the following pseudobulk data sets for both broad and
 # fine cell types:
-#   1. Pseudobulk of each donor
-#   2. Pseudobulk of each cell type + donor combination, to create "pure"
+#   1. Pseudobulk of each sample
+#   2. Pseudobulk of each cell type + sample combination, to create "pure"
 #      pseudobulk samples of each cell type
 #   3. A training pseudobulk set with randomly-sampled cells
 #
@@ -35,34 +35,35 @@ library(dplyr)
 library(edgeR)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
-source(file.path("functions", "Step03a_CreatePseudobulk_ByDonor.R"))
-source(file.path("functions", "Step03b_CreatePseudobulk_PureSamples.R"))
-source(file.path("functions", "Step03c_CreatePseudobulk_Training.R"))
+source(file.path("functions", "Step05a_CreatePseudobulk_BySample.R"))
+source(file.path("functions", "Step05b_CreatePseudobulk_PureSamples.R"))
+#source(file.path("functions", "Step05c_CreatePseudobulk_Training.R"))
 
-datasets <- c("cain", "lau", "leng", "mathys", "morabito", "seaRef") #, "seaAD")
+datasets <- c("cain", "lau", "leng", "mathys", "seaRef") #, "morabito", "seaAD")
 
 for (dataset in datasets) {
-  sce <- Load_SingleCell(dataset, "broad", output_type = "counts")
+  sce <- Load_SingleCell(dataset, "broad_class", output_type = "counts")
   metadata <- colData(sce)
 
-  print(str_glue("{dataset}: creating pseudobulk by donor..."))
-  CreatePseudobulk_ByDonor(counts(sce), metadata, dataset)
+  print(str_glue("{dataset}: creating pseudobulk by sample..."))
+  CreatePseudobulk_BySample(counts(sce), metadata, dataset)
 
   print(str_glue("{dataset}: creating pseudobulk pure samples..."))
   CreatePseudobulk_PureSamples(counts(sce), metadata, dataset)
 
+  # Skip making training pseudobulk but keep the code just in case
   next
 
-  for (granularity in c("broad", "fine")) {
+  for (granularity in c("broad_class", "sub_class")) {
     print(str_glue("{dataset}: creating pseudobulk training set for {granularity} cell types..."))
 
     # Create a generic "celltype" column that is populated with either broad or
     # fine cell types depending on the for-loop
-    if (granularity == "broad") {
-      metadata$celltype <- metadata$broadcelltype
+    if (granularity == "broad_class") {
+      metadata$celltype <- metadata$broad_class
     }
-    else if (granularity == "fine") {
-      metadata$celltype <- metadata$subcluster
+    else if (granularity == "sub_class") {
+      metadata$celltype <- metadata$sub_class
     }
 
     celltypes <- levels(metadata$celltype)
@@ -73,10 +74,10 @@ for (dataset in datasets) {
 
     # The range of percents we use to create the training set is dependent on
     # how abundant each cell type is in this data set
-    pcts <- table(metadata$donor, metadata$celltype)
+    pcts <- table(metadata$sample, metadata$celltype)
     pcts <- sweep(pcts, 1, rowSums(pcts), "/")
 
-    # The largest proportion of each cell type from any donor, x 2 determines
+    # The largest proportion of each cell type from any sample, x 2 determines
     # the range of percents we test for that cell type
     maxs <- colMaxs(pcts, useNames = TRUE)
     maxs <- ceiling(20*maxs)/10 # Rounds 2*X to the next-highest 10%
