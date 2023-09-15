@@ -45,6 +45,21 @@ Load_SingleCell <- function(dataset, granularity, output_type = "counts") {
   return(singlecell)
 }
 
+# Save_SingleCell: Saves a SingleCellExperiment object to the input folder. This
+# object should be finalized data that has passed QC and has all cell types
+# mapped to a reference.
+#
+# Arguments:
+#   dataset = the name of the dataset
+#   sce = a SingleCellExperiment object
+#
+# Returns:
+#   nothing
+Save_SingleCell <- function(dataset, sce) {
+  sc_file <- file.path(dir_input, str_glue("{dataset}_sce.rds"))
+  saveRDS(sce, sc_file)
+}
+
 
 # Load_PseudobulkPureSamples: reads a SummarizedExperiment data set from a file
 # and transforms the counts according to output_type. Pure sample pseudobulk-
@@ -142,18 +157,24 @@ Save_Pseudobulk <- function(se, dataset, data_type, granularity) {
 #
 # Arguments:
 #   filename = the name of of the file to read in, including file path
-#   output_type = one of "counts", "vst", "cpm", "tmm", "log_cpm", "log_tmm",
-#                 "qn_cpm", "qn_tmm", "qn_log_cpm", or "qn_log_tmm":
+#   output_type = one of "counts", "cpm", "tpm", "tmm",
+#                 "log_cpm", "log_tpm", "log_tmm",
+#                 "qn_cpm", "qn_tpm", "qn_tmm",
+#                 "qn_log_cpm", "qn_log_tpm", or "qn_log_tmm":
 #                   "counts" will return raw, unaltered counts
-#                   "vst" will return the variance stabilized transform of the
-#                         counts, using DESeq2::vst()
 #                   "cpm" will normalize the counts to counts per million
+#                   "tpm" will normalize the counts to transcripts per million
+#                         for bulk data only. Single cell data will default to
+#                         cpm since UMI data is similar to tpm already.
 #                   "tmm" will normalize using TMM factors from edgeR
 #                   "log_cpm" will take the log2(cpm+1)
-#                   "log_tmm" will take the log2(cpm+1)
+#                   "log_tpm" will take the log2(tpm+1)
+#                   "log_tmm" will take the log2(tmm+1)
 #                   "qn_cpm" will quantile normalize cpms
+#                   "qn_tpm" will quantile normalize tpms
 #                   "qn_tmm" will quantile normalize tmms
 #                   "qn_log_cpm" will quantile normalize log_cpm values
+#                   "qn_log_tpm" will quantile normalize log_tpm values
 #                   "qn_log_tmm" will quantile normalize log_tmm values
 #                 Quantile normalization is done by diagnosis (bulk) or
 #                 diagnosis + celltype (single cell), where the expression data
@@ -166,35 +187,32 @@ Save_Pseudobulk <- function(se, dataset, data_type, granularity) {
 #   the transformed values if applicable, or NULL if there is an error.
 #
 # NOTE: SingleCellExperiment is a subclass of SummarizedExperiment, so this
-#       method works for both single cell and pseudobulk data.
+#       method works for both single cell and bulk data.
 # NOTE: Both objects allow for putting cpm/log2 values in other named slots to
 #       preserve the counts slot, but some of these single cell datasets are so
 #       large that it is impractical or impossible to have a raw counts matrix
 #       *and* the transformed values held in memory at the same time. Instead
 #       we overwrite the counts slot. To be consistent with single cell data and
-#       allow for inter-operability, pseudobulk data is treated the same way.
+#       allow for inter-operability, bulk data is treated the same way.
 Load_CountsFile <- function(filename, output_type) {
   if (!file.exists(filename)) {
     print(str_glue("Error: {filename} doesn't exist!"))
     return(NULL)
   }
 
-  output_opts <- expand.grid(norm = c("cpm", "tmm"),
+  output_opts <- expand.grid(norm = c("cpm", "tpm", "tmm"),
                              log = c("", "log_"),
                              qn = c("", "qn_"))
-  output_opts <- c("counts", "vst",
+  output_opts <- c("counts",
                    paste0(output_opts$qn, output_opts$log, output_opts$norm))
 
   if (!(output_type %in% output_opts)) {
-    print(paste0("Error! output_type should be one of 'counts', 'vst', 'cpm', ",
-                 "'tmm', 'log_cpm', 'log_tmm', 'qn_cpm', 'qn_tmm', ",
-                 "'qn_log_cpm', or 'qn_log_tmm'."))
-    return(NULL)
+    stop(paste0("Error! output_type should be one of ", output_opts, "."))
   }
 
   se_obj <- readRDS(filename)
 
-  # TODO seaRef only, this loads it all into memory
+  # Applies to seaRef only, this loads it all into memory.
   if (is(assay(se_obj, "counts"), "DelayedArray")) {
     if (!file.exists(path(assay(se_obj, "counts")))) {
       path(assay(se_obj, "counts")) <- file_searef_h5
@@ -206,24 +224,21 @@ Load_CountsFile <- function(filename, output_type) {
     return(se_obj)
   }
 
-  # VST returns log2-scale values
-  # TODO this doesn't work on single cell data
-  if (output_type == "vst") {
-    norm_counts <- DESeqDataSetFromMatrix(assay(se_obj, "counts"),
-                                          colData(se_obj),
-                                          design = ~1)
-    norm_counts <- vst(norm_counts)
-    assays(se_obj)[["counts"]] <- assay(norm_counts)
-    return(se_obj)
-  }
+  # The remaining output_types all need CPM, TPM, or TMM
 
-  # The remaining output_types all need CPM or TMM
-  norm_counts <- calculateCPM(se_obj)
+  # TPM for bulk data only
+  if (grepl("tpm", output_type) & "exon_length" %in% colnames(rowData(se_obj))) {
+    norm_counts <- calculateTPM(se_obj, lengths = rowData(se_obj)$exon_length)
+  }
+  # CPM for single cell, and for bulk if TPM is not specified
+  else {
+    norm_counts <- calculateCPM(se_obj)
+  }
 
   if (grepl("tmm", output_type)) {
     # This is equivalent to counts * 1e6 / (libSize * tmm).
     # Since norm_counts is already (counts * 1e6 / libSize), calling this
-    # function just divides by tmm, preserving sparse matrices.
+    # function just divides by tmm, while preserving sparse matrices.
     norm_counts <- normalizeCounts(norm_counts, se_obj$tmm_factors,
                                    log = FALSE, center.size.factors = FALSE)
   }
