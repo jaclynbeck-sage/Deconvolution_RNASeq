@@ -13,7 +13,7 @@
 
 library(reticulate)
 library(SingleCellExperiment)
-library(zellkonverter)
+library(anndata)
 library(dplyr)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
@@ -30,7 +30,9 @@ FindMarkers_AutogeneS <- function(datasets, granularities) {
       sc <- import("scanpy")
       ag <- import("autogenes")
 
-      adata <- SCE2AnnData(sce)
+      adata <- AnnData(X = t(counts(sce)),
+                       obs = data.frame(colData(sce)),
+                       var = data.frame(rowData(sce)))
       rm(sce)
 
       sc$pp$filter_cells(adata, min_genes=200)
@@ -56,7 +58,7 @@ FindMarkers_AutogeneS <- function(datasets, granularities) {
         sc_means <- sc_means[inds]$copy()
 
         X <- sc_means$X
-        markers <- sc_means$obs_names$to_list()
+        markers <- sc_means$obs_names
 
         # Which cell type has the highest expression for each gene
         maxs <- apply(X, 1, which.max)
@@ -65,7 +67,7 @@ FindMarkers_AutogeneS <- function(datasets, granularities) {
           return(sorted[1]-sorted[2]) # Log space is subtraction
         })
 
-        markers2 <- data.frame(celltype = sc_means$var_names[maxs-1]$to_list(), # 0-index for python
+        markers2 <- data.frame(celltype = sc_means$var_names[maxs],
                                log2FC = log2FC,
                                gene = markers) %>%
                       arrange(desc(log2FC))
@@ -73,7 +75,7 @@ FindMarkers_AutogeneS <- function(datasets, granularities) {
         markers_filt <- subset(markers2, log2FC >= 1)
 
         print(str_glue("Markers for {dataset} / {granularity} cell types ({key}):"))
-        print(table(markers2$celltype))
+        print(table(markers_filt$celltype))
 
         markers_list <- sapply(sort(unique(markers2$celltype)), function(ct) {
           return(markers2$gene[markers2$celltype == ct])

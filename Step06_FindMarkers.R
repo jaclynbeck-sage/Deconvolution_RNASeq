@@ -6,7 +6,7 @@ library(stringr)
 ##### Settings #####
 
 # Which algorithms to run for marker finding
-marker_types_run <- c("dtangle", "seurat", "autogenes")
+marker_types_run <- c("dtangle", "seurat", "autogenes", "deseq2")
 
 # Run multiple parameter sets in parallel for dtangle/HSPE marker finding?
 # Assume most data sets use <20 GB of RAM per core, but seaRef will use > 100 GB
@@ -61,4 +61,12 @@ if ("seurat" %in% marker_types_run) {
 if ("autogenes" %in% marker_types_run) {
   source(file.path("functions", "Step06c_FindMarkers_AutogeneS.R"))
   FindMarkers_AutogeneS(datasets, granularities)
+}
+
+
+##### DESeq2 markers from pseudobulk #####
+
+if ("deseq2" %in% marker_types_run) {
+  source(file.path("functions", "Step06d_FindMarkers_DESeq2.R"))
+  FindMarkers_DESeq2(datasets, granularities)
 }

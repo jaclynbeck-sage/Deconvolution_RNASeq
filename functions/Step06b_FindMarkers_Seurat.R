@@ -3,6 +3,8 @@
 #   1) It is significantly up-regulated in the cell type at p <= 0.01
 #   2) The log fold-change is > 0.5
 #   3) The gene is not significantly up-regulated in any other cell type
+#   4) The log fold-change between the highest-expressing cell type and the
+#      second-highest expressing cell type is >= 1.
 #
 # We use Seurat's FindAllMarkers instead of calling MAST directly, to take
 # advantage of Seurat's built-in pre-filtering of genes that don't meet cluster
@@ -35,7 +37,7 @@ FindMarkers_Seurat <- function(datasets, granularities) {
                                 only.pos = TRUE, test.use = "MAST",
                                 latent.vars = c("nCount_originalexp"))
       markers <- subset(markers, p_val_adj <= 0.05)
-      dupes <- duplicated(markers$gene)
+      dupes <- markers$gene[duplicated(markers$gene)]
 
       genes <- unique(markers$gene)
       avgs <- AverageExpression(seurat, features = genes, slot = "data")
@@ -66,7 +68,7 @@ FindMarkers_Seurat <- function(datasets, granularities) {
       })
 
       print(str_glue("Markers for {dataset} / {granularity} cell types:"))
-      print(table(avgs2$highest))
+      print(lengths(markers_filt))
 
       markers_list <- list("all" = markers2,
                            "filtered" = markers_filt)

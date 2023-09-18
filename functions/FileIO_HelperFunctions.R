@@ -686,6 +686,9 @@ Load_Markers <- function(dataset, granularity, marker_type, marker_subtype = NUL
   else if (marker_type == "seurat") {
     marker_file_format <- "seurat_markers_{dataset}_{granularity}.rds"
   }
+  else if (marker_type == "DESeq2") {
+    marker_file_format <- "deseq2_markers_{dataset}_{granularity}_{marker_subtype}.rds"
+  }
 
   marker_file <- file.path(dir_markers, str_glue(marker_file_format))
   if (!file.exists(marker_file)) {
