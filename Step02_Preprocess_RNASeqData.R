@@ -57,6 +57,7 @@ for (dataset in datasets) {
   ##### Read in matrix of counts #####
 
   counts <- ReadCounts(dataset, files, metadata)
+  metadata <- metadata[colnames(counts), ]
 
   # Remove genes that are expressed in less than 3 cells (or samples)
   ok <- rowSums(counts > 0) >= 3
@@ -96,14 +97,19 @@ for (dataset in datasets) {
   # Remove samples with > 50% mito genes by count. (single cell will mostly have
   # <10% mito genes, but bulk has higher percentages)
   mt_genes <- grepl("^MT-", rownames(counts))
-  pct <- colSums(counts[mt_genes,]) / colSums(counts)
-  counts <- counts[!mt_genes, pct <= 0.5] # Remove mito genes
+  pct_mt <- colSums(counts[mt_genes,]) / colSums(counts)
+  metadata$percent_mito <- pct_mt
 
   # Remove non-coding genes -- grep pattern from Green et al 2023.
   nc_genes <- grepl("^(AC\\d+{3}|AL\\d+{3}|AP\\d+{3}|LINC\\d+{3})", rownames(counts))
-  counts <- counts[!nc_genes,]
+  pct_nc <- colSums(counts[nc_genes,]) / colSums(counts)
+  metadata$percent_noncoding <- pct_nc
+
+  counts <- counts[, pct_mt <= 0.5] # Exclude samples with high mitochondrial genes
+  #counts <- counts[!(mt_genes | nc_genes), pct_mt <= 0.5] # Remove mito genes
 
   genes <- genes[rownames(counts),]
+  genes$exclude <- mt_genes | nc_genes
 
   ##### Final modifications to metadata #####
 
@@ -115,7 +121,9 @@ for (dataset in datasets) {
   }
 
   for (col in colnames(metadata)[-1]) {
-    metadata[,col] = factor(metadata[,col])
+    if (!is.numeric(metadata[,col])) {
+      metadata[,col] = factor(metadata[,col])
+    }
   }
 
   # TMM normalization factors -- unfortunately will convert to dense matrix
