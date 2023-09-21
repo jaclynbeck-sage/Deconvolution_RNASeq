@@ -214,6 +214,10 @@ Load_CountsFile <- function(filename, output_type) {
 
   se_obj <- readRDS(filename)
 
+  # Remove mitochondrial and non-coding genes, which are marked as 'exclude'
+  genes <- rowData(se_obj)
+  se_obj <- se_obj[!genes$exclude, ]
+
   # Applies to seaRef only, this loads it all into memory.
   if (is(assay(se_obj, "counts"), "DelayedArray")) {
     if (!file.exists(path(assay(se_obj, "counts")))) {
@@ -450,12 +454,20 @@ Save_PreprocessedData <- function(dataset_name, se_object) {
 #
 # Returns:
 #   A SummarizedExperiment (or SingleCellExperiment)
-Load_PreprocessedData <- function(dataset_name) {
+Load_PreprocessedData <- function(dataset_name, remove_excluded = FALSE) {
   data <- readRDS(file.path(dir_preprocessed,
                             str_glue("{dataset_name}_preprocessed.rds")))
+
+  if (remove_excluded) {
+    # Remove mitochondrial and non-coding genes, which are marked as 'exclude'
+    genes <- rowData(data)
+    data <- data[!genes$exclude, ]
+  }
+
   if (is(assay(data, "counts"), "DelayedMatrix")) {
     assay(data, "counts") <- as(assay(data, "counts"), "CsparseMatrix")
   }
+
   return(data)
 }
 

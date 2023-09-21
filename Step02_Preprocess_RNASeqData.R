@@ -59,9 +59,15 @@ for (dataset in datasets) {
   counts <- ReadCounts(dataset, files, metadata)
   metadata <- metadata[colnames(counts), ]
 
-  # Remove genes that are expressed in less than 3 cells (or samples)
-  ok <- rowSums(counts > 0) >= 3
-  counts <- counts[ok,]
+
+  ##### Remove sample outliers (bulk only) #####
+
+  if (is_bulk(dataset)) {
+    outliers <- FindOutliers_BulkData(metadata, counts)
+    print(str_glue("{length(outliers)} outlier samples will be removed from {dataset}."))
+    metadata <- subset(metadata, !(sample %in% outliers))
+    counts <- counts[,metadata$sample]
+  }
 
 
   ##### Convert gene names #####
@@ -105,11 +111,21 @@ for (dataset in datasets) {
   pct_nc <- colSums(counts[nc_genes,]) / colSums(counts)
   metadata$percent_noncoding <- pct_nc
 
+  genes$exclude <- mt_genes | nc_genes
+
+  if (any(pct_mt > 0.5)) {
+    print(str_glue(paste0("Removing {sum(pct_mt > 0.5)} samples from {dataset} ",
+                          "due to high mitochondrial gene expression.")))
+  }
   counts <- counts[, pct_mt <= 0.5] # Exclude samples with high mitochondrial genes
-  #counts <- counts[!(mt_genes | nc_genes), pct_mt <= 0.5] # Remove mito genes
+
+  # Remove genes that are expressed in less than 3 cells (or samples) after
+  # filtering for outliers and high mitochondrial percentages
+  ok <- rowSums(counts > 0) >= 3
+  counts <- counts[ok,]
 
   genes <- genes[rownames(counts),]
-  genes$exclude <- mt_genes | nc_genes
+
 
   ##### Final modifications to metadata #####
 

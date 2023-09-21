@@ -747,3 +747,49 @@ ReadNormCounts_BulkData <- function(files, assay_name, genes, samples) {
   rownames(assay) <- genes$hgnc_symbol
   return(assay)
 }
+
+# Per-tissue outlier detection via PCA. Unlike the RNAseq harmonization study,
+# we do this on a per-tissue basis, because points tend to cluster by tissue
+# and, especially in the case of Mayo, tissue clusters can be distinctly
+# separated on the PCA plot which skews how large the standard deviation is.
+# We did not see much bias toward sequencing batch, diagnosis, or sex in the
+# PCA, either with all points together or separated by tissue.
+#
+# Arguments:
+#   metadata = a data.frame of metadata, which must have a field for "tissue"
+#   counts = a matrix of counts, with columns corresponding to rows in metadata
+#   sd_threshold = how many standard deviations from mean must a sample be to
+#                  be considered an outlier
+#   do_plot = whether to plot the PCA of counts, colored by outlier status
+#
+# Returns:
+#   a vector containing the sample names of outliers
+FindOutliers_BulkData <- function(metadata, counts, sd_threshold = 3,
+                                  do_plot = FALSE) {
+
+  outliers <- lapply(unique(metadata$tissue), function(tissue) {
+    tissue_samples <- metadata$tissue == tissue
+    counts_norm <- log2(calculateCPM(counts[,tissue_samples]) + 1)
+
+    pcs <- prcomp(counts_norm, center = TRUE, scale. = TRUE)
+    mean_pc <- colMeans(pcs$rotation[,1:2])
+    sd_pc <- colSds(pcs$rotation[,1:2])
+
+    # How many SDs is each point away from the mean along PC1 and PC2
+    dists <- cbind(abs(pcs$rotation[,1] - mean_pc[1])/sd_pc[1],
+                   abs(pcs$rotation[,2] - mean_pc[2])/sd_pc[2])
+
+    outliers <- dists[,1] > sd_threshold | dists[,2] > sd_threshold
+
+    if (do_plot) {
+      df <- data.frame(PC1 = pcs$rotation[,1],
+                       PC2 = pcs$rotation[,2],
+                       outlier = outliers)
+      print(ggplot(df, aes(x = PC1, y = PC2, color = outlier)) + geom_point())
+    }
+
+    return(rownames(dists)[outliers])
+  })
+
+  return(unlist(outliers))
+}
