@@ -1,6 +1,7 @@
 install.packages(c("BiocManager", "devtools", "stringr", "Metrics",
                    "dplyr", "ggplot2", "DEoptimR", "nloptr", "anndata",
-                   "readxl", "Hmisc", "RMariaDB", "lme4"))
+                   "readxl", "Hmisc", "RMariaDB", "lme4", "corrplot",
+                   "Hmisc", "circlize", "gMWT"))
 
 # If synapser fails to install because it can't find "synapseclient", go to
 # RStudio options (Tools->Global Options) -> Python, uncheck "Automatically
@@ -15,7 +16,15 @@ BiocManager::install(c("Biobase", "SingleCellExperiment", "TOAST", "scuttle",
 BiocManager::install("preprocessCore", configure.args="--disable-threading")
 
 # install the MuSiC package
-devtools::install_github('xuranw/MuSiC')
+devtools::install_github("xuranw/MuSiC")
+
+# install sageseqr -- requires archived package from CRAN
+gt_url <- "https://cran.r-project.org/src/contrib/Archive/GenomicTools/GenomicTools_0.2.9.7.tar.gz"
+download.file(url = gt_url, destfile = "GenomicTools_0.2.9.7.tar")
+install.packages(pkgs="GenomicTools_0.2.9.7.tar", type="source", repos=NULL)
+unlink("GenomicTools_0.2.9.7.tar") # deletes the tar file
+
+devtools::install_github("Sage-Bionetworks/sageseqr")
 
 # HSPE doesn't provide support for sparse matrices, so I download the repo and
 # make a few small changes. It's then re-compiled into a package and installed

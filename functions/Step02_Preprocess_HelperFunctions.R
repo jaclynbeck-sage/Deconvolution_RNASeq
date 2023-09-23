@@ -8,6 +8,7 @@ library(HDF5Array)
 library(dplyr)
 library(readxl)
 library(SingleCellExperiment)
+library(sageseqr)
 
 source("Filenames.R")
 
@@ -748,47 +749,64 @@ ReadNormCounts_BulkData <- function(files, assay_name, genes, samples) {
   return(assay)
 }
 
-# Per-tissue outlier detection via PCA. Unlike the RNAseq harmonization study,
-# we do this on a per-tissue basis, because points tend to cluster by tissue
-# and, especially in the case of Mayo, tissue clusters can be distinctly
-# separated on the PCA plot which skews how large the standard deviation is.
-# We did not see much bias toward sequencing batch, diagnosis, or sex in the
-# PCA, either with all points together or separated by tissue.
+# Per-batch outlier detection via PCA. Unlike the RNAseq harmonization study,
+# we do this on a per-batch (or tissue) basis, because points tend to cluster by
+# batch (ROSMAP) and tissue (Mayo, MSBB), and batch/tissue clusters are
+# distinctly separated on the PCA plot which skews how large the standard
+# deviation is. We did not see much bias toward diagnosis or sex in the PCA,
+# either with all points together or separated by batch.
 #
 # Arguments:
-#   metadata = a data.frame of metadata, which must have a field for "tissue"
-#   counts = a matrix of counts, with columns corresponding to rows in metadata
+#   covariates = a data.frame of covariates
+#   counts = a matrix of counts, with columns corresponding to specimenIDs in
+#            the covariates data.frame
 #   sd_threshold = how many standard deviations from mean must a sample be to
 #                  be considered an outlier
 #   do_plot = whether to plot the PCA of counts, colored by outlier status
 #
 # Returns:
 #   a vector containing the sample names of outliers
-FindOutliers_BulkData <- function(metadata, counts, sd_threshold = 3,
+FindOutliers_BulkData <- function(dataset, covariates, counts, sd_threshold = 4,
                                   do_plot = FALSE) {
 
-  outliers <- lapply(unique(metadata$tissue), function(tissue) {
-    tissue_samples <- metadata$tissue == tissue
-    counts_norm <- log2(calculateCPM(counts[,tissue_samples]) + 1)
+  # Define how to split the data into batches for batch-specific outlier
+  # detection. Mayo and MSBB are split by tissue, which has a much larger
+  # effect on the PCA plot than sequencing batch. ROSMAP is split by batch, with
+  # two additional batches also split by tissue.
+  covariates$batch <- switch(dataset,
+                             "Mayo" = covariates$tissue,
+                             "MSBB" = covariates$tissue,
+                             "ROSMAP" = covariates$final_batch)
 
-    pcs <- prcomp(counts_norm, center = TRUE, scale. = TRUE)
-    mean_pc <- colMeans(pcs$rotation[,1:2])
-    sd_pc <- colSds(pcs$rotation[,1:2])
+  # Two ROSMAP batches need to also be split by tissue
+  if (dataset == "ROSMAP") {
+    split_batches <- grepl("2_[3|9]", covariates$batch)
+    covariates$batch[split_batches] <- paste0(covariates$tissue,
+                                              covariates$batch)[split_batches]
+  }
 
-    # How many SDs is each point away from the mean along PC1 and PC2
-    dists <- cbind(abs(pcs$rotation[,1] - mean_pc[1])/sd_pc[1],
-                   abs(pcs$rotation[,2] - mean_pc[2])/sd_pc[2])
+  # Ensure covariates are in the same order as counts
+  rownames(covariates) <- covariates$specimenID
+  covariates <- covariates[colnames(counts),]
 
-    outliers <- dists[,1] > sd_threshold | dists[,2] > sd_threshold
+  # Find outliers by batch
+  outliers <- lapply(unique(covariates$batch), function(batch) {
+    batch_samples <- covariates$batch == batch
 
-    if (do_plot) {
-      df <- data.frame(PC1 = pcs$rotation[,1],
-                       PC2 = pcs$rotation[,2],
-                       outlier = outliers)
-      print(ggplot(df, aes(x = PC1, y = PC2, color = outlier)) + geom_point())
+    if (sum(batch_samples) > 20) {
+      # Use sagesqr's function
+      res <- identify_outliers(counts[,batch_samples],
+                               covariates[batch_samples,], color = "diagnosis",
+                               shape = "tissue", size = "tissue",
+                               z = sd_threshold)
+
+      if (do_plot) {
+        print(res$plot)
+      }
+
+      return(res$outliers)
     }
-
-    return(rownames(dists)[outliers])
+    return(NULL)
   })
 
   return(unlist(outliers))

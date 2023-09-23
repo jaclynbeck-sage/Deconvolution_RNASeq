@@ -6,7 +6,7 @@
 library(Matrix)
 library(SummarizedExperiment)
 library(SingleCellExperiment)
-#library(edgeR)
+library(edgeR)
 
 source(file.path("functions", "Step02_Preprocess_HelperFunctions.R"))
 source(file.path("functions", "General_HelperFunctions.R"))
@@ -63,7 +63,9 @@ for (dataset in datasets) {
   ##### Remove sample outliers (bulk only) #####
 
   if (is_bulk(dataset)) {
-    outliers <- FindOutliers_BulkData(metadata, counts)
+    outliers <- FindOutliers_BulkData(dataset, covariates, counts,
+                                      do_plot = FALSE, sd_threshold = 4)
+
     print(str_glue("{length(outliers)} outlier samples will be removed from {dataset}."))
     metadata <- subset(metadata, !(sample %in% outliers))
     counts <- counts[,metadata$sample]
@@ -146,11 +148,12 @@ for (dataset in datasets) {
   #if (is_singlecell(dataset)) {
   #  tmm <- calcNormFactors(counts, method = "TMMwsp")
   #}
-  #else {
-  #  tmm <- calcNormFactors(counts, method = "TMM")
-  #}
-  #gc()
-  #metadata$tmm_factors <- tmm
+  if (is_bulk(dataset)) {
+    tmm <- calcNormFactors(counts, method = "TMM")
+    gc()
+    metadata$tmm_factors <- tmm
+  }
+
 
   ##### Bulk data -- create SummarizedExperiment and save #####
 
