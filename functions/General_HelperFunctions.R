@@ -21,7 +21,7 @@ source(file.path("functions", "FileIO_HelperFunctions.R"))
 # Arguments:
 #   reference_data_name = the name of the reference singlecell data set
 #   test_data_name = the name of the test data set to deconvolve
-#   granularity = either "broad" or "fine", for the level of cell types used
+#   granularity = either "broad_class" or "sub_class", for the level of cell types used
 #   reference_input_type = the type of reference data to load. Options are:
 #                           "singlecell": the full single cell data set as a
 #                                         SingleCellExperiment object
@@ -43,7 +43,7 @@ source(file.path("functions", "FileIO_HelperFunctions.R"))
 #   and it is assumed that the individual algorithms will manipulate the formats
 #   afterward.
 Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
-                                    granularity = "broad",
+                                    granularity = "broad_class",
                                     reference_input_type = "singlecell",
                                     output_type = "counts") {
   # Reference input
@@ -253,7 +253,7 @@ CalculatePercentRNA <- function(singlecell_counts, samples, celltypes) {
 #
 # Returns:
 #   vector of average library size of each cell type, normalized to sum to 1.
-CalculateA <- function(sce, samples, celltypes) {
+CalculateA <- function(dataset, granularity) {
   pb <- Load_PseudobulkPureSamples(dataset, granularity, output_type = "counts")
 
   pb_counts <- assay(pb, "counts")

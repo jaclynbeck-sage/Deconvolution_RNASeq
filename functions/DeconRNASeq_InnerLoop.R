@@ -45,8 +45,9 @@ DeconRNASeq_InnerLoop <- function(signature, bulk_df, params) {
 
   if (is.null(signature_filt)) {
     param_set <- paste(params, collapse = "  ")
-    print(c("*** Missing markers for at least one cell type for param set", param_set))
-    print("*** skipping ***")
+    msg <- paste("*** Missing markers for at least one cell type for param set:",
+                 param_set, "/  *** skipping ***")
+    print(msg)
     return(NULL)
   }
 
@@ -54,8 +55,9 @@ DeconRNASeq_InnerLoop <- function(signature, bulk_df, params) {
   # to work from
   if (nrow(signature_filt) < 3*ncol(signature_filt)) {
     param_set <- paste(params, collapse = "  ")
-    print(c("*** Too few markers for param set", param_set))
-    print("*** skipping ***")
+    msg <- paste("*** Too few markers for param set:", param_set,
+                 "/  *** skipping ***")
+    print(msg)
     return(NULL)
   }
 
@@ -78,9 +80,10 @@ DeconRNASeq_InnerLoop <- function(signature, bulk_df, params) {
   },
   error = function(err) {
     param_set <- paste(params, collapse = "  ")
-    print(c("*** Error running param set", param_set))
+    msg <- paste("*** Error running param set: ", param_set,
+                 "/  *** skipping ***")
+    print(msg)
     print(err)
-    print("*** skipping ***")
 
     return(NULL)
   })

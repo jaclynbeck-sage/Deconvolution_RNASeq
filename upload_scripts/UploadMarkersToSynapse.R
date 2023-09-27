@@ -10,8 +10,8 @@ markers.folder <- Folder("markers", parent = "syn49332774")
 markers.folder <- synStore(markers.folder, forceVersion = FALSE)
 
 # Get provenance IDs
-sce_list <- as.list(synGetChildren("syn52245349")) # sce files
-pseudo_list <- as.list(synGetChildren("syn52245380")) # pseudobulk files
+sce_list <- as.list(synGetChildren("syn52569484")) # sce files
+pseudo_list <- as.list(synGetChildren("syn52570274")) # pseudobulk files
 
 sce_df <- data.frame(do.call(rbind, sce_list))
 pseudo_df <- data.frame(do.call(rbind, pseudo_list))
@@ -25,7 +25,7 @@ pseudo_df <- select(pseudo_df, name, id)
 pseudo_df <- subset(pseudo_df, grepl("puresamples", name))
 pseudo_df$dataset <- str_split(pseudo_df$name, "_", simplify = TRUE)[,2]
 pseudo_df$granularity <- str_split(pseudo_df$name, "_", simplify = TRUE)[,4]
-pseudo_df$granularity <- str_replace(pseudo_df$granularity, ".rds", "")
+pseudo_df$granularity <- paste0(pseudo_df$granularity, "_class")
 colnames(pseudo_df) <- c("pseudobulk_name", "pseudobulk_id", "dataset", "granularity")
 
 provenance_df <- merge(sce_df, pseudo_df, by = "dataset")
@@ -38,8 +38,8 @@ for (dset in datasets) {
 
   for (filename in files) {
     broadfine <- str_split(filename, "_", simplify = TRUE)[4]
-    broadfine <- str_replace(broadfine, "\\.rds", "")
-    input_type <- str_split(filename, "_", simplify = TRUE)[6]
+    broadfine <- paste0(broadfine, "_class")
+    input_type <- str_split(filename, "_", simplify = TRUE)[7]
     provenance <- subset(provenance_df, dataset == dset & granularity == broadfine)
 
     if (is.na(input_type) | input_type == "singlecell") {

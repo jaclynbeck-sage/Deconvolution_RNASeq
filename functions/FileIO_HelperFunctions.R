@@ -361,7 +361,7 @@ Load_SignatureMatrix <- function(dataset, granularity, output_type) {
   if (output_type != "tmm") {
     output_type = "cpm"
   }
-  return(sig_matrix[[output_type]][[str_glue("sig_{granularity}")]])
+  return(sig_matrix[[output_type]][[granularity]])
 }
 
 
@@ -683,8 +683,8 @@ Save_DtangleMarkers <- function(markers, dataset, granularity, input_type, marke
 #   dataset = the name of the data set
 #   granularity = either "broad_class" or "sub_class", for which level of cell
 #                 types was used to generate the markers.
-#   marker_type = one of "dtangle", "autogenes", or "seurat" to indicate which
-#                 markers to load
+#   marker_type = one of "dtangle", "autogenes", "seurat", or "deseq2", to
+#                 indicate which markers to load
 #   marker_subtype = the subtype of markers to load, specific to the marker_type.
 #                    For dtangle, one of "ratio", "diff", "p.value", or
 #                    "regression", which was used as the input to
@@ -693,6 +693,7 @@ Save_DtangleMarkers <- function(markers, dataset, granularity, input_type, marke
 #                    "combined", specifying which weighting scheme was used to
 #                    pick markers.
 #                    Seurat doesn't have a subtype so this can be left as NULL.
+#                    For deseq2, one of "DESeq2" or "glmGamPoi".
 #   input_type = for marker_type == "dtangle" only, either "singlecell" or
 #                "pseudobulk", for which type of input was used to generate the
 #                markers. For other marker_types, leave as NULL.
@@ -702,8 +703,8 @@ Save_DtangleMarkers <- function(markers, dataset, granularity, input_type, marke
 #   cell type
 Load_Markers <- function(dataset, granularity, marker_type, marker_subtype = NULL,
                          input_type = NULL) {
-  if (!(marker_type %in% c("dtangle", "autogenes", "seurat"))) {
-    print("marker_type must be one of 'dtangle', 'autogenes', or 'seurat')")
+  if (!(marker_type %in% c("dtangle", "autogenes", "seurat", "deseq2"))) {
+    print("marker_type must be one of 'dtangle', 'autogenes', 'seurat', or 'deseq2')")
     return(NULL)
   }
 
@@ -718,7 +719,7 @@ Load_Markers <- function(dataset, granularity, marker_type, marker_subtype = NUL
   else if (marker_type == "seurat") {
     marker_file_format <- "seurat_markers_{dataset}_{granularity}.rds"
   }
-  else if (marker_type == "DESeq2") {
+  else if (marker_type == "deseq2") {
     marker_file_format <- "deseq2_markers_{dataset}_{granularity}_{marker_subtype}.rds"
   }
 

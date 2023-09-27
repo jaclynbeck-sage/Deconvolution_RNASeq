@@ -25,7 +25,7 @@ source(file.path("functions", "General_HelperFunctions.R"))
 # NOTE: "FORK" is more memory-efficient but only works on Unix systems. For
 #       other systems, use "PSOCK" and reduce the number of cores.
 cores <- 6
-cl <- makeCluster(cores, type = "FORK", outfile = "")
+cl <- makeCluster(cores, type = "FORK", outfile = "deconRNAseq_output.txt")
 registerDoParallel(cl)
 
 # Libraries that need to be loaded into each parallel environment
@@ -33,16 +33,17 @@ required_libraries <- c("DeconRNASeq", "scuttle")
 
 #### Parameter setup #####
 
-datasets <- c("cain", "lau", "leng", "mathys", "morabito", "seaRef") #, "seaAD")
+datasets <- c("cain", "lau", "leng", "mathys", "seaRef") #, "morabito", "seaAD")
 
 params_loop1 <- expand_grid(reference_data_name = datasets,
                             test_data_name = c("Mayo", "MSBB", "ROSMAP"), #c("donors", "training"),
-                            granularity = c("broad"),
-                            normalization = c("cpm")) %>% arrange(test_data_name)
+                            granularity = c("broad_class"),
+                            normalization = c("cpm", "tmm", "tpm")) %>% arrange(test_data_name)
 
 marker_types <- list("dtangle" = c("ratio", "diff", "p.value", "regression"),
                      "autogenes" = c("correlation", "distance", "combined"),
-                     "seurat" = c("None"))
+                     "seurat" = c("None"),
+                     "deseq2" = c("DESeq2"))
 
 params_tmp <- CreateParams_FilterableSignature(
                 filter_level = c(1, 2, 3),
