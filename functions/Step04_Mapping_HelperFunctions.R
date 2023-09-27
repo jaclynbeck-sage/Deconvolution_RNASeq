@@ -32,7 +32,7 @@ MergeQueries <- function(query_list) {
 #   a Seurat object that has been mapped onto the reference, with predicted
 #   labels set in the metadata and mapped dimension reductions "ref.pca" and
 #   "ref.umap".
-Map_Cells <- function(query, reference, dims_use = 1:20, map_cols = NULL,
+Map_Cells <- function(query, reference, dims_use = 1:30, map_cols = NULL,
                       recompute_residuals = TRUE) {
 
   anchors <- FindTransferAnchors(reference = reference,

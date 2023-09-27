@@ -56,7 +56,7 @@ FindMarkers_DESeq2 <- function(datasets, granularities) {
 
         mod <- model.matrix(design(dds), data = colData(pb))
 
-        markers <- lapply(levels(pb$celltype), function(ct) {
+        dds_res <- lapply(levels(pb$celltype), function(ct) {
           # This provides a contrast for (ct) vs (all other ct), controlling for
           # the effect of diagnosis
           cont <- colMeans(mod[dds$celltype == ct,]) -
@@ -65,19 +65,27 @@ FindMarkers_DESeq2 <- function(datasets, granularities) {
           res <- results(dds, contrast = cont, alpha = 0.05)
           res <- subset(res, padj <= 0.05 & log2FoldChange > 0.5)
           res <- data.frame(res) %>% arrange(desc(log2FoldChange))
-          return(rownames(res))
+          res$celltype <- ct
+          res$gene <- rownames(res)
+          return(res)
         })
+        dds_res <- do.call(rbind, dds_res)
 
-        names(markers) <- levels(pb$celltype)
+        dupes <- unique(dds_res$gene[duplicated(dds_res$gene)])
+        unique_markers <- setdiff(dds_res$gene, dupes)
 
-        all_markers <- unlist(markers)
-        dupes <- unique(all_markers[duplicated(all_markers)])
+        # Create a list of markers per cell type, with genes that are only
+        # differentially expressed in one cell type
+        markers_all <- sapply(sort(unique(dds_res$celltype)), function(ct) {
+          res <- subset(dds_res, celltype == ct & gene %in% unique_markers)
+          return(res$gene)
+        })
 
         # Find genes where the logFC of the highest-expressing cell type vs
         # the second-highest expressing cell type is > 1
         data_norm <- varianceStabilizingTransformation(dds, blind = TRUE)
         data_means <- sapply(levels(data_norm$celltype), function(ct) {
-          rowMeans(assay(data_norm)[,data_norm$celltype == ct])
+          rowMeans(assay(data_norm)[unique_markers, data_norm$celltype == ct])
         })
 
         data_means <- as.data.frame(data_means)
@@ -94,20 +102,17 @@ FindMarkers_DESeq2 <- function(datasets, granularities) {
                   subset(log2FC >= 1) %>% arrange(desc(log2FC)) %>%
                   select(gene, highest)
 
-        # Format in a way dtangle/HSPE understand -- one full list containing all
-        # genes, one list with genes which are markers for more than one cell type
-        # filtered out.
-        markers2 <- sapply(colnames(data_means), function(ct) {
+        # Filter genes to those where (log2FC between highest and second-highest
+        # expression) > 1
+        markers_filt <- sapply(colnames(data_means), function(ct) {
           return(avgs$gene[avgs$highest == ct])
-        })
-        markers_filt <- sapply(markers2, function(M) {
-          return(setdiff(M, dupes))
         })
 
         print(str_glue("Markers for {dataset} / {granularity} / {fit_type} cell types:"))
         print(lengths(markers_filt))
 
-        markers_list <- list("all" = markers2,
+        markers_list <- list("deseq_results" = dds_res,
+                             "all" = markers_all,
                              "filtered" = markers_filt)
 
         saveRDS(markers_list,

@@ -214,10 +214,6 @@ Load_CountsFile <- function(filename, output_type) {
 
   se_obj <- readRDS(filename)
 
-  # Remove mitochondrial and non-coding genes, which are marked as 'exclude'
-  genes <- rowData(se_obj)
-  se_obj <- se_obj[!genes$exclude, ]
-
   # Applies to seaRef only, this loads it all into memory.
   if (is(assay(se_obj, "counts"), "DelayedArray")) {
     if (!file.exists(path(assay(se_obj, "counts")))) {
@@ -298,12 +294,29 @@ Load_CountsFile <- function(filename, output_type) {
 #   output_type = one of "counts", "vst", "cpm", "tmm", "log_cpm", "log_tmm",
 #                 "qn_cpm", "qn_tmm", "qn_log_cpm", or "qn_log_tmm". See
 #                 Load_CountsFile for description.
+#
+# Returns:
+#   a SummarizedExperiment object with (possibly normalized) data in the
+#   "counts" slot
 Load_BulkData <- function(dataset, output_type = "counts") {
   bulk_file <- str_glue(paste0("{dataset}_se.rds"))
   bulk_file <- file.path(dir_input, bulk_file)
 
   bulk <- Load_CountsFile(bulk_file, output_type)
   return(bulk)
+}
+
+# Arguments:
+#   dataset = the name of the dataset ("ROSMAP", "Mayo", or "MSBB")
+#   se = a SummarizedExperiment object
+#
+# Returns:
+#   nothing
+Save_BulkData <- function(dataset, se) {
+  bulk_file <- str_glue(paste0("{dataset}_se.rds"))
+  bulk_file <- file.path(dir_input, bulk_file)
+
+  saveRDS(se, file = bulk_file)
 }
 
 
@@ -334,14 +347,21 @@ Load_AvgLibSize <- function(dataset, granularity) {
 #   dataset = the name of the data set to load
 #   granularity = either "broad" or "fine", for which level of cell types to
 #                 load the signature matrix for.
+#   output_type = either "counts", "cpm", or "tmm". If output_type is "counts"
+#                 or "cpm", the singature matrix will be in CPM. If it's "tmm",
+#                 the signature matrix will be normalized with TMM factors.
 #
 # Returns:
 #   a matrix with rows = genes and columns = cell types, where the values are
-#   in counts per million, describing the expected value of each gene for each
-#   cell type.
-Load_SignatureMatrix <- function(dataset, granularity) {
+#   in counts per million (or TMM-normalized), describing the expected value of
+#   each gene for eachcell type.
+Load_SignatureMatrix <- function(dataset, granularity, output_type) {
   sig_matrix <- readRDS(file.path(dir_input, str_glue("{dataset}_signature.rds")))
-  return(sig_matrix[[str_glue("sig_{granularity}")]])
+
+  if (output_type != "tmm") {
+    output_type = "cpm"
+  }
+  return(sig_matrix[[output_type]][[str_glue("sig_{granularity}")]])
 }
 
 
@@ -454,7 +474,7 @@ Save_PreprocessedData <- function(dataset_name, se_object) {
 #
 # Returns:
 #   A SummarizedExperiment (or SingleCellExperiment)
-Load_PreprocessedData <- function(dataset_name, remove_excluded = FALSE) {
+Load_PreprocessedData <- function(dataset_name, remove_excluded = TRUE) {
   data <- readRDS(file.path(dir_preprocessed,
                             str_glue("{dataset_name}_preprocessed.rds")))
 

@@ -39,8 +39,9 @@ FindMarkers_Seurat <- function(datasets, granularities) {
       markers <- subset(markers, p_val_adj <= 0.05)
       dupes <- markers$gene[duplicated(markers$gene)]
 
-      genes <- unique(markers$gene)
-      avgs <- AverageExpression(seurat, features = genes, slot = "data")
+      markers2 <- subset(markers, !(gene %in% dupes))
+
+      avgs <- AverageExpression(seurat, features = markers2$gene, slot = "data")
       avgs <- as.data.frame(avgs[[1]])
 
       getLog2FC <- function(cols) {
@@ -58,19 +59,22 @@ FindMarkers_Seurat <- function(datasets, granularities) {
                 select(gene, highest)
 
       # Format in a way dtangle/HSPE understand -- one full list containing all
-      # genes, one list with genes which are markers for more than one cell type
-      # filtered out.
-      markers2 <- sapply(colnames(avgs), function(ct) {
-        return(avgs2$gene[avgs2$highest == ct])
+      # genes that are unique to one cell type, one list filtered to (log2FC
+      # between highest and second-highest expression) > 1
+      markers_all <- sapply(levels(markers2$cluster), function(ct) {
+        return(subset(markers2, cluster == ct)$gene)
       })
-      markers_filt <- sapply(markers2, function(M) {
-        return(setdiff(M, dupes))
+      names(markers_all) <- levels(markers2$cluster)
+
+      markers_filt <- sapply(colnames(avgs), function(ct) {
+        return(avgs2$gene[avgs2$highest == ct])
       })
 
       print(str_glue("Markers for {dataset} / {granularity} cell types:"))
       print(lengths(markers_filt))
 
-      markers_list <- list("all" = markers2,
+      markers_list <- list("mast_results" = markers,
+                           "all" = markers_all,
                            "filtered" = markers_filt)
 
       saveRDS(markers_list, file.path(dir_markers,

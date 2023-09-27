@@ -56,7 +56,8 @@ Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
                                                 granularity, output_type)
   }
   else if (reference_input_type == "signature") {
-    reference_obj <- Load_SignatureMatrix(reference_data_name, granularity)
+    reference_obj <- Load_SignatureMatrix(reference_data_name, granularity,
+                                          output_type)
   }
   else {
     print("*** Error: Invalid reference_input_type specified! ***")
@@ -247,33 +248,35 @@ CalculatePercentRNA <- function(singlecell_counts, samples, celltypes) {
 # vector describing each cell type's average total count relative to other types.
 #
 # Arguments:
-#   sce = SingleCellExperiment containing raw RNA counts
-#   samples = vector of sample IDs that is the same length as
-#             ncol(sce). Must be a factor.
-#   celltypes = vector of cell type assignments that is the same length as
-#               ncol(sce). Must be a factor.
+#   dataset = name of the dataset to load
+#   granularity = either "broad_class" or "sub_class"
 #
 # Returns:
 #   vector of average library size of each cell type, normalized to sum to 1.
 CalculateA <- function(sce, samples, celltypes) {
-  # Sum all counts per gene for each sample/celltype combination
-  y <- model.matrix(~0 + samples:celltypes)
-  count_sums <- counts(sce) %*% y
+  pb <- Load_PseudobulkPureSamples(dataset, granularity, output_type = "counts")
 
-  # Sum over all genes for each sample/celltype combination
-  count_sums <- colSums(count_sums)
+  pb_counts <- assay(pb, "counts")
+  count_sums <- colSums(pb_counts)
+
+  samples <- str_replace(names(count_sums), ".*_", "")
 
   # For each sample
-  A_s <- sapply(levels(samples), function(samp) {
-    # For each cell of type <ct> in the sample
-    sapply(levels(celltypes), function(ct) {
-      name <- str_glue("samples{samp}:celltypes{ct}")
-      cells <- celltypes == ct & samples == samp
+  A_s <- sapply(unique(samples), function(samp) {
+    cols <- grepl(samp, names(count_sums))
 
-      # Average library size = sum over all genes for this sample/celltype
-      # divided by number of cells for this sample/celltype
-      return(as.numeric(count_sums[name] / sum(cells)))
-    })
+    # Average library size = sum over all genes for each sample/celltype
+    # divided by number of cells for that sample/celltype
+    a_s <- count_sums[cols] / pb$n_cells[cols]
+    names(a_s) <- pb$celltype[cols]
+
+    # Some samples don't have all cell types
+    missing <- setdiff(levels(pb$celltype), names(a_s))
+    a_s[missing] <- NA
+
+    a_s <- a_s[levels(pb$celltype)]
+
+    return(a_s)
   })
 
   # Normalize each sample row to sum to 1
@@ -287,45 +290,31 @@ CalculateA <- function(sce, samples, celltypes) {
 
 
 # CalculateSignature: Creates a cell-type-specific "signature" matrix that
-# describes the expected count of each gene for each cell type:
-#   Sig_s_T = (sum of RNA counts per gene, for all cells of type T in sample S),
-#             converted to CPM after summation
-#   Sig_T = average Sig_s_T over all samples
+# describes the expected count of each gene for each cell type.
 #
-# Raw, un-normalized RNA counts are added together rather than adding normalized
-# CPMs, in order to be consistent with what we would get from a bulk sample of
-# purified cells. The sum is then converted to CPM to remove scaling issues
-# between samples.
+# Uses pseudobulk pure samples, where each sample is the sum of all raw counts
+# of a specific cell type from a specific donor. The pseudobulk counts are
+# normalized to CPM, and the CPM values of each gene for each cell type are
+# averaged together.
 #
 # Arguments:
-#   sce = SingleCellExperiment containing raw RNA counts
-#   samples = vector of sample IDs that is the same length as
-#             ncol(sce). Must be a factor.
-#   celltypes = vector of cell type assignments that is the same length as
-#               ncol(sce). Must be a factor.
+#   dataset = the name of the dataset to load
+#   granularity = either "broad_class" or "sub_class"
+#   output_type = either "cpm" or "tmm", for whether to use pure CPM or normalize
+#                 using tmm factors
 #
 # Returns:
 #   matrix of average CPMs for each gene, for each cell type (rows = genes,
 #   columns = cell types)
-CalculateSignature <- function(sce, samples, celltypes) {
-  # Sum all counts per gene for each sample/celltype combination
-  y <- model.matrix(~0 + samples:celltypes)
-  count_sums <- counts(sce) %*% y
+CalculateSignature <- function(dataset, granularity, output_type) {
+  pb <- Load_PseudobulkPureSamples(dataset, granularity, output_type)
 
-  # Remove columns where a sample doesn't have the specified cell type
-  count_sums <- count_sums[,colSums(count_sums) > 0]
-
-  # Convert to CPM -- creates an "average" profile in CPM for each cell type
-  count_sums <- calculateCPM(count_sums)
-
-  # colnames are of the format samples<sample>:celltypes<celltype>, extract
-  # "<celltype>" as a vector
-  cts <- str_replace(colnames(count_sums), ".*:celltypes", "")
+  pb_cpm <- assay(pb, "counts")
 
   # Get the mean over all samples, for each gene and cell type
-  sig <- sapply(levels(celltypes), function(ct) {
-    cols <- which(cts == ct)
-    rowMeans(count_sums[,cols], na.rm = TRUE)
+  sig <- sapply(levels(pb$celltype), function(ct) {
+    cols <- which(pb$celltype == ct)
+    rowMeans(pb_cpm[,cols], na.rm = TRUE)
   })
 
   return(sig)

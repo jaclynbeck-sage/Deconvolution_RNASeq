@@ -139,20 +139,21 @@ for (dataset in datasets) {
   }
 
   for (col in colnames(metadata)[-1]) {
-    if (!is.numeric(metadata[,col])) {
+    if (!is.numeric(metadata[,col]) | col == "sample") { # fixes mathys samples being numeric
       metadata[,col] = factor(metadata[,col])
     }
   }
 
   # TMM normalization factors -- unfortunately will convert to dense matrix
-  #if (is_singlecell(dataset)) {
-  #  tmm <- calcNormFactors(counts, method = "TMMwsp")
-  #}
-  if (is_bulk(dataset)) {
-    tmm <- calcNormFactors(counts, method = "TMM")
-    gc()
-    metadata$tmm_factors <- tmm
+  if (is_singlecell(dataset)) {
+    tmm <- calcNormFactors(counts[!genes$exclude, ], method = "TMMwsp")
   }
+  else { # bulk
+    tmm <- calcNormFactors(counts[!genes$exclude, ], method = "TMM")
+  }
+
+  metadata$tmm_factors <- tmm
+  gc()
 
 
   ##### Bulk data -- create SummarizedExperiment and save #####
@@ -176,21 +177,6 @@ for (dataset in datasets) {
     # sce file will contain a pointer to the original data file rather than
     # writing the full data to disk again
     Save_PreprocessedData(dataset, sce)
-
-    # Calculate the "A" matrix that is needed to convert propCells to pctRNA
-    #A_broad <- CalculateA(sce, metadata$sample, metadata$broad_class)
-    #A_fine <- CalculateA(sce, metadata$sample, metadata$sub_class)
-
-    #saveRDS(list("A_broad" = A_broad, "A_fine" = A_fine),
-    #        file = file.path(dir_input, str_glue("{dataset}_A_matrix.rds")))
-
-    # Calculate a signature for each cell type. This matrix includes all genes in
-    # the data set and isn't filtered at this point.
-    #sig_broad <- CalculateSignature(sce, metadata$sample, metadata$broad_class)
-    #sig_fine <- CalculateSignature(sce, metadata$sample, metadata$sub_class)
-
-    #saveRDS(list("sig_broad" = sig_broad, "sig_fine" = sig_fine),
-    #        file = file.path(dir_input, str_glue("{dataset}_signature.rds")))
   }
 
   print("Done")
