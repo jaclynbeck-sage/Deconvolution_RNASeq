@@ -38,7 +38,8 @@ reference_input_types = c("singlecell", "pseudobulk")
 params_loop1 <- expand_grid(reference_data_name = datasets,
                             test_data_name = c("Mayo", "MSBB", "ROSMAP"),
                             granularity = c("broad_class"),
-                            normalization = c("counts")) %>% arrange(test_data_name)
+                            normalization = c("counts", "cpm", "tmm", "tpm")) %>%
+                  arrange(test_data_name)
 
 marker_types <- list("dtangle" = c("ratio", "diff", "p.value", "regression"),
                      "autogenes" = c("correlation", "distance", "combined"),
@@ -84,16 +85,6 @@ for (P in 1:nrow(params_loop1)) {
     data$reference <- as(data$reference, "SingleCellExperiment")
     data$test <- as.matrix(assay(data$test, "counts"))
 
-    # MuSiC doesn't take into account that cells might have different library
-    # sizes across samples, so we replace their cell size calculation with
-    # ours, which accounts for scaling issues between samples
-    A <- Load_AvgLibSize(reference_data_name, granularity)
-
-    # A sums to 1, needs to be put on the same scale as what would come out of
-    # music_basis, which is on the scale of column sums of cells
-    sums <- mean(colSums(counts(data$reference))) * length(A)
-    A <- A * sums
-
     # Pre-compute sc.basis to save time
     # Hack to get the function redirect to work: The "<<-" operator creates a
     # global variable that can be used inside the modified music_basis function.
@@ -103,7 +94,6 @@ for (P in 1:nrow(params_loop1)) {
                             markers = rownames(data$reference),
                             clusters = "celltype", samples = "sample",
                             select.ct = NULL,
-                            cell_size = data.frame(cells = names(A), sizes = A),
                             ct.cov = FALSE,
                             verbose = TRUE)
 
@@ -118,6 +108,10 @@ for (P in 1:nrow(params_loop1)) {
 
     sc_basis$Sigma.ct <- Sigma.ct
 
+    # Save in case of crashing
+    saveRDS(sc_basis, file = file.path(dir_tmp,
+                                       str_glue("sc_basis_{reference_data_name}_{granularity}_{input_type}_{normalization}.rds")))
+
     ##### Iterate through combinations of MuSiC arguments in parallel #####
     # NOTE: the helper functions have to be sourced inside the foreach loop
     #       so they exist in each newly-created parallel environment
@@ -128,7 +122,7 @@ for (P in 1:nrow(params_loop1)) {
       source(file.path("functions", "Music_InnerLoop.R"))
 
       set.seed(12345)
-      res <- Music_InnerLoop(data$reference, data$test, A,
+      res <- Music_InnerLoop(data$reference, data$test,
                              sc_basis,
                              cbind(params_loop1[P,],
                                    "reference_input_type" = input_type,

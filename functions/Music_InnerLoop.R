@@ -9,8 +9,6 @@
 #         of each cell.
 #   bulk_df = a matrix of bulk expression (rows = genes, columns = samples).
 #             Must be a matrix, not a data.frame.
-#   A = a named vector of the average expected library size of each cell type,
-#       normalized so sum(A) = 1.
 #   sc_basis = pre-computed list output from music_basis()
 #   params = a single-row data frame or a named vector/list of parameters
 #            containing the following variables: ct_cov, centered, normalize
@@ -18,9 +16,9 @@
 # Returns:
 #   a list containing entries for "Est.prop.weighted" and "Est.prop.allgene",
 #   which are output by MuSiC, "Est.pctRNA.weighted" and "Est.pctRNA.allgene",
-#   which are calculated based on the "A" matrix, and "params", which is the
-#   parameter set used for this run
-Music_InnerLoop <- function(sce, bulk_mtx, A, sc_basis, params, verbose = FALSE) {
+#   which are calculated based on the "M.S" matrix from sc_basis, and "params",
+#   which is the parameter set used for this run
+Music_InnerLoop <- function(sce, bulk_mtx, sc_basis, params, verbose = FALSE) {
   # Unpack variables for readability, enforce they are the correct types
   reference_data_name <- params$reference_data_name
   granularity <- params$granularity
@@ -53,7 +51,7 @@ Music_InnerLoop <- function(sce, bulk_mtx, A, sc_basis, params, verbose = FALSE)
 
   # We want at least ~3 markers per cell type or there isn't enough information
   # to work from
-  if (length(markers_use) < 3*length(A)) {
+  if (length(markers_use) < 3*length(levels(sce$celltype))) {
     param_set <- paste(params, collapse = "  ")
     print(paste("*** Too few markers for param set", param_set))
     print("*** skipping ***")
@@ -77,7 +75,8 @@ Music_InnerLoop <- function(sce, bulk_mtx, A, sc_basis, params, verbose = FALSE)
                          markers = markers_use,
                          clusters = "celltype",
                          samples = "sample", verbose = verbose,
-                         cell_size = data.frame(cells = names(A), sizes = A),
+                         cell_size = data.frame(cells = names(sc_basis$M.S),
+                                                sizes = sc_basis$M.S),
                          ct.cov = ct_cov, centered = centered,
                          normalize = normalize)
 
@@ -85,12 +84,15 @@ Music_InnerLoop <- function(sce, bulk_mtx, A, sc_basis, params, verbose = FALSE)
     # especially is a very large array and is unneeded, so this reduces
     # output size.
     result <- result[c("Est.prop.weighted", "Est.prop.allgene")]
-    result$Est.prop.weighted <- result$Est.prop.weighted[,names(A)]
-    result$Est.prop.allgene <- result$Est.prop.allgene[,names(A)]
+    result$Est.prop.weighted <- result$Est.prop.weighted[,levels(sce$celltype)]
+    result$Est.prop.allgene <- result$Est.prop.allgene[,levels(sce$celltype)]
 
     # Convert proportion of cells to percent RNA
-    result$Est.pctRNA.weighted <- ConvertPropCellsToPctRNA(result$Est.prop.weighted, A)
-    result$Est.pctRNA.allgene <- ConvertPropCellsToPctRNA(result$Est.prop.allgene, A)
+    M.S <- sc_basis$M.S[levels(sce$celltype)]
+    result$Est.pctRNA.weighted <- ConvertPropCellsToPctRNA(result$Est.prop.weighted,
+                                                           M.S)
+    result$Est.pctRNA.allgene <- ConvertPropCellsToPctRNA(result$Est.prop.allgene,
+                                                          M.S)
 
     result$params <- params
     result$markers <- markers_use
