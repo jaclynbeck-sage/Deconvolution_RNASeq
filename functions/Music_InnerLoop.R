@@ -76,7 +76,7 @@ Music_InnerLoop <- function(sce, bulk_mtx, A, sc_basis, params, verbose = FALSE)
     result <- music_prop(bulk.mtx = bulk_mtx, sc.sce = sce,
                          markers = markers_use,
                          clusters = "celltype",
-                         samples = "donor", verbose = verbose,
+                         samples = "sample", verbose = verbose,
                          cell_size = data.frame(cells = names(A), sizes = A),
                          ct.cov = ct_cov, centered = centered,
                          normalize = normalize)

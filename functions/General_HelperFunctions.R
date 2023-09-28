@@ -65,7 +65,7 @@ Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
   }
 
   # Test data
-  if (test_data_name == "donors" | test_data_name == "training") {
+  if (test_data_name == "sc_samples" | test_data_name == "training") {
     test_obj <- Load_Pseudobulk(reference_data_name, test_data_name,
                                 granularity, output_type)
   }

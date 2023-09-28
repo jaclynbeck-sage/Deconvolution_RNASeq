@@ -23,7 +23,7 @@ source("Music_Edits.R")
 cores <- 6
 # Music is very verbose so we make an output file instead of putting on the
 # console, because RStudio won't display everything in the console otherwise.
-cl <- makeCluster(cores, type = "FORK", outfile = "music_output.txt") #outfile = "")
+cl <- makeCluster(cores, type = "FORK", outfile = "music_output.txt")
 registerDoParallel(cl)
 
 # Libraries that need to be loaded into each parallel environment
@@ -36,13 +36,14 @@ datasets <- c("cain", "lau", "leng", "mathys", "morabito", "seaRef") #, "seaAD")
 reference_input_types = c("singlecell", "pseudobulk")
 
 params_loop1 <- expand_grid(reference_data_name = datasets,
-                            test_data_name = c("Mayo", "MSBB", "ROSMAP"), #c("donors", "training"),
-                            granularity = c("broad"),
+                            test_data_name = c("Mayo", "MSBB", "ROSMAP"),
+                            granularity = c("broad_class"),
                             normalization = c("counts")) %>% arrange(test_data_name)
 
 marker_types <- list("dtangle" = c("ratio", "diff", "p.value", "regression"),
                      "autogenes" = c("correlation", "distance", "combined"),
-                     "seurat" = c("None"))
+                     "seurat" = c("None"),
+                     "deseq2" = c("DESeq2"))
 
 params_tmp <- CreateParams_FilterableSignature(
                   filter_level = c(0, 1, 2, 3),
@@ -77,13 +78,21 @@ for (P in 1:nrow(params_loop1)) {
                                     output_type = normalization)
 
     if (input_type == "pseudobulk") {
-      data$reference$donor <- str_replace(data$reference$donor, ".*_", "")
+      data$reference$sample <- str_replace(data$reference$sample, ".*_", "")
     }
 
     data$reference <- as(data$reference, "SingleCellExperiment")
     data$test <- as.matrix(assay(data$test, "counts"))
 
+    # MuSiC doesn't take into account that cells might have different library
+    # sizes across samples, so we replace their cell size calculation with
+    # ours, which accounts for scaling issues between samples
     A <- Load_AvgLibSize(reference_data_name, granularity)
+
+    # A sums to 1, needs to be put on the same scale as what would come out of
+    # music_basis, which is on the scale of column sums of cells
+    sums <- mean(colSums(counts(data$reference))) * length(A)
+    A <- A * sums
 
     # Pre-compute sc.basis to save time
     # Hack to get the function redirect to work: The "<<-" operator creates a
@@ -92,7 +101,7 @@ for (P in 1:nrow(params_loop1)) {
 
     sc_basis <- music_basis(data$reference, non.zero = TRUE,
                             markers = rownames(data$reference),
-                            clusters = "celltype", samples = "donor",
+                            clusters = "celltype", samples = "sample",
                             select.ct = NULL,
                             cell_size = data.frame(cells = names(A), sizes = A),
                             ct.cov = FALSE,
@@ -103,7 +112,7 @@ for (P in 1:nrow(params_loop1)) {
                                non.zero = TRUE,
                                markers = NULL,
                                clusters = "celltype",
-                               samples = "donor",
+                               samples = "sample",
                                select.ct = NULL)
     colnames(Sigma.ct) <- rownames(data$reference)
 

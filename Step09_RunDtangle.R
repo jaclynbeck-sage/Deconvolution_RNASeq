@@ -41,19 +41,21 @@ required_libraries <- c(str_glue("{algorithm}Sparse"))
 
 #### Parameter setup #####
 
-datasets <- c("cain", "lau", "leng", "mathys", "morabito", "seaRef") #, "seaAD")
+datasets <- c("cain", "lau", "leng", "mathys", "seaRef") #, "morabito", "seaAD")
 
 reference_input_types = c("singlecell", "pseudobulk")
 
 params_loop1 <- expand_grid(reference_data_name = datasets,
-                            test_data_name = c("Mayo", "MSBB", "ROSMAP"), #c("donors", "training"),
-                            granularity = c("broad"),
-                            normalization = c("log_cpm")) %>%
+                            test_data_name = c("Mayo", "MSBB", "ROSMAP"),
+                            granularity = c("broad_class"),
+                            normalization = c("log_cpm", "log_tmm", "log_tpm")) %>%
                     arrange(test_data_name)
 
 marker_types <- list("dtangle" = c("ratio", "diff", "p.value", "regression"),
                      "autogenes" = c("correlation", "distance", "combined"),
-                     "seurat" = c("None"))
+                     "seurat" = c("None"),
+                     "deseq2" = c("DESeq2"))
+
 params_markers <- CreateParams_MarkerTypes(
                     n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
                                   3, 5, 10, 20, 50, 100, 200),
@@ -68,7 +70,6 @@ if (algorithm == "dtangle") {
                               sum_fn_type = c("mean"))
 } else if (algorithm == "hspe") {
   params_loop2 <- expand_grid(params_markers,
-                              marker_order = c("distance", "correlation"),
                               loss_fn = c("var", "L2"))
 }
 
