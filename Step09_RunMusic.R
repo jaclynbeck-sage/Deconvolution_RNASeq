@@ -31,7 +31,7 @@ required_libraries <- c("MuSiC", "SingleCellExperiment")
 
 #### Parameter setup #####
 
-datasets <- c("cain", "lau", "leng", "mathys", "morabito", "seaRef") #, "seaAD")
+datasets <- c("cain", "lau", "leng", "mathys", "seaRef") # , "morabito", "seaAD")
 
 reference_input_types = c("singlecell", "pseudobulk")
 

@@ -136,6 +136,7 @@ for (dataset in datasets) {
   # distribution of counts similar to adjusting on the log scale, so using log
   # scale seems adequate.
   corrected_edger <- exp(log(expr$counts) - adjust) # edgeR is on the natural log scale
+  tmm_edger <- calcNormFactors(corrected_edger)
 
 
   ##### DESeq2 fit #####
@@ -157,6 +158,7 @@ for (dataset in datasets) {
   adjust <- tcrossprod(coefs_deseq[,coefs_tech], mod_deseq[,coefs_tech])
 
   corrected_deseq2 <- 2^(log2(counts(dds)) - adjust) # deseq2 results are log2 scale
+  tmm_deseq2 <- calcNormFactors(corrected_deseq2)
 
 
   ##### sageseqr/dream #####
@@ -172,21 +174,22 @@ for (dataset in datasets) {
                                       data = metadata,
                                       BPPARAM = BiocParallel::SnowParam(n_cores))
 
-  fit_sageseqr <- dream(exprObj = voom_counts,
-                        formula = design_mixed,
-                        data = metadata,
-                        computeResiduals = TRUE,
-                        BPPARAM = BiocParallel::SnowParam(n_cores))
+  fit_dream <- dream(exprObj = voom_counts,
+                     formula = design_mixed,
+                     data = metadata,
+                     computeResiduals = TRUE,
+                     BPPARAM = BiocParallel::SnowParam(n_cores))
 
-  resid_sageseqr <- fit_sageseqr$residuals
-  coefs_sageseqr <- coef(fit_sageseqr)
-  mod_sageseqr <- fit_sageseqr$design
+  resid_dream <- fit_dream$residuals
+  coefs_dream <- coef(fit_dream)
+  mod_dream <- fit_dream$design
 
   # Add biological confounds back to the residuals
-  coefs_bio <- grepl("Intercept|diagnosis|tissue|sex", colnames(coefs_sageseqr))
-  adjust <- tcrossprod(coefs_sageseqr[,coefs_bio], mod_sageseqr[,coefs_bio])
+  coefs_bio <- grepl("Intercept|diagnosis|tissue|sex", colnames(coefs_dream))
+  adjust <- tcrossprod(coefs_dream[,coefs_bio], mod_dream[,coefs_bio])
 
-  corrected_sageseqr <- 2^(resid_sageseqr + adjust) # log2 scale residuals
+  corrected_dream <- 2^(resid_dream + adjust) # log2 scale residuals
+  tmm_dream <- calcNormFactors(corrected_dream)
 
 
   ##### Save results/fits for further examination #####
@@ -194,8 +197,8 @@ for (dataset in datasets) {
   saveRDS(list(fit_edger = fit_edger,
                corrected_edger = corrected_edger,
                corrected_deseq2 = corrected_deseq2,
-               fit_sageseqr = fit_sageseqr,
-               corrected_sageseqr = corrected_sageseqr),
+               fit_dream = fit_dream,
+               corrected_dream = corrected_dream),
           file.path(dir_tmp, str_glue("{dataset}_models.rds")))
 
 
@@ -204,7 +207,11 @@ for (dataset in datasets) {
   bulk <- Load_PreprocessedData(dataset, remove_excluded = TRUE)
   assay(bulk, "corrected_edger") <- round(corrected_edger)
   assay(bulk, "corrected_deseq2") <- round(corrected_deseq2)
-  assay(bulk, "corrected_sageseqr") <- round(corrected_sageseqr)
+  assay(bulk, "corrected_dream") <- round(corrected_dream)
+
+  bulk$tmm_factors_edger <- tmm_edger
+  bulk$tmm_factors_deseq2 <- tmm_deseq2
+  bulk$tmm_factors_dream <- tmm_dream
 
   Save_BulkData(dataset, bulk)
 }

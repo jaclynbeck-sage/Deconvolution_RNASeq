@@ -8,14 +8,15 @@ source("Filenames.R")
 
 synLogin()
 
-folders <- list("singlecell" = list("synID" = "syn52245349", "downloadLocation" = dir_input),
-                "pseudobulk" = list("synID" = "syn52245380", "downloadLocation" = dir_pseudobulk),
-                "markers" = list("synID" = "syn52245416", "downloadLocation" = dir_markers),
-                "errors" = list("synID" = "syn52245653", "downloadLocation" = dir_errors),
-                "external_metadata" = list("synID" = "syn52539337", "downloadLocation" = dir_metadata),
-                "Mayo" = list("synID" = "syn52245606", "downloadLocation" = dir_mayo_output),
-                "MSBB" = list("synID" = "syn52245570", "downloadLocation" = dir_msbb_output),
-                "ROSMAP" = list("synID" = "syn52245624", "downloadLocation" = dir_rosmap_output))
+folders <- list("singlecell" = list("synID" = "syn52569484", "downloadLocation" = dir_input),
+                "pseudobulk" = list("synID" = "syn52570274", "downloadLocation" = dir_pseudobulk),
+                "markers" = list("synID" = "syn52570296", "downloadLocation" = dir_markers),
+                #"errors" = list("synID" = "syn52245653", "downloadLocation" = dir_errors),
+                "external_metadata" = list("synID" = "syn52539337", "downloadLocation" = dir_metadata))#,
+                #"Mayo" = list("synID" = "syn52245606", "downloadLocation" = dir_mayo_output),
+                #"MSBB" = list("synID" = "syn52245570", "downloadLocation" = dir_msbb_output),
+                #"ROSMAP" = list("synID" = "syn52245624", "downloadLocation" = dir_rosmap_output))
+
 
 # Download everything in each folder
 for (folder in folders) {

@@ -178,10 +178,19 @@ Save_Pseudobulk <- function(se, dataset, data_type, granularity) {
 #                   "qn_log_cpm" will quantile normalize log_cpm values
 #                   "qn_log_tpm" will quantile normalize log_tpm values
 #                   "qn_log_tmm" will quantile normalize log_tmm values
-#                 Quantile normalization is done by diagnosis (bulk) or
+#                 Quantile normalization is done by diagnosis + tissue (bulk) or
 #                 diagnosis + celltype (single cell), where the expression data
 #                 is split by those categories, quantile normalized within each
 #                 category, and re-combined.
+#   regression_type = which type of regressed/corrected counts to use, or NULL.
+#                 The corrected counts (or raw counts if NULL) will then be
+#                 transformed as usual according to `output_type`. Valid values:
+#                   "edger" - regression via edgeR::glmQLFit (bulk only)
+#                   "deseq2" - regression via DESeq2::DESeq (bulk only)
+#                   "dream" - regression via voom/dream (bulk only)
+#                   NULL - use raw counts
+#                 NOTE: I don't know how well tmm or tpm will work with regressed
+#                 data.
 #
 # Returns:
 #   a SummarizedExperiment or SingleCellExperiment object that is the exact same
@@ -196,7 +205,7 @@ Save_Pseudobulk <- function(se, dataset, data_type, granularity) {
 #       *and* the transformed values held in memory at the same time. Instead
 #       we overwrite the counts slot. To be consistent with single cell data and
 #       allow for inter-operability, bulk data is treated the same way.
-Load_CountsFile <- function(filename, output_type) {
+Load_CountsFile <- function(filename, output_type, regression_type = NULL) {
   if (!file.exists(filename)) {
     print(str_glue("Error: {filename} doesn't exist!"))
     return(NULL)
@@ -209,7 +218,13 @@ Load_CountsFile <- function(filename, output_type) {
                    paste0(output_opts$qn, output_opts$log, output_opts$norm))
 
   if (!(output_type %in% output_opts)) {
-    stop(paste0("Error! output_type should be one of ", output_opts, "."))
+    stop(paste0("Error! 'output_type' should be one of ", output_opts, "."))
+  }
+
+  if (!is.null(regression_type)) {
+    if (!(regression_type %in% c("edger", "deseq2", "dream"))) {
+      stop("Error! 'regression_type' should be one of 'edger', 'deseq2', or 'dream'.")
+    }
   }
 
   se_obj <- readRDS(filename)
@@ -220,6 +235,14 @@ Load_CountsFile <- function(filename, output_type) {
       path(assay(se_obj, "counts")) <- file_searef_h5
     }
     assay(se_obj, "counts") <- as(assay(se_obj, "counts"), "CsparseMatrix")
+  }
+
+  # If using regressed counts, replace the 'counts' matrix with those counts,
+  # and replace the tmm_factors field with the TMM factors for the regressed
+  # data
+  if (!is.null(regression_type)) {
+    assay(se_obj, "counts") <- assay(se_obj, pasteo("corrected_", regression_type))
+    se_obj$tmm_factors <- colData(se_obj)[, paste0("tmm_factors_", regression_type)]
   }
 
   if (output_type == "counts") {
@@ -255,15 +278,15 @@ Load_CountsFile <- function(filename, output_type) {
     }
   }
 
-  # Quantile normalize by class. For bulk data this is by diagnosis. For
-  # single cell data this is by cell type and diagnosis.
+  # Quantile normalize by class. For bulk data this is by diagnosis and tissue.
+  # For single cell data this is by cell type and diagnosis.
   if (grepl("qn", output_type)) {
     metadata <- colData(se_obj)
     if ("broadcelltype" %in% colnames(colData(se_obj))) {
       metadata$group <- paste(metadata$broadcelltype, metadata$diagnosis)
     }
     else {
-      metadata$group <- metadata$diagnosis
+      metadata$group <- paste(metadata$diagnosis, metadata$tissue)
     }
 
     for (G in unique(metadata$group)) {
