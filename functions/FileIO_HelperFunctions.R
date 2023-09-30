@@ -182,13 +182,13 @@ Save_Pseudobulk <- function(se, dataset, data_type, granularity) {
 #                 diagnosis + celltype (single cell), where the expression data
 #                 is split by those categories, quantile normalized within each
 #                 category, and re-combined.
-#   regression_type = which type of regressed/corrected counts to use, or NULL.
-#                 The corrected counts (or raw counts if NULL) will then be
+#   regression_method = which type of regressed/corrected counts to use, or "none".
+#                 The corrected counts (or raw counts if "None") will then be
 #                 transformed as usual according to `output_type`. Valid values:
 #                   "edger" - regression via edgeR::glmQLFit (bulk only)
 #                   "deseq2" - regression via DESeq2::DESeq (bulk only)
 #                   "dream" - regression via voom/dream (bulk only)
-#                   NULL - use raw counts
+#                   "none" - use raw counts
 #                 NOTE: I don't know how well tmm or tpm will work with regressed
 #                 data.
 #
@@ -205,7 +205,7 @@ Save_Pseudobulk <- function(se, dataset, data_type, granularity) {
 #       *and* the transformed values held in memory at the same time. Instead
 #       we overwrite the counts slot. To be consistent with single cell data and
 #       allow for inter-operability, bulk data is treated the same way.
-Load_CountsFile <- function(filename, output_type, regression_type = NULL) {
+Load_CountsFile <- function(filename, output_type, regression_method = "none") {
   if (!file.exists(filename)) {
     print(str_glue("Error: {filename} doesn't exist!"))
     return(NULL)
@@ -221,10 +221,8 @@ Load_CountsFile <- function(filename, output_type, regression_type = NULL) {
     stop(paste0("Error! 'output_type' should be one of ", output_opts, "."))
   }
 
-  if (!is.null(regression_type)) {
-    if (!(regression_type %in% c("edger", "deseq2", "dream"))) {
-      stop("Error! 'regression_type' should be one of 'edger', 'deseq2', or 'dream'.")
-    }
+  if (!(regression_method %in% c("none", "edger", "deseq2", "dream"))) {
+    stop("Error! 'regression_method' should be one of 'none', 'edger', 'deseq2', or 'dream'.")
   }
 
   se_obj <- readRDS(filename)
@@ -240,9 +238,9 @@ Load_CountsFile <- function(filename, output_type, regression_type = NULL) {
   # If using regressed counts, replace the 'counts' matrix with those counts,
   # and replace the tmm_factors field with the TMM factors for the regressed
   # data
-  if (!is.null(regression_type)) {
-    assay(se_obj, "counts") <- assay(se_obj, pasteo("corrected_", regression_type))
-    se_obj$tmm_factors <- colData(se_obj)[, paste0("tmm_factors_", regression_type)]
+  if (regression_method != "none") {
+    assay(se_obj, "counts") <- assay(se_obj, paste0("corrected_", regression_method))
+    se_obj$tmm_factors <- colData(se_obj)[, paste0("tmm_factors_", regression_method)]
   }
 
   if (output_type == "counts") {
@@ -317,15 +315,18 @@ Load_CountsFile <- function(filename, output_type, regression_type = NULL) {
 #   output_type = one of "counts", "vst", "cpm", "tmm", "log_cpm", "log_tmm",
 #                 "qn_cpm", "qn_tmm", "qn_log_cpm", or "qn_log_tmm". See
 #                 Load_CountsFile for description.
+#   regression_method = "none", if raw uncorrected counts should be used for
+#                       bulk data, or one of "edger", "deseq2", or "dream", to
+#                       use batch-corrected counts from one of those methods.
 #
 # Returns:
 #   a SummarizedExperiment object with (possibly normalized) data in the
 #   "counts" slot
-Load_BulkData <- function(dataset, output_type = "counts") {
+Load_BulkData <- function(dataset, output_type = "counts", regression_method = "none") {
   bulk_file <- str_glue(paste0("{dataset}_se.rds"))
   bulk_file <- file.path(dir_input, bulk_file)
 
-  bulk <- Load_CountsFile(bulk_file, output_type)
+  bulk <- Load_CountsFile(bulk_file, output_type, regression_method)
   return(bulk)
 }
 
@@ -554,13 +555,17 @@ Save_AlgorithmIntermediate <- function(result, algorithm) {
 #                 used for markers and pseudobulk creation.
 #   normalization = the normalization strategy used. Same as the 'output_type'
 #                   argument to Load_CountsFile.
+#   regression_method = the type of regression used for bulk counts. Same as
+#                       the 'regression_method' argument to Load_CountsFile.
 #
 # Returns:
 #   Nothing
 Save_AlgorithmOutputList <- function(output_list, algorithm, reference_dataset,
-                                     test_dataset, granularity, normalization) {
+                                     test_dataset, granularity, normalization,
+                                     regression_method = "none") {
   list_file_format <- paste0("estimates_{algorithm}_{reference_dataset}_",
-                             "{test_dataset}_{granularity}_{normalization}.rds")
+                             "{test_dataset}_{granularity}_{normalization}_",
+                             "{regression_method}.rds")
 
   out_directory <- switch(test_dataset,
                           "Mayo" = dir_mayo_output,
@@ -587,14 +592,18 @@ Save_AlgorithmOutputList <- function(output_list, algorithm, reference_dataset,
 #                 used for markers and pseudobulk creation.
 #   normalization = the normalization strategy used. Same as the 'output_type'
 #                   argument to Load_CountsFile.
+#   regression_method = the type of regression used for bulk counts. Same as
+#                       the 'regression_method' argument to Load_CountsFile.
 #
 # Returns:
 #   a list of outputs from one of the deconvolution algorithms, which contains
 #   output run under different parameter sets
 Load_AlgorithmOutputList <- function(algorithm, reference_dataset, test_dataset,
-                                     granularity, normalization) {
+                                     granularity, normalization,
+                                     regression_method = "none") {
   list_file_format <- paste0("estimates_{algorithm}_{reference_dataset}_",
-                             "{test_dataset}_{granularity}_{normalization}.rds")
+                             "{test_dataset}_{granularity}_{normalization}_",
+                             "{regression_method}.rds")
 
   out_directory <- switch(test_dataset,
                           "Mayo" = dir_mayo_output,
@@ -630,13 +639,17 @@ Load_AlgorithmOutputList <- function(algorithm, reference_dataset, test_dataset,
 #                 used for markers and pseudobulk creation.
 #   normalization = the type of normalization used. See Load_CountsFile
 #                   output_type parameter explanation for valid values.
+#   regression_method = the type of regression used on bulk data counts. See
+#                   Load_CountsFile regression_method parameter explanation for
+#                   valid values.
 #
 # Returns:
 #   Nothing
 Save_ErrorList <- function(error_list, algorithm, reference_dataset, test_dataset,
-                           granularity, normalization) {
+                           granularity, normalization, regression_method) {
   error_file_format <- paste0("errors_{algorithm}_{reference_dataset}_",
-                              "{test_dataset}_{granularity}_{normalization}.rds")
+                              "{test_dataset}_{granularity}_{normalization}_",
+                              "{regression_method}.rds")
   saveRDS(error_list, file = file.path(dir_errors, str_glue(error_file_format)))
 }
 
@@ -654,15 +667,19 @@ Save_ErrorList <- function(error_list, algorithm, reference_dataset, test_datase
 #                 used for markers and pseudobulk creation.
 #   normalization = the type of normalization used. See Load_CountsFile
 #                   output_type parameter explanation for valid values.
+#   regression_method = the type of regression used on bulk data counts. See
+#                   Load_CountsFile regression_method parameter explanation for
+#                   valid values.
 #
 # Returns:
 #   a list of errors containing entries for mean errors, errors by celltype,
 #   errors by subject, goodness-of-fit, and parameters for an algorithm /
 #   dataset / datatype / granularity / normalization combo
 Load_ErrorList <- function(algorithm, reference_dataset, test_dataset,
-                           granularity, normalization) {
+                           granularity, normalization, regression_method) {
   error_file_format <- paste0("errors_{algorithm}_{reference_dataset}_",
-                              "{test_dataset}_{granularity}_{normalization}.rds")
+                              "{test_dataset}_{granularity}_{normalization}_",
+                              "{regression_method}.rds")
   error_file <- file.path(dir_errors, str_glue(error_file_format))
 
   if (!file.exists(error_file)) {

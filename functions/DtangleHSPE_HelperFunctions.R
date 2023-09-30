@@ -18,17 +18,26 @@ source(file.path("functions", "General_HelperFunctions.R"))
 #   reference_input_type = either "singlecell" or "pseudobulk", for whether the
 #                          reference data is single cell data or pseudobulked
 #                          pure samples
+#   normalization = one of "counts", "cpm", "tpm", "tmm",
+#                   "log_cpm", "log_tpm", "log_tmm",
+#                   "qn_cpm", "qn_tpm", "qn_tmm",
+#                   "qn_log_cpm", "qn_log_tpm", or "qn_log_tmm"
+#   regression_method = one of "none", "edger", "deseq2", or "dream", for which
+#                   type of corrected counts to use. If "none", raw uncorrected
+#                   counts will be used. Applies to bulk data only.
 #
 # Returns:
 #   a list with entries for "Y", which is the combined reference + test data,
 #   and "pure_samples", which is a list of indices into Y that correspond to
 #   samples from each cell type.
 Get_DtangleHSPEInput <- function(reference_data_name, test_data_name,
-                                 granularity, reference_input_type, normalization) {
+                                 granularity, reference_input_type,
+                                 normalization = "counts", regression_method = "none") {
 
   data <- Load_AlgorithmInputData(reference_data_name, test_data_name,
                                   granularity, reference_input_type,
-                                  output_type = normalization)
+                                  output_type = normalization,
+                                  regression_method = regression_method)
 
   ##### Get indices of pure samples #####
   metadata <- colData(data$reference)

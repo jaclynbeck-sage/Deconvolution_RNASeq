@@ -34,6 +34,10 @@ source(file.path("functions", "FileIO_HelperFunctions.R"))
 #                   "cpm" will normalize the counts to counts per million
 #                   "logcpm" will take the log2(cpm) of non-zero cpm entries
 #                   "log1p_cpm" will take the log2(cpm+1) of cpms
+#   regression_method = "none", if raw uncorrected counts should be used for
+#                       bulk data, or one of "edger", "deseq2", or "dream", to
+#                       use batch-corrected counts from one of those methods.
+#                       Applies to bulk data only.
 #
 # Returns:
 #   a list with entries "reference" and "test", containing the reference data
@@ -45,7 +49,8 @@ source(file.path("functions", "FileIO_HelperFunctions.R"))
 Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
                                     granularity = "broad_class",
                                     reference_input_type = "singlecell",
-                                    output_type = "counts") {
+                                    output_type = "counts",
+                                    regression_method = "none") {
   # Reference input
   if (reference_input_type == "singlecell") {
     reference_obj <- Load_SingleCell(reference_data_name, granularity,
@@ -71,7 +76,7 @@ Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
   }
   # ROSMAP, Mayo, or MSBB
   else {
-    test_obj <- Load_BulkData(test_data_name, output_type)
+    test_obj <- Load_BulkData(test_data_name, output_type, regression_method)
   }
 
   genes <- intersect(rownames(reference_obj), rownames(test_obj))

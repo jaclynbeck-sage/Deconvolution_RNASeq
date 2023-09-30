@@ -38,7 +38,9 @@ datasets <- c("cain", "lau", "leng", "mathys", "seaRef") #, "morabito", "seaAD")
 params_loop1 <- expand_grid(reference_data_name = datasets,
                             test_data_name = c("Mayo", "MSBB", "ROSMAP"), #c("donors", "training"),
                             granularity = c("broad_class"),
-                            normalization = c("cpm", "tmm", "tpm")) %>% arrange(test_data_name)
+                            normalization = c("cpm", "tmm", "tpm"),
+                            regression_method = c("none", "edger", "deseq2", "dream")) %>%
+                  arrange(test_data_name)
 
 marker_types <- list("dtangle" = c("ratio", "diff", "p.value", "regression"),
                      "autogenes" = c("correlation", "distance", "combined"),
@@ -65,11 +67,13 @@ for (P in 1:nrow(params_loop1)) {
   test_data_name <- params_loop1$test_data_name[P]
   granularity <- params_loop1$granularity[P]
   normalization <- params_loop1$normalization[P]
+  regression_method <- params_loop1$regression_method[P]
 
   data <- Load_AlgorithmInputData(reference_data_name, test_data_name,
                                   granularity,
                                   reference_input_type = "signature",
-                                  output_type = normalization)
+                                  output_type = normalization,
+                                  regression_method = regression_method)
 
   data$reference <- as.data.frame(data$reference)
   data$test <- as.data.frame(assay(data$test, "counts"))
@@ -95,7 +99,8 @@ for (P in 1:nrow(params_loop1)) {
   # Filter them out.
   decon_list <- decon_list[lengths(decon_list) > 0]
 
-  name_base <- str_glue("{reference_data_name}_{test_data_name}_{granularity}_{normalization}")
+  name_base <- str_glue(paste0("{reference_data_name}_{test_data_name}_",
+                               "{granularity}_{normalization}_{regression_method}"))
   names(decon_list) <- paste("deconRNASeq",
                               name_base,
                               1:length(decon_list), sep = "_")
@@ -103,7 +108,8 @@ for (P in 1:nrow(params_loop1)) {
   # Save the completed list
   print(str_glue("Saving final list for {name_base}..."))
   Save_AlgorithmOutputList(decon_list, "deconRNASeq", reference_data_name,
-                           test_data_name, granularity, normalization)
+                           test_data_name, granularity, normalization,
+                           regression_method)
 
   rm(decon_list, data)
   gc()
