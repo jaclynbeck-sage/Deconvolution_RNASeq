@@ -48,8 +48,9 @@ reference_input_types = c("singlecell", "pseudobulk")
 params_loop1 <- expand_grid(reference_data_name = datasets,
                             test_data_name = c("Mayo", "MSBB", "ROSMAP"),
                             granularity = c("broad_class"),
-                            normalization = c("log_cpm", "log_tmm", "log_tpm")) %>%
-                    arrange(test_data_name)
+                            normalization = c("log_cpm", "log_tmm", "log_tpm"),
+                            regression_method = c("none", "edger", "deseq2", "dream")) %>%
+                    arrange(normalization)
 
 marker_types <- list("dtangle" = c("ratio", "diff", "p.value", "regression"),
                      "autogenes" = c("correlation", "distance", "combined"),
@@ -80,6 +81,7 @@ for (P in 1:nrow(params_loop1)) {
   test_data_name <- params_loop1$test_data_name[P]
   granularity <- params_loop1$granularity[P]
   normalization <- params_loop1$normalization[P]
+  regression_method <- params_loop1$regression_method[P]
 
   # Each reference / test / granularity combo gets its own list
   dtangle_list <- list()
@@ -91,7 +93,8 @@ for (P in 1:nrow(params_loop1)) {
     ##### Prepare reference and test matrices #####
 
     input_list <- Get_DtangleHSPEInput(reference_data_name, test_data_name,
-                                       granularity, input_type, normalization)
+                                       granularity, input_type, normalization,
+                                       regression_method = regression_method)
 
     # Free up unused memory
     gc()
@@ -105,12 +108,23 @@ for (P in 1:nrow(params_loop1)) {
       source(file.path("functions", "DtangleHSPE_HelperFunctions.R"))
       source(file.path("functions", "DtangleHSPE_InnerLoop.R"))
 
+      params = cbind(params_loop1[P,],
+                     "reference_input_type" = input_type,
+                     params_loop2[R,])
+
+      # If we are picking up from a failed/crashed run, and we've already run
+      # this parameter set, load the result instead of re-running the algorithm
+      prev_res <- Load_AlgorithmIntermediate(algorithm, params)
+      if (!is.null(prev_res)) {
+        print(paste0("Using previously-run result for ",
+                     paste(params, collapse = " ")))
+        return(prev_res)
+      }
+
       set.seed(12345)
       res <- DtangleHSPE_InnerLoop(Y = input_list$Y,
                                    pure_samples = input_list$pure_samples,
-                                   params = cbind(params_loop1[P,],
-                                                  "reference_input_type" = input_type,
-                                                  params_loop2[R,]),
+                                   params = params,
                                    algorithm = algorithm,
                                    limit_n_markers = TRUE)
 
@@ -122,7 +136,8 @@ for (P in 1:nrow(params_loop1)) {
     # set was skipped. Filter them out.
     dtangle_list_tmp <- dtangle_list_tmp[lengths(dtangle_list_tmp) > 0]
 
-    name_base <- str_glue("{reference_data_name}_{test_data_name}_{granularity}_{input_type}_{normalization}")
+    name_base <- str_glue(paste0("{reference_data_name}_{test_data_name}_",
+                                 "{granularity}_{normalization}_{regression_method}"))
     names(dtangle_list_tmp) <- paste(algorithm, name_base,
                                      1:length(dtangle_list_tmp), sep = "_")
 
@@ -134,9 +149,12 @@ for (P in 1:nrow(params_loop1)) {
   } # end input_types loop
 
   # Save the completed list
-  print(str_glue("Saving final list for {reference_data_name} {test_data_name} {granularity} {normalization}..."))
+  print(str_glue(paste0("Saving final list for {reference_data_name} ",
+                        "{test_data_name} {granularity} {normalization} ",
+                        "{regression_method}...")))
   Save_AlgorithmOutputList(dtangle_list, algorithm, reference_data_name,
-                           test_data_name, granularity, normalization)
+                           test_data_name, granularity, normalization,
+                           regression_method)
 } # end params_loop1
 
 stopCluster(cl)

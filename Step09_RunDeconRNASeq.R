@@ -36,11 +36,11 @@ required_libraries <- c("DeconRNASeq", "scuttle")
 datasets <- c("cain", "lau", "leng", "mathys", "seaRef") #, "morabito", "seaAD")
 
 params_loop1 <- expand_grid(reference_data_name = datasets,
-                            test_data_name = c("Mayo", "MSBB", "ROSMAP"), #c("donors", "training"),
+                            test_data_name = c("Mayo", "MSBB", "ROSMAP"),
                             granularity = c("broad_class"),
                             normalization = c("cpm", "tmm", "tpm"),
                             regression_method = c("none", "edger", "deseq2", "dream")) %>%
-                  arrange(test_data_name)
+                  arrange(normalization)
 
 marker_types <- list("dtangle" = c("ratio", "diff", "p.value", "regression"),
                      "autogenes" = c("correlation", "distance", "combined"),
@@ -86,6 +86,17 @@ for (P in 1:nrow(params_loop1)) {
                          .packages = required_libraries) %dopar% {
     source(file.path("functions", "DeconRNASeq_InnerLoop.R"))
     source(file.path("functions", "General_HelperFunctions.R"))
+
+    params = cbind(params_loop1[P,], params_loop2[R,])
+
+    # If we are picking up from a failed/crashed run, and we've already run
+    # this parameter set, load the result instead of re-running the algorithm
+    prev_res <- Load_AlgorithmIntermediate("deconRNASeq", params)
+    if (!is.null(prev_res)) {
+      print(paste0("Using previously-run result for ",
+                   paste(params, collapse = " ")))
+      return(prev_res)
+    }
 
     set.seed(12345)
     res <- DeconRNASeq_InnerLoop(data$reference, data$test,

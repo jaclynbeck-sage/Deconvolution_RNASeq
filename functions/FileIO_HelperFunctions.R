@@ -540,6 +540,29 @@ Save_AlgorithmIntermediate <- function(result, algorithm) {
   }
 }
 
+# Load_AlgorithmIntermediate: loads a single output from an algorithm from the
+# temporary folder, in order to re-load previous results when restarting due to
+# crash or shutdown. The file is named with the parameters used to generate the
+# result.
+#
+# Arguments:
+#   algorithm = the name of the algorithm to pre-pend to the file name
+#   params = a named vector or single-row dataframe with the parameters used to
+#            generate the result
+#
+# Returns:
+#   a result object from one of the algorithms if a file matching the input
+#   parameters exists, or NULL if not
+Load_AlgorithmIntermediate <- function(algorithm, params) {
+  filename <- paste(params, collapse = "_")
+  filename <- file.path(dir_params_lists_tmp,
+                        paste0(paste0(algorithm, "_", filename, ".rds")))
+  if (file.exists(filename)) {
+    return(readRDS(filename))
+  }
+  return(NULL)
+}
+
 # Save_AlgorithmOutputList: saves a list of output from one of the algorithms
 # to an RDS file, named with a specific format.
 #

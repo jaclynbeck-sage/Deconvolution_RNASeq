@@ -20,7 +20,7 @@ source("Music_Edits.R")
 
 # NOTE: "FORK" is more memory-efficient but only works on Unix systems. For
 #       other systems, use "PSOCK" and reduce the number of cores.
-cores <- 6
+cores <- 2
 # Music is very verbose so we make an output file instead of putting on the
 # console, because RStudio won't display everything in the console otherwise.
 cl <- makeCluster(cores, type = "FORK", outfile = "music_output.txt")
@@ -38,8 +38,9 @@ reference_input_types = c("singlecell", "pseudobulk")
 params_loop1 <- expand_grid(reference_data_name = datasets,
                             test_data_name = c("Mayo", "MSBB", "ROSMAP"),
                             granularity = c("broad_class"),
-                            normalization = c("counts", "cpm", "tmm", "tpm")) %>%
-                  arrange(test_data_name)
+                            normalization = c("counts", "cpm", "tmm", "tpm"),
+                            regression_method = c("none", "edger", "deseq2", "dream")) %>%
+                  arrange(normalization)
 
 marker_types <- list("dtangle" = c("ratio", "diff", "p.value", "regression"),
                      "autogenes" = c("correlation", "distance", "combined"),
@@ -68,6 +69,7 @@ for (P in 1:nrow(params_loop1)) {
   test_data_name <- params_loop1$test_data_name[P]
   granularity <- params_loop1$granularity[P]
   normalization <- params_loop1$normalization[P]
+  regression_method <- params_loop1$regression_method[P]
 
   music_list <- list()
 
@@ -76,7 +78,8 @@ for (P in 1:nrow(params_loop1)) {
     data <- Load_AlgorithmInputData(reference_data_name, test_data_name,
                                     granularity,
                                     reference_input_type = input_type,
-                                    output_type = normalization)
+                                    output_type = normalization,
+                                    regression_method = regression_method)
 
     if (input_type == "pseudobulk") {
       data$reference$sample <- str_replace(data$reference$sample, ".*_", "")
@@ -121,12 +124,21 @@ for (P in 1:nrow(params_loop1)) {
       source(file.path("functions", "General_HelperFunctions.R"))
       source(file.path("functions", "Music_InnerLoop.R"))
 
+      params <- cbind(params_loop1[P,],
+                      "reference_input_type" = input_type,
+                      params_loop2[R,])
+
+      # If we are picking up from a failed/crashed run, and we've already run
+      # this parameter set, load the result instead of re-running the algorithm
+      prev_res <- Load_AlgorithmIntermediate("music", params)
+      if (!is.null(prev_res)) {
+        print(paste0("Using previously-run result for ",
+                     paste(params, collapse = " ")))
+        return(prev_res)
+      }
+
       set.seed(12345)
-      res <- Music_InnerLoop(data$reference, data$test,
-                             sc_basis,
-                             cbind(params_loop1[P,],
-                                   "reference_input_type" = input_type,
-                                   params_loop2[R,]),
+      res <- Music_InnerLoop(data$reference, data$test, sc_basis, params,
                              verbose = FALSE)
 
       Save_AlgorithmIntermediate(res, "music")
@@ -137,7 +149,8 @@ for (P in 1:nrow(params_loop1)) {
     # Filter them out.
     music_list_tmp <- music_list_tmp[lengths(music_list_tmp) > 0]
 
-    name_base <- str_glue("{reference_data_name}_{test_data_name}_{granularity}_{input_type}_{normalization}")
+    name_base <- str_glue(paste0("{reference_data_name}_{test_data_name}_",
+                                 "{granularity}_{normalization}_{regression_method}"))
     names(music_list_tmp) <- paste("music",
                                    name_base,
                                    1:length(music_list_tmp), sep = "_")
@@ -148,9 +161,12 @@ for (P in 1:nrow(params_loop1)) {
     gc()
   }
 
-  print(str_glue("Saving final list for {reference_data_name} {test_data_name} {granularity} {normalization}..."))
+  print(str_glue(paste0("Saving final list for {reference_data_name} ",
+                        "{test_data_name} {granularity} {normalization} ",
+                        "{regression_method}...")))
   Save_AlgorithmOutputList(music_list, "music", reference_data_name,
-                           test_data_name, granularity, normalization)
+                           test_data_name, granularity, normalization,
+                           regression_method)
 
   rm(music_list)
   gc()
