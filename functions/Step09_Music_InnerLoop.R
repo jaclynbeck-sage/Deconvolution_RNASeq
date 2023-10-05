@@ -1,7 +1,5 @@
 # Runs MuSiC on the given bulk data, using a reference single cell data set and
-# a set of parameters. This is used for both training / ground truth data and
-# testing data, which each have unique setups but use this same piece of code
-# for execution.
+# a set of parameters.
 #
 # Arguments:
 #   sce = a SingleCellExperiment object containing the reference data. Must have
@@ -11,13 +9,17 @@
 #             Must be a matrix, not a data.frame.
 #   sc_basis = pre-computed list output from music_basis()
 #   params = a single-row data frame or a named vector/list of parameters
-#            containing the following variables: ct_cov, centered, normalize
+#            containing the following variables: reference_data_name,
+#            test_data_name, granularity, filter_level, n_markers, marker_type,
+#            marker_subtype, marker_input_type, and algorithm-specific
+#            variables ct_cov, centered, normalize
 #
 # Returns:
 #   a list containing entries for "Est.prop.weighted" and "Est.prop.allgene",
 #   which are output by MuSiC, "Est.pctRNA.weighted" and "Est.pctRNA.allgene",
-#   which are calculated based on the "M.S" matrix from sc_basis, and "params",
-#   which is the parameter set used for this run
+#   which are calculated based on the "M.S" matrix from sc_basis, "params",
+#   which is the parameter set used for this run, and "markers", which is the
+#   list of genes used as markers for this run
 Music_InnerLoop <- function(sce, bulk_mtx, sc_basis, params, verbose = FALSE) {
   # Unpack variables for readability, enforce they are the correct types
   reference_data_name <- params$reference_data_name
@@ -34,50 +36,46 @@ Music_InnerLoop <- function(sce, bulk_mtx, sc_basis, params, verbose = FALSE) {
   centered <- as.logical( params$centered )
   normalize <- as.logical( params$normalize )
 
+  # If the data is pseudobulk, cast to SingleCellExperiment
+  sce <- as(sce, "SingleCellExperiment")
+  n_celltypes <- length(levels(sce$celltype)) # Needed for the Check_ functions to work
+
   # We can use the FilterSignature function to get the list of genes to use
-  tmp <- FilterSignature(bulk_mtx[,1:2], filter_level, reference_data_name,
+  tmp <- FilterSignature(bulk_mtx[,1:n_celltypes], filter_level, reference_data_name,
                          granularity, n_markers, marker_type, marker_subtype,
                          marker_input_type, marker_order, bulk_mtx)
 
-  if (is.null(tmp)) {
-    param_set <- paste(params, collapse = "  ")
-    print(paste("*** Missing markers for at least one cell type for param set",
-                param_set))
-    print("*** skipping ***")
+  if (Check_MissingMarkers(tmp, params) |
+      Check_TooFewMarkers(tmp, params, 3) |
+      Check_NotEnoughNewMarkers(tmp, params)) {
     return(NULL)
   }
 
   markers_use <- rownames(tmp)
 
-  # We want at least ~3 markers per cell type or there isn't enough information
-  # to work from
-  if (length(markers_use) < 3*length(levels(sce$celltype))) {
-    param_set <- paste(params, collapse = "  ")
-    print(paste("*** Too few markers for param set", param_set))
-    print("*** skipping ***")
-    return(NULL)
-  }
-
   # Modify sc_basis for this set of markers.
   # The "<<-" operator creates a global variable that can be used inside the
-  # modified music_basis function.
+  # modified music_basis function. This is hacky, sorry.
   sc_basis_precomputed <<- sc_basis
   sc_basis_precomputed$Sigma <<- sc_basis_precomputed$Sigma[markers_use,]
   sc_basis_precomputed$Sigma.ct <<- sc_basis_precomputed$Sigma.ct[, markers_use]
   sc_basis_precomputed$Disgn.mtx <<- sc_basis_precomputed$Disgn.mtx[markers_use,]
   sc_basis_precomputed$M.theta <<- sc_basis_precomputed$M.theta[markers_use,]
 
-  # Sometimes ct.cov = TRUE will produce too many NAs if too many cell types
-  # are missing from too many donors, and this eventually throws errors. The
+  ##### Run MuSiC #####
+  # Sometimes MuSiC will produce too many NAs if too many cell types are missing
+  # from too many donors, and this eventually throws errors. The
   # best thing to do is just ignore the error and continue the loop
   tryCatch({
     result <- music_prop(bulk.mtx = bulk_mtx, sc.sce = sce,
                          markers = markers_use,
                          clusters = "celltype",
-                         samples = "sample", verbose = verbose,
+                         samples = "sample",
+                         verbose = verbose,
                          cell_size = data.frame(cells = names(sc_basis$M.S),
                                                 sizes = sc_basis$M.S),
-                         ct.cov = ct_cov, centered = centered,
+                         ct.cov = ct_cov,
+                         centered = centered,
                          normalize = normalize)
 
     # Remove "Weight.gene", "r.squared.full", and "Var.prop". "Weight.gene"
@@ -100,6 +98,7 @@ Music_InnerLoop <- function(sce, bulk_mtx, sc_basis, params, verbose = FALSE) {
 
     return(result)
   },
+  ##### Error handling #####
   error = function(err) {
     param_set <- paste(params, collapse = "  ")
     print(paste("*** Error running param set", param_set))

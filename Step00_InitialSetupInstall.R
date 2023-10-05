@@ -1,7 +1,7 @@
 install.packages(c("BiocManager", "devtools", "stringr", "Metrics",
                    "dplyr", "ggplot2", "DEoptimR", "nloptr", "anndata",
                    "readxl", "Hmisc", "RMariaDB", "lme4", "corrplot",
-                   "Hmisc", "circlize", "gMWT"))
+                   "Hmisc", "circlize", "gMWT", "DWLS"))
 
 # If synapser fails to install because it can't find "synapseclient", go to
 # RStudio options (Tools->Global Options) -> Python, uncheck "Automatically

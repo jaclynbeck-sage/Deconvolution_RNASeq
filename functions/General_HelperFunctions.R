@@ -86,6 +86,18 @@ Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
   return(list("reference" = reference_obj, "test" = test_obj))
 }
 
+# Load_AlgorithmInputData_FromParams: Ease-of-use shortcut function that takes in
+# a list of parameters and calls Load_AlgorithmInputData from the broken-out list.
+# See 'Load_AlgorithmInputData' for arguments and return.
+Load_AlgorithmInputData_FromParams <- function(params) {
+  return(Load_AlgorithmInputData(params$reference_data_name,
+                                 params$test_data_name,
+                                 params$granularity,
+                                 params$reference_input_type,
+                                 params$normalization, # 'output_type' arg in function
+                                 params$regression_method))
+}
+
 
 # CreateParams_MarkerTypes - Creates a parameter matrix using tidyr::expand_grid
 # (which can take data frames in the input) that has all variables required for
@@ -96,12 +108,15 @@ Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
 # Arguments:
 #   n_markers = a vector containing one or more percentages (range 0-1.0) and/or
 #               one or more integers (range 2-Inf) specifying how many markers
-#               per cell type to use.
+#               per cell type to use. If NULL, default values of c(0.01, 0.02,
+#               0.05, 0.1, 0.2, 0.5, 0.75, 1.0, 3, 5, 10, 20, 50, 100, 200) will
+#               be used.
 #   marker_types = a list where the names of the entries are one of "autogenes",
-#                  "dtangle", or "seurat", and the items in each entry are a
-#                  list of marker subtypes to use for that algorithm. See
+#                  "dtangle", "seurat", or "deseq2" and the items in each entry
+#                  are a list of marker subtypes to use for that algorithm. See
 #                  FilterSignature for more detail. Must be a list and not a
-#                  vector.
+#                  vector. If NULL, all 4 marker types with all possible
+#                  subtypes will be used.
 #   marker_input_types = dtangle-specific: a vector of one or all of
 #                        c("singlecell", "pseudobulk") designating whether to
 #                        test dtangle marker sets from singlecell input,
@@ -112,8 +127,21 @@ Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
 #
 # Returns:
 #   a tibble containing all possible valid combinations of the arguments
-CreateParams_MarkerTypes <- function(n_markers, marker_types,
-                                     marker_input_types, marker_order) {
+CreateParams_MarkerTypes <- function(n_markers = NULL, marker_types = NULL,
+                                     marker_input_types = c("singlecell", "pseudobulk"),
+                                     marker_order = c("distance", "correlation")) {
+  # Default values for n_markers and marker_types if they are not defined
+  if (is.null(n_markers)) {
+    n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
+                  3, 5, 10, 20, 50, 100, 200)
+  }
+  if (is.null(marker_types)) {
+    marker_types <- list("dtangle" = c("ratio", "diff", "p.value", "regression"),
+                         "autogenes" = c("correlation", "distance", "combined"),
+                         "seurat" = c("None"),
+                         "deseq2" = c("DESeq2"))
+  }
+
   marker_types <- melt(marker_types) %>% dplyr::rename(marker_type = "L1",
                                                        marker_subtype = "value")
 
@@ -150,12 +178,15 @@ CreateParams_MarkerTypes <- function(n_markers, marker_types,
 #   The rest of these arguments are only relevant for filter_level = 3:
 #   n_markers = a vector containing one or more percentages (range 0-1.0) and/or
 #               one or more integers (range 2-Inf) specifying how many markers
-#               per cell type to use.
+#               per cell type to use. If NULL, default values of c(0.01, 0.02,
+#               0.05, 0.1, 0.2, 0.5, 0.75, 1.0, 3, 5, 10, 20, 50, 100, 200) will
+#               be used.
 #   marker_types = a list where the names of the entries are one of "autogenes",
-#                  "dtangle", or "seurat", and the items in each entry are a
-#                  list of marker subtypes to use for that algorithm. See
+#                  "dtangle", "seurat", or "deseq2" and the items in each entry
+#                  are a list of marker subtypes to use for that algorithm. See
 #                  FilterSignature for more detail. Must be a list and not a
-#                  vector.
+#                  vector. If NULL, all 4 marker types with all possible
+#                  subtypes will be used.
 #   marker_input_types = dtangle-specific: a vector of one or all of
 #                        c("singlecell", "pseudobulk") designating whether to
 #                        test dtangle marker sets from singlecell input,
@@ -166,9 +197,12 @@ CreateParams_MarkerTypes <- function(n_markers, marker_types,
 #
 # Returns:
 #   a tibble containing all possible valid combinations of the arguments
-CreateParams_FilterableSignature <- function(filter_levels, n_markers,
-                                             marker_types, marker_input_types,
-                                             marker_order) {
+CreateParams_FilterableSignature <- function(filter_levels = c(1, 2, 3),
+                                             n_markers = NULL,
+                                             marker_types = NULL,
+                                             marker_input_types = c("singlecell", "pseudobulk"),
+                                             marker_order = c("distance", "correlation")) {
+
   params_tmp <- CreateParams_MarkerTypes(n_markers, marker_types,
                                          marker_input_types, marker_order)
 
@@ -395,48 +429,65 @@ FilterSignature <- function(signature, filter_level = 1, reference_data_name = N
 
   # Filter for genes specific to cell-type marker sets
   else if (filter_level == 3 & !is.null(reference_data_name) & !is.null(granularity)) {
-    markers <- Load_Markers(reference_data_name, granularity, marker_type,
-                            marker_subtype, input_type = marker_input_type)
-
+    markers <- FilterMarkers(reference_data_name, granularity, filt_percent,
+                             marker_type, marker_subtype, marker_input_type,
+                             marker_order,
+                             available_genes = rownames(signature),
+                             test_data = test_data)
     if (is.null(markers)) {
       return(NULL)
     }
-
-    # Remove genes that don't exist in the signature matrix
-    markers <- lapply(markers, function(X) {intersect(X, rownames(signature))})
-
-    if (marker_order == "correlation") {
-      if (is.null(test_data)) {
-        print(paste0("Error! No data provided for calculating marker ",
-                     "correlation. Markers will be ordered by distance ",
-                     "instead of correlation."))
-      }
-      else {
-        markers <- OrderMarkers_ByCorrelation(markers, test_data)
-      }
-    }
-
-    # Percentage of each cell type's markers
-    if (filt_percent <= 1) {
-      n_markers <- ceiling(lengths(markers) * filt_percent)
-    }
-    # Fixed number of markers for each cell type
-    else {
-      n_markers <- sapply(lengths(markers), min, filt_percent)
-    }
-
-    if (any(n_markers == 0)) {
-      return(NULL)
-    }
-
-    markers <- lapply(names(markers), function(N) {
-      markers[[N]][1:n_markers[N]]
-    })
 
     signature <- signature[unique(unlist(markers)),]
   }
 
   return(signature)
+}
+
+
+FilterMarkers <- function(reference_data_name, granularity, filt_percent,
+                          marker_type, marker_subtype, marker_input_type,
+                          marker_order, available_genes, test_data = NULL) {
+
+  markers <- Load_Markers(reference_data_name, granularity, marker_type,
+                          marker_subtype, input_type = marker_input_type)
+
+  if (is.null(markers)) {
+    return(NULL)
+  }
+
+  # Remove genes that don't exist in the data
+  markers <- lapply(markers, function(X) {intersect(X, available_genes)})
+
+  if (marker_order == "correlation") {
+    if (is.null(test_data)) {
+      message(paste0("Error! No data provided for calculating marker ",
+                     "correlation. Markers will be ordered by distance ",
+                     "instead of correlation."))
+    }
+    else {
+      markers <- OrderMarkers_ByCorrelation(markers, test_data)
+    }
+  }
+
+  # Percentage of each cell type's markers
+  if (filt_percent <= 1) {
+    n_markers <- ceiling(lengths(markers) * filt_percent)
+  }
+  # Fixed number of markers for each cell type
+  else {
+    n_markers <- sapply(lengths(markers), min, filt_percent)
+  }
+
+  if (any(n_markers == 0)) {
+    return(NULL)
+  }
+
+  markers <- lapply(names(markers), function(N) {
+    markers[[N]][1:n_markers[N]]
+  })
+
+  return(markers)
 }
 
 

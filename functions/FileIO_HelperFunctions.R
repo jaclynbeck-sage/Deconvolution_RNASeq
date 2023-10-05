@@ -371,9 +371,11 @@ Load_AvgLibSize <- function(dataset, granularity) {
 #   dataset = the name of the data set to load
 #   granularity = either "broad" or "fine", for which level of cell types to
 #                 load the signature matrix for.
-#   output_type = either "counts", "cpm", or "tmm". If output_type is "counts"
-#                 or "cpm", the singature matrix will be in CPM. If it's "tmm",
-#                 the signature matrix will be normalized with TMM factors.
+#   output_type = any output type from the 'output_type' argument of
+#                 Load_CountsFile. If output_type contains 'tmm', the signature
+#                 matrix will be normalized with TMM factors. Otherwise it is
+#                 in CPM. If output_type contains 'log', the signature matrix
+#                 will be transformed as log2(x+1).
 #
 # Returns:
 #   a matrix with rows = genes and columns = cell types, where the values are
@@ -382,10 +384,17 @@ Load_AvgLibSize <- function(dataset, granularity) {
 Load_SignatureMatrix <- function(dataset, granularity, output_type) {
   sig_matrix <- readRDS(file.path(dir_input, str_glue("{dataset}_signature.rds")))
 
-  if (output_type != "tmm") {
-    output_type = "cpm"
+  if (grepl("tmm", output_type)) {
+    sig <- sig_matrix$tmm[[granularity]]
   }
-  return(sig_matrix[[output_type]][[granularity]])
+  else {
+    sig <- sig_matrix$cpm[[granularity]]
+  }
+
+  if (grepl("log", output_type)) {
+    sig <- log2(sig + 1)
+  }
+  return(sig)
 }
 
 
@@ -570,32 +579,20 @@ Load_AlgorithmIntermediate <- function(algorithm, params) {
 #   output_list = a list of outputs from one of the deconvolution algorithms,
 #                 which contains output run under different parameter sets
 #   algorithm = the name of the algorithm
-#   reference_dataset = the name of the reference data set
-#   test_dataset = either "donors" or "training", if the algorithm was run on
-#                  donor or training pseudobulk, OR one of the bulk data sets
-#                  ("Mayo", "MSBB", "ROSMAP")
-#   granularity = either "broad" or "fine", for which level of cell types was
-#                 used for markers and pseudobulk creation.
-#   normalization = the normalization strategy used. Same as the 'output_type'
-#                   argument to Load_CountsFile.
-#   regression_method = the type of regression used for bulk counts. Same as
-#                       the 'regression_method' argument to Load_CountsFile.
+#   name_base = a string that uniquely identifies this list of outputs, which
+#               currently is of the format:
+#               '<reference_data_name>_<test_data_name>_<granularity>_<reference_input_type>_<normalization>_<regression_method>'
 #
 # Returns:
 #   Nothing
-Save_AlgorithmOutputList <- function(output_list, algorithm, reference_dataset,
-                                     test_dataset, granularity, normalization,
-                                     regression_method = "none") {
-  list_file_format <- paste0("estimates_{algorithm}_{reference_dataset}_",
-                             "{test_dataset}_{granularity}_{normalization}_",
-                             "{regression_method}.rds")
+Save_AlgorithmOutputList <- function(output_list, algorithm, name_base) {
+  list_file_format <- paste0("estimates_{algorithm}_{name_base}.rds")
 
   out_directory <- switch(test_dataset,
                           "Mayo" = dir_mayo_output,
                           "MSBB" = dir_msbb_output,
                           "ROSMAP" = dir_rosmap_output,
-                          dir_params_lists
-  )
+                          dir_params_lists)
 
   saveRDS(output_list, file = file.path(out_directory,
                                         str_glue(list_file_format)))
