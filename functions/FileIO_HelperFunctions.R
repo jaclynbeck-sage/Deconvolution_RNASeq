@@ -579,13 +579,14 @@ Load_AlgorithmIntermediate <- function(algorithm, params) {
 #   output_list = a list of outputs from one of the deconvolution algorithms,
 #                 which contains output run under different parameter sets
 #   algorithm = the name of the algorithm
+#   test_dataset = the name of the test dataset
 #   name_base = a string that uniquely identifies this list of outputs, which
 #               currently is of the format:
 #               '<reference_data_name>_<test_data_name>_<granularity>_<reference_input_type>_<normalization>_<regression_method>'
 #
 # Returns:
 #   Nothing
-Save_AlgorithmOutputList <- function(output_list, algorithm, name_base) {
+Save_AlgorithmOutputList <- function(output_list, algorithm, test_dataset, name_base) {
   list_file_format <- paste0("estimates_{algorithm}_{name_base}.rds")
 
   out_directory <- switch(test_dataset,

@@ -19,9 +19,8 @@
 #   between algorithms), "params", which is the parameter set used for this run,
 #   and "markers", which is the list of genes used as markers for this run
 SignatureBased_InnerLoop <- function(signature, bulk_mat, params, algorithm) {
-
   # Ensure signature is a matrix
-  signature <- as.matrix(data$reference)
+  signature <- as.matrix(signature)
 
   # Unpack variables for readability, enforce they are the correct types
   reference_data_name <- params$reference_data_name

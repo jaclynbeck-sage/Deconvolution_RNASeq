@@ -12,7 +12,6 @@ source(file.path("functions", "General_HelperFunctions.R"))
 algorithm <- "Music"
 
 datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
-datasets <- c("leng")
 
 source(file.path("algorithm_configs", str_glue("{algorithm}_Config.R")))
 
