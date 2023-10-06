@@ -45,11 +45,6 @@ registerDoParallel(cl)
 
 required_libraries <- alg_config$required_libraries
 
-# Music requires a few edits to allow for re-use of sc_basis calculations
-if (algorithm == "Music") {
-  source("Music_Edits.R")
-}
-
 
 #### Iterate through parameters ####
 
@@ -66,10 +61,7 @@ for (P in 1:nrow(params_loop1)) {
     data$reference <- as(data$reference, "SingleCellExperiment")
 
     # Pre-compute sc.basis to save time
-    # Hack to get the function redirect to work: The "<<-" operator creates a
-    # global variable that can be used inside the modified music_basis function.
-    sc_basis_precomputed <<- NULL
-    sc_basis <- music_basis(data$reference, non.zero = TRUE,
+    sc_basis <- MuSiC::music_basis(data$reference, non.zero = TRUE,
                             markers = rownames(data$reference),
                             clusters = "celltype", samples = "sample",
                             select.ct = NULL,

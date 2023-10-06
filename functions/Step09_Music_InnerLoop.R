@@ -54,13 +54,11 @@ Music_InnerLoop <- function(sce, bulk_mtx, sc_basis, params, verbose = FALSE) {
   markers_use <- rownames(tmp)
 
   # Modify sc_basis for this set of markers.
-  # The "<<-" operator creates a global variable that can be used inside the
-  # modified music_basis function. This is hacky, sorry.
-  sc_basis_precomputed <<- sc_basis
-  sc_basis_precomputed$Sigma <<- sc_basis_precomputed$Sigma[markers_use,]
-  sc_basis_precomputed$Sigma.ct <<- sc_basis_precomputed$Sigma.ct[, markers_use]
-  sc_basis_precomputed$Disgn.mtx <<- sc_basis_precomputed$Disgn.mtx[markers_use,]
-  sc_basis_precomputed$M.theta <<- sc_basis_precomputed$M.theta[markers_use,]
+  sc_basis_precomputed <- sc_basis
+  sc_basis_precomputed$Sigma <- sc_basis_precomputed$Sigma[markers_use,]
+  sc_basis_precomputed$Sigma.ct <- sc_basis_precomputed$Sigma.ct[, markers_use]
+  sc_basis_precomputed$Disgn.mtx <- sc_basis_precomputed$Disgn.mtx[markers_use,]
+  sc_basis_precomputed$M.theta <- sc_basis_precomputed$M.theta[markers_use,]
 
   ##### Run MuSiC #####
   # Sometimes MuSiC will produce too many NAs if too many cell types are missing
@@ -76,7 +74,8 @@ Music_InnerLoop <- function(sce, bulk_mtx, sc_basis, params, verbose = FALSE) {
                                                 sizes = sc_basis$M.S),
                          ct.cov = ct_cov,
                          centered = centered,
-                         normalize = normalize)
+                         normalize = normalize,
+                         sc.basis = sc_basis_precomputed)
 
     # Remove "Weight.gene", "r.squared.full", and "Var.prop". "Weight.gene"
     # especially is a very large array and is unneeded, so this reduces

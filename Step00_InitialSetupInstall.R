@@ -15,8 +15,8 @@ BiocManager::install(c("Biobase", "SingleCellExperiment", "TOAST", "scuttle",
 
 BiocManager::install("preprocessCore", configure.args="--disable-threading")
 
-# install the MuSiC package
-devtools::install_github("xuranw/MuSiC")
+# install the MuSiC package from my fork, which has a few fixes and speedups
+devtools::install_github("jaclynbeck-sage/MuSiC")
 
 # install sageseqr -- requires archived package from CRAN
 gt_url <- "https://cran.r-project.org/src/contrib/Archive/GenomicTools/GenomicTools_0.2.9.7.tar.gz"

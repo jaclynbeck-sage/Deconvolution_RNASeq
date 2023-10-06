@@ -75,7 +75,7 @@ SignatureBased_InnerLoop <- function(signature, bulk_mat, params, algorithm) {
 
       # There is a lot more setup for this algorithm so for readability, it's
       # moved to a function defined below
-      RunDWLS(signature_filt, bulk_mat_filt, solver_type)
+      res <- RunDWLS(signature_filt, bulk_mat_filt, solver_type)
     } # End DWLS
     else {
       stop(str_glue("Unsupported algorithm name '{algorithm}'."))
