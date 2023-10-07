@@ -1,7 +1,7 @@
 install.packages(c("BiocManager", "devtools", "stringr", "Metrics",
                    "dplyr", "ggplot2", "DEoptimR", "nloptr", "anndata",
                    "readxl", "Hmisc", "RMariaDB", "lme4", "corrplot",
-                   "Hmisc", "circlize", "gMWT", "GenomicTools.fileHandler"))
+                   "Hmisc", "circlize", "gMWT"))
 
 # If synapser fails to install because it can't find "synapseclient", go to
 # RStudio options (Tools->Global Options) -> Python, uncheck "Automatically
@@ -15,8 +15,8 @@ BiocManager::install(c("Biobase", "SingleCellExperiment", "TOAST", "scuttle",
 
 BiocManager::install("preprocessCore", configure.args="--disable-threading")
 
-# Requires several BiocManager packages to be installed first
-install.packages(c("DWLS"))
+# These packages require several BiocManager packages to be installed first
+install.packages(c("DWLS", "GenomicTools.fileHandler"))
 
 # install the MuSiC package from my fork, which has a few fixes and speedups
 devtools::install_github("jaclynbeck-sage/MuSiC")
