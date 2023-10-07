@@ -9,7 +9,7 @@ source(file.path("functions", "General_HelperFunctions.R"))
 #### Parameter setup #####
 
 # options: "DWLS", "DeconRNASeq", "Dtangle", "HSPE", "Music"
-algorithm <- "Music"
+algorithm <- "DWLS"
 
 datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
 
@@ -33,7 +33,7 @@ params_loop2 <- expand_grid(alg_config$params_markers,
 ##### Parallel execution setup #####
 
 # NOTE: Recommendations for number of cores, per algorithm:
-#   DWLS: all-1, as this algorithm doesn't multi-thread and doesn't need much RAM
+#   DWLS: 1/2 the available cores, as this doesn't need much RAM but multi-threads a little
 #   deconRNASeq and music: 1/4 to 1/2 the available cores, as these algorithms multi-thread
 #   dtangle and hspe: as many cores as will fit in RAM. Assume between 5-20 GB
 #                     of RAM needed per core, depending on the dataset.
@@ -49,9 +49,17 @@ required_libraries <- alg_config$required_libraries
 #### Iterate through parameters ####
 
 # Outer loop - each row of params_loop1 represents a single/unique call to
-# Load_AlgorithmInputData. This data is then fed to each thread working on the
-# algorithm-specific parameters, all using the same data.
-for (P in 1:nrow(params_loop1)) {
+# Load_AlgorithmInputData in its own thread. The inner loop then runs through
+# all parameter sets on that data.
+# NOTE: the helper functions have to be sourced inside the foreach loop
+#       so they exist in each newly-created parallel environment
+
+foreach(P = 1:nrow(params_loop1),
+        .packages = required_libraries) %dopar% {
+  source(file.path("functions", "General_HelperFunctions.R"))
+  source(file.path("functions", "Step09_ArgumentChecking_HelperFunctions.R"))
+  source(alg_config$inner_loop_file) # defined in the config
+
   data <- Load_AlgorithmInputData_FromParams(params_loop1[P,])
 
   data$test <- as.matrix(assay(data$test, "counts"))
@@ -61,7 +69,7 @@ for (P in 1:nrow(params_loop1)) {
     data$reference <- as(data$reference, "SingleCellExperiment")
 
     # Pre-compute sc.basis to save time
-    sc_basis <- MuSiC::music_basis(data$reference, non.zero = TRUE,
+    sc_basis <- music_basis(data$reference, non.zero = TRUE,
                             markers = rownames(data$reference),
                             clusters = "celltype", samples = "sample",
                             select.ct = NULL,
@@ -91,16 +99,8 @@ for (P in 1:nrow(params_loop1)) {
   # Inner loop - each row of params_loop2 represents a single/unique call to
   # the algorithm with specific parameters like which markers to use, how many
   # from each cell type, and any changes to arguments in the function call.
-  # This part is split into threads that all work on the same data.
-  # NOTE: the helper functions have to be sourced inside the foreach loop
-  #       so they exist in each newly-created parallel environment
 
-  results_list <- foreach(R = 1:nrow(params_loop2),
-                          .packages = required_libraries) %dopar% {
-    source(file.path("functions", "General_HelperFunctions.R"))
-    source(file.path("functions", "Step09_ArgumentChecking_HelperFunctions.R"))
-    source(alg_config$inner_loop_file) # defined in the config
-
+  results_list <- lapply(1:nrow(params_loop2), function(R) {
     params <- cbind(params_loop1[P,], params_loop2[R,])
 
     # For backward compatibility -- for algorithms that only input one kind of
@@ -140,7 +140,7 @@ for (P in 1:nrow(params_loop1)) {
     # Save each result in case of crashing
     Save_AlgorithmIntermediate(res, algorithm)
     return(res)
-  } # end foreach loop
+  }) # end foreach loop
 
   # It's possible for some items in results_list to be null if there was an error.
   # Filter them out.
