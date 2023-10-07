@@ -64,8 +64,6 @@ SignatureBased_InnerLoop <- function(signature, bulk_mat, params, algorithm) {
                          known.prop = FALSE, use.scale = use_scale, fig = FALSE)
 
       rownames(res$out.all) <- colnames(bulk_mat_filt)
-      res$params <- params
-      res$markers <- rownames(signature_filt)
     } # end DeconRNASeq
 
     ##### Run DWLS #####
@@ -80,6 +78,9 @@ SignatureBased_InnerLoop <- function(signature, bulk_mat, params, algorithm) {
     else {
       stop(str_glue("Unsupported algorithm name '{algorithm}'."))
     }
+
+    res$params <- params
+    res$markers <- rownames(signature_filt)
 
     ##### End of loop #####
     print(paste(res$params, collapse = "  "))
@@ -110,10 +111,14 @@ RunDWLS <- function(signature_filt, bulk_mat_filt, solver_type) {
   }
 
   # Calls solveDampenedWLS or solveSVR. These functions can only be called on
-  # one sample at a time so this loops over all samples
+  # one sample at a time so this loops over all samples. DWLS prints the output
+  # of every call so we redirect this to a file to remove it from the main
+  # status file from threading
+  sink('DWLS_tmp.txt')
   res_pcts <- apply(bulk_mat_filt, 2, function(B) {
     return(solve_fn(signature_filt, B))
   })
+  sink()
 
   res_pcts <- t(res_pcts) # puts cell types as columns, samples as rows
 
@@ -130,9 +135,7 @@ RunDWLS <- function(signature_filt, bulk_mat_filt, solver_type) {
   res_pcts[res_pcts < 0] <- 0
   res_pcts <- sweep(res_pcts, 1, rowSums(res_pcts), "/")
 
-  res <- list("estimates" = res_pcts,
-              "params" = params,
-              "markers" = rownames(signature_filt))
+  res <- list("estimates" = res_pcts)
 
   return(res)
 }

@@ -26,8 +26,9 @@
 #                    inner loop function, which is usually just the algorithm's
 #                    library
 #   cores - an integer value of how many CPUs to use when running in parallel.
-#           For DWLS, this can be as high as <all cores>-1, as this algorithm
-#           doesn't multi-thread and doesn't need much RAM.
+#           For DWLS, this can be as high as <all cores>-1, but recommend half
+#           the total number of cores, as this algorithm multi-threads but only
+#           a little bit.
 alg_config <- list(
   # Used to create params_loop1 (data-specific arguments) in main function
   normalizations = c("log_cpm", "log_tmm", "log_tpm"), # DWLS works on log-scale data
@@ -43,5 +44,5 @@ alg_config <- list(
   required_libraries = c("DWLS"),
 
   # How many cores to use in parallel
-  cores = parallel::detectCores()-1
+  cores = 8 # Machine this was run on has 16 cores
 )
