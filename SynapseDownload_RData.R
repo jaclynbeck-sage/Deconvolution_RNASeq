@@ -12,20 +12,33 @@ folders <- list("singlecell" = list("synID" = "syn52569484", "downloadLocation" 
                 "pseudobulk" = list("synID" = "syn52570274", "downloadLocation" = dir_pseudobulk),
                 "markers" = list("synID" = "syn52570296", "downloadLocation" = dir_markers),
                 #"errors" = list("synID" = "syn52245653", "downloadLocation" = dir_errors),
-                "external_metadata" = list("synID" = "syn52539337", "downloadLocation" = dir_metadata))#,
-                #"Mayo" = list("synID" = "syn52245606", "downloadLocation" = dir_mayo_output),
-                #"MSBB" = list("synID" = "syn52245570", "downloadLocation" = dir_msbb_output),
-                #"ROSMAP" = list("synID" = "syn52245624", "downloadLocation" = dir_rosmap_output))
+                "external_metadata" = list("synID" = "syn52539337", "downloadLocation" = dir_metadata),
+                "Mayo" = list("synID" = "syn52587834", "downloadLocation" = dir_mayo_output),
+                "MSBB" = list("synID" = "syn52587544", "downloadLocation" = dir_msbb_output),
+                "ROSMAP" = list("synID" = "syn52587984", "downloadLocation" = dir_rosmap_output))
 
 
-# Download everything in each folder
-for (folder in folders) {
-  parent <- synGetChildren(folder$synID)
+# Helper function for recursive download
+download <- function(synID, downloadLocation) {
+  parent <- synGetChildren(synID)
   parent <- parent$asList()
 
   for (child in parent) {
-    synGet(child$id, downloadLocation = folder$downloadLocation)
+    res = synGet(child$id, downloadLocation = downloadLocation)
+    if (is(res, "synapseclient.entity.Folder")) {
+      new_folder <- file.path(downloadLocation, res$name)
+      dir.create(new_folder, recursive = TRUE, showWarnings = FALSE)
+      download(res$id, new_folder)
+    }
+    else {
+      print(file.path(downloadLocation, res$name))
+    }
   }
+}
+
+# Download everything in each folder
+for (folder in folders) {
+  download(folder$synID, folder$downloadLocation)
 }
 
 rm(list=ls())
