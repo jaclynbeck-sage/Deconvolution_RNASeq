@@ -1,7 +1,7 @@
 FROM rocker/rstudio:4.3.0
 
 RUN apt-get update -y && apt-get upgrade -y
-RUN apt-get install -y ssh nano less python3 python3-pip python3-venv
+RUN apt-get install -y ssh nano less python3 python3-pip python3-venv python3-virtualenv
 RUN apt-get install -y libpng-dev libglpk-dev curl libxt-dev
 RUN apt-get install -y liblzma-dev libbz2-dev libhdf5-dev
 RUN apt-get install -y libmysqlclient21 # for GenomicFeatures

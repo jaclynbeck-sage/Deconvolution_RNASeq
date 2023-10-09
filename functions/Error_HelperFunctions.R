@@ -1,43 +1,92 @@
 library(dplyr)
+library(Matrix)
+library(Metrics)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
 
-CalcGOF_BySubject <- function(meas_expr_cpm, est_pct, sig_matrix_cpm, param_id) {
-  est_expr <- t(est_pct %*% t(sig_matrix_cpm))
-
+CalcGOF_BySample <- function(meas_expr_cpm, est_expr, param_id) {
   meas_expr_cpm <- as.matrix(meas_expr_cpm)
 
-  # TODO this should probably be log2(cpm) for correlation
-  cor_subject <- diag(cor(meas_expr_cpm, est_expr, use = "na.or.complete"))
-  rmse_subject <- sapply(colnames(meas_expr_cpm), function(sample) {
+  # Using log2 transformation for correlation so distributions are more gaussian
+  cor_sample <- diag(cor(log2(meas_expr_cpm+1), log2(est_expr+1), use = "na.or.complete"))
+
+  rmse_sample <- sapply(colnames(meas_expr_cpm), function(sample) {
     rmse(meas_expr_cpm[,sample], est_expr[,sample])
   })
-  mape_subject <- sapply(colnames(meas_expr_cpm), function(sample) {
+  mape_sample <- sapply(colnames(meas_expr_cpm), function(sample) {
     ok <- meas_expr_cpm[,sample] != 0 | est_expr[,sample] != 0
     smape(meas_expr_cpm[ok, sample], est_expr[ok, sample]) / 2
   })
 
-  gof_by_subject <- data.frame(cor = cor_subject,
-                               rMSE = rmse_subject,
-                               mAPE = mape_subject,
-                               param_id = param_id,
-                               subject = names(cor_subject),
-                               row.names = names(cor_subject))
+  gof_by_sample <- data.frame(cor = cor_sample,
+                              rMSE = rmse_sample,
+                              mAPE = mape_sample,
+                              param_id = param_id,
+                              sample = names(cor_sample),
+                              row.names = names(cor_sample))
 
-  return(gof_by_subject)
+  return(gof_by_sample)
+}
+
+# NOTE: This assumes this is for all genes in the data set, if we subset to a
+# smaller number we will have to pass in the library size
+CalcGOF_BySample_GLM <- function(bulk_dataset_name, covariates, bulk_se, est_pct,
+                                 sig_matrix_cpm, log_lib_size, param_id) {
+  est_expr <- t(est_pct %*% t(sig_matrix_cpm))
+  est_expr_log <- log(est_expr + 0.0001) # Add a small pseudocount
+
+  meas_expr <- as.matrix(assay(bulk_se, "counts"))
+
+  designs <- list("Mayo" = paste0("~ 1 + diagnosis + tissue + percent_mito + ",
+                                  "RnaSeqMetrics_PCT_INTRONIC_BASES + ",
+                                  "RnaSeqMetrics_PCT_CODING_BASES + sex + ",
+                                  "RnaSeqMetrics_PCT_INTERGENIC_BASES + pmi"),
+
+                  "MSBB" = paste0("~ 1 + diagnosis + tissue + ",
+                                  "RnaSeqMetrics_PCT_INTRONIC_BASES + ",
+                                  "percent_mito + ",
+                                  "RnaSeqMetrics_PCT_CODING_BASES + ",
+                                  "RnaSeqMetrics_PCT_INTERGENIC_BASES + ",
+                                  "AlignmentSummaryMetrics_PCT_PF_READS_ALIGNED"),
+
+                  "ROSMAP" = paste0("~ 1 + diagnosis + tissue + percent_mito + ",
+                                    "RnaSeqMetrics_PCT_INTRONIC_BASES + ",
+                                    "sex + RIN + RIN2 + ",
+                                    "RnaSeqMetrics_PCT_CODING_BASES + ",
+                                    "RnaSeqMetrics_PCT_INTERGENIC_BASES"))
+
+  form <- paste("expr", designs[[bulk_dataset_name]], "+ est")
+
+  glm_est <- sapply(rownames(bulk_se), function(gene) {
+    expr <- meas_expr[gene,]
+    est <- est_expr_log[gene,] # Assume log(est) varies linearly with log(expr)
+
+    res <- glm(as.formula(form), data = covariates, offset = log_lib_size,
+               family = "poisson")
+    return(fitted(res))
+  })
+  glm_est <- t(glm_est)
+
+  # These values are CPM using a truncated set of genes to calculate library
+  # size. Since we didn't estimate the GLM for all genes, we have no way to get
+  # the 'true' library size for glm_est.
+  meas_expr_cpm <- scuttle::calculateCPM(meas_expr)
+  glm_est_cpm <- scuttle::calculateCPM(glm_est)
+
+  return(CalcGOF_BySample(meas_expr, glm_est, param_id))
 }
 
 
-CalcGOF_Means <- function(gof_by_subject, bulk_metadata, param_id) {
-  numeric_cols <- setdiff(colnames(gof_by_subject), c("param_id", "subject"))
-  gof_means_all <- gof_by_subject %>%
+CalcGOF_Means <- function(gof_by_sample, bulk_metadata, param_id) {
+  numeric_cols <- setdiff(colnames(gof_by_sample), c("param_id", "sample"))
+  gof_means_all <- gof_by_sample %>%
                       summarise(across(all_of(numeric_cols), mean),
                                 param_id = unique(param_id))
 
-  tissue_assignments <- bulk_metadata[rownames(gof_by_subject), "tissue"]
+  tissue_assignments <- bulk_metadata[rownames(gof_by_sample), "tissue"]
 
-  gof_by_subject <- cbind(gof_by_subject, tissue_assignments)
-  gof_means_tissue <- gof_by_subject %>% group_by(tissue_assignments) %>%
+  gof_by_sample <- cbind(gof_by_sample, tissue_assignments)
+  gof_means_tissue <- gof_by_sample %>% group_by(tissue_assignments) %>%
                           summarise(across(all_of(numeric_cols), mean),
                                     param_id = unique(param_id))
 
@@ -107,13 +156,13 @@ CalcError_MeanIHC_ByTissue <- function(err_list, params, bulk_meta) {
 
 CalcError_MeanByTissue <- function(bulk_dataset, err_list, params, bulk_meta) {
   # TODO add metadata to error df in calculate errors function
-  errs_by_subject <- err_list[["gof_subject"]][names(params)]
-  errs_by_subject <- lapply(errs_by_subject, function(df) {
+  errs_by_sample <- err_list[["gof_sample"]][names(params)]
+  errs_by_sample <- lapply(errs_by_sample, function(df) {
     cbind(df, tissue = bulk_meta[rownames(df),"tissue"])
   })
 
-  errs_by_tissue <- lapply(names(errs_by_subject), function(E) {
-    df <- errs_by_subject[[E]] %>% group_by(tissue) %>%
+  errs_by_tissue <- lapply(names(errs_by_sample), function(E) {
+    df <- errs_by_sample[[E]] %>% group_by(tissue) %>%
       summarize(across(c("cor", "rMSE", "mAPE"), ~ mean(.x, na.rm = TRUE)))
     df$name <- E
     return(df)
@@ -249,7 +298,7 @@ Get_AllEstimatesAsDf <- function(ref_dataset, bulk_dataset, algorithms, granular
     ests_melt <- lapply(names(ests_melt), FUN = function(X) {
       ests_melt[[X]] <- as.data.frame(ests_melt[[X]])
       ests_melt[[X]]$name <- X
-      ests_melt[[X]]$subject <- rownames(ests_melt[[X]])
+      ests_melt[[X]]$sample <- rownames(ests_melt[[X]])
       ests_melt[[X]]$param_id <- param_ids[X]
       return(ests_melt[[X]])
     })

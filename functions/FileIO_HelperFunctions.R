@@ -648,30 +648,20 @@ Load_AlgorithmOutputList <- function(algorithm, reference_dataset, test_dataset,
 # algorithm for a single data set, named with a specific format.
 #
 # Arguments:
+#   dataset_name = the name of the bulk dataset for these errors
 #   error_list = a list of errors containing entries for mean errors, errors
 #                by celltype, errors by subject, goodness-of-fit, and parameters
 #                for an algorithm / dataset / datatype / granularity combo
 #   algorithm = the name of the algorithm
-#   reference_dataset = the name of the reference data set
-#   test_dataset = either "donors" or "training", to signify if the algorithm was
-#                  run on donor or training pseudobulk, or one of "Mayo",
-#                  "MSBB", or "ROSMAP" if the algorithm was run on bulk data
-#   granularity = either "broad" or "fine", for which level of cell types was
-#                 used for markers and pseudobulk creation.
-#   normalization = the type of normalization used. See Load_CountsFile
-#                   output_type parameter explanation for valid values.
-#   regression_method = the type of regression used on bulk data counts. See
-#                   Load_CountsFile regression_method parameter explanation for
-#                   valid values.
+#   params_data = a one-row dataframe or named list of parameters that were
+#                 used to generate the estimates for this list
 #
 # Returns:
 #   Nothing
-Save_ErrorList <- function(error_list, algorithm, reference_dataset, test_dataset,
-                           granularity, normalization, regression_method) {
-  error_file_format <- paste0("errors_{algorithm}_{reference_dataset}_",
-                              "{test_dataset}_{granularity}_{normalization}_",
-                              "{regression_method}.rds")
-  saveRDS(error_list, file = file.path(dir_errors, str_glue(error_file_format)))
+Save_ErrorList <- function(dataset_name, error_list, algorithm, params_data) {
+  name_base <- paste(params_data, collapse = "_")
+  error_file_format <- paste0("errors_{algorithm}_{name_base}.rds")
+  saveRDS(error_list, file = file.path(dir_errors, dataset_name, str_glue(error_file_format)))
 }
 
 

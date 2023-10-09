@@ -35,7 +35,7 @@ provenance_df <- merge(sce_df, pseudo_df, by = "dataset")
 
 reference_datasets <- unique(provenance_df$dataset)
 test_datasets <- unique(bulk_df$dataset)
-algorithms <- c("deconRNASeq", "dtangle", "music")
+algorithms <- c("DeconRNASeq", "Dtangle", "Music", "DWLS")
 
 # Parameter output lists
 for (bulk in test_datasets) {

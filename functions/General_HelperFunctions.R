@@ -627,3 +627,54 @@ OrderMarkers_ByCorrelation <- function(marker_list, data) {
 
   return(new_list)
 }
+
+
+##### Clean_BulkCovariates - takes a covariates dataframe for one of the bulk
+# datasets, makes sure that categorical variables are factors, scales numerical
+# variables, and merges the cleaned covariates dataframe with the metadata
+# dataframe. This function is specific to what variables are used in the
+# regression forumla, so it doesn't look at or fix the unused variables in
+# the covariates dataframe.
+#
+# Arguments:
+#   bulk_dataset_name - the name of the data set
+#   metadata - the metadata dataframe (colData()) from a SummarizedExperiment
+#   covariates - a dataframe of covariates, where rows are samples and columns
+#                are the covariates
+#
+# Returns:
+#   a dataframe with merged metadata and cleaned covariates
+Clean_BulkCovariates <- function(bulk_dataset_name, metadata, covariates) {
+  covariates <- subset(covariates, specimenID %in% rownames(metadata))
+
+  batch_vars <- list("Mayo" = "flowcell",
+                     "MSBB" = c("individualID", "sequencingBatch"),
+                     "ROSMAP" = "final_batch")
+
+  # Ensure categorical covariates are factors
+  for (batch in batch_vars[[bulk_dataset_name]]) {
+    covariates[,batch] <- factor(covariates[,batch])
+  }
+
+  # All bulk datasets have 'sex' as a categorical variable and use it in the model
+  covariates$sex <- factor(covariates$sex)
+
+  # Scale numerical covariates
+  for (colname in colnames(covariates)) {
+    if (is.numeric(covariates[,colname])) {
+      covariates[,colname] <- scale(covariates[,colname])
+    }
+  }
+
+  # Remove duplicate columns that already exist in colData
+  covariates <- covariates %>% select(-diagnosis, -tissue)
+
+  # Merge covariates into the metadata
+  col_order <- rownames(colData(bulk_se))
+  metadata <- merge(colData(bulk_se), covariates, by.x = "sample",
+                    by.y = "specimenID", sort = FALSE)
+  rownames(metadata) <- metadata$sample
+
+  metadata <- data.frame(metadata[col_order,])
+  return(metadata)
+}
