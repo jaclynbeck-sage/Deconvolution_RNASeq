@@ -37,25 +37,9 @@ CalcGOF_BySample_GLM <- function(bulk_dataset_name, covariates, bulk_se, est_pct
 
   meas_expr <- as.matrix(assay(bulk_se, "counts"))
 
-  designs <- list("Mayo" = paste0("~ 1 + diagnosis + tissue + percent_mito + ",
-                                  "RnaSeqMetrics_PCT_INTRONIC_BASES + ",
-                                  "RnaSeqMetrics_PCT_CODING_BASES + sex + ",
-                                  "RnaSeqMetrics_PCT_INTERGENIC_BASES + pmi"),
+  formulas <- Load_ModelFormulas(bulk_dataset_name)
 
-                  "MSBB" = paste0("~ 1 + diagnosis + tissue + ",
-                                  "RnaSeqMetrics_PCT_INTRONIC_BASES + ",
-                                  "percent_mito + ",
-                                  "RnaSeqMetrics_PCT_CODING_BASES + ",
-                                  "RnaSeqMetrics_PCT_INTERGENIC_BASES + ",
-                                  "AlignmentSummaryMetrics_PCT_PF_READS_ALIGNED"),
-
-                  "ROSMAP" = paste0("~ 1 + diagnosis + tissue + percent_mito + ",
-                                    "RnaSeqMetrics_PCT_INTRONIC_BASES + ",
-                                    "sex + RIN + RIN2 + ",
-                                    "RnaSeqMetrics_PCT_CODING_BASES + ",
-                                    "RnaSeqMetrics_PCT_INTERGENIC_BASES"))
-
-  form <- paste("expr", designs[[bulk_dataset_name]], "+ est")
+  form <- paste("expr", formulas$formula_fixed, "+ est")
 
   glm_est <- sapply(rownames(bulk_se), function(gene) {
     expr <- meas_expr[gene,]

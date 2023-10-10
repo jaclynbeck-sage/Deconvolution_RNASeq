@@ -26,32 +26,7 @@ for (dataset in datasets) {
   bulk <- Load_PreprocessedData(dataset, remove_excluded = TRUE)
 
   covariates <- Load_Covariates(dataset)
-  covariates <- subset(covariates, specimenID %in% colnames(bulk))
-
-  # Fix some column types
-  covariates[, batch_vars[[dataset]]] <- factor(covariates[, batch_vars[[dataset]]])
-
-  for (col in c("sex", "race", "spanish", "ethnicity", "individualID", "apoe4_allele")) {
-    if (col %in% colnames(covariates)) {
-      covariates[,col] <- factor(covariates[,col])
-    }
-  }
-  covariates$age_death[covariates$age_death == "90+"] = 90
-  covariates$age_death <- as.numeric(covariates$age_death)
-
-  for (colname in colnames(covariates)) {
-    if (is.numeric(covariates[,colname]) & colname != "apoe4_allele") {
-      covariates[,colname] <- scale(covariates[,colname])
-    }
-  }
-
-  # Remove duplicate columns that already exist in colData
-  covariates <- covariates %>% select(-diagnosis, -tissue)
-
-  # Merge covariates into the metadata
-  metadata <- merge(colData(bulk), covariates, by.x = "sample",
-                    by.y = "specimenID", sort = FALSE)
-  rownames(metadata) <- metadata$sample
+  metadata <- Clean_BulkCovariates(dataset, colData(bulk), covariates)
 
   metadata <- data.frame(metadata[colnames(bulk),]) %>%
                 select(-sample, -percent_noncoding, -tmm_factors)
@@ -89,6 +64,20 @@ for (dataset in datasets) {
                              random_effect = c("individualID", batch_vars[[dataset]]),
                              add_model = c("tissue"))
 
+  # Save the whole output for debugging purposes
   saveRDS(res, file.path(dir_tmp,
                          str_glue("stepwise_regression_{dataset}.rds")))
+
+  # Save the formula as both a fixed and a mixed effect formula
+  vars <- all.vars(res$formula)
+  fixed <- setdiff(vars, c("individualID", batch_vars[[dataset]]))
+  mixed <- paste0("(1|", setdiff(vars, fixed), ")")
+
+  form_fixed <- paste("~", paste(fixed, collapse = " + "))
+  form_mixed <- paste(form_fixed, "+", paste(mixed, collapse = " + "))
+
+  forms <- list("formula_fixed" = form_fixed,
+                "formula_mixed" = form_mixed)
+
+  Save_ModelFormulas(dataset, forms)
 }

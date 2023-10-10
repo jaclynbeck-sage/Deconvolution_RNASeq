@@ -28,71 +28,21 @@ source(file.path("functions", "FileIO_HelperFunctions.R"))
 
 datasets <- c("Mayo", "MSBB", "ROSMAP")
 
-designs <- list("Mayo" = paste0("~ 1 + diagnosis + tissue + percent_mito + ",
-                                "RnaSeqMetrics_PCT_INTRONIC_BASES + ",
-                                "RnaSeqMetrics_PCT_CODING_BASES + sex + ",
-                                "RnaSeqMetrics_PCT_INTERGENIC_BASES + pmi"),
-
-                "MSBB" = paste0("~ 1 + diagnosis + tissue + ",
-                                "RnaSeqMetrics_PCT_INTRONIC_BASES + ",
-                                "percent_mito + ",
-                                "RnaSeqMetrics_PCT_CODING_BASES + ",
-                                "RnaSeqMetrics_PCT_INTERGENIC_BASES + ",
-                                "AlignmentSummaryMetrics_PCT_PF_READS_ALIGNED"),
-
-                "ROSMAP" = paste0("~ 1 + diagnosis + tissue + percent_mito + ",
-                                  "RnaSeqMetrics_PCT_INTRONIC_BASES + ",
-                                  "sex + RIN + RIN2 + ",
-                                  "RnaSeqMetrics_PCT_CODING_BASES + ",
-                                  "RnaSeqMetrics_PCT_INTERGENIC_BASES"))
-
-batch_vars <- list("Mayo" = "flowcell",
-                   "MSBB" = c("individualID", "sequencingBatch"),
-                   "ROSMAP" = "final_batch")
-
 for (dataset in datasets) {
 
-  ##### Create formulas for fixed/mixed models #####
+  ##### Get formulas for fixed/mixed models #####
 
-  design_fixed <- designs[[dataset]]
+  formulas <- Load_ModelFormulas(dataset)
 
-  rand_effects <- paste0("(1|", batch_vars[[dataset]], ")")
-  design_mixed <- paste(c(design_fixed, rand_effects), collapse = " + ")
-
-  design_fixed <- as.formula(design_fixed)
-  design_mixed <- as.formula(design_mixed)
+  design_fixed <- as.formula(formulas$formula_fixed)
+  design_mixed <- as.formula(formulas$formula_mixed)
 
 
   ##### Clean up covariates matrix #####
 
   bulk <- Load_PreprocessedData(dataset, remove_excluded = TRUE)
   covariates <- Load_Covariates(dataset)
-  covariates <- subset(covariates, specimenID %in% colnames(bulk))
-
-  # Ensure categorical covariates are factors
-  for (batch in batch_vars[[dataset]]) {
-    covariates[,batch] <- factor(covariates[,batch])
-  }
-
-  covariates$sex <- factor(covariates$sex)
-
-  # Scale numerical covariates
-  for (colname in colnames(covariates)) {
-    if (is.numeric(covariates[,colname])) {
-      covariates[,colname] <- scale(covariates[,colname])
-    }
-  }
-
-  # Remove duplicate columns that already exist in colData
-  covariates <- covariates %>% select(-diagnosis, -tissue)
-
-  # Merge covariates into the metadata
-  col_order <- rownames(colData(bulk))
-  metadata <- merge(colData(bulk), covariates, by.x = "sample",
-                    by.y = "specimenID", sort = FALSE)
-  rownames(metadata) <- metadata$sample
-
-  metadata <- data.frame(metadata[col_order,])
+  covariates <- Clean_BulkCovariates(dataset, colData(bulk), covariates)
 
 
   ##### EdgeR glmQLfit #####
@@ -100,7 +50,7 @@ for (dataset in datasets) {
   expr <- DGEList(assay(bulk, "counts"))
   expr$samples$norm.factors <- bulk$tmm_factors # these were pre-calculated
 
-  mod <- model.matrix(design_fixed, data = metadata)
+  mod <- model.matrix(design_fixed, data = covariates)
 
   expr <- estimateDisp(expr, mod)
   fit_edger <- glmQLFit(expr, mod)
@@ -142,7 +92,7 @@ for (dataset in datasets) {
   ##### DESeq2 fit #####
 
   dds <- DESeqDataSetFromMatrix(assay(bulk, "counts"),
-                                metadata,
+                                covariates,
                                 design = design_fixed)
 
   dds <- DESeq(dds, test = "Wald", fitType = "parametric")
@@ -171,12 +121,12 @@ for (dataset in datasets) {
   n_cores <- parallel::detectCores()-1
   voom_counts <- voomWithDreamWeights(counts = expr,
                                       formula = design_mixed,
-                                      data = metadata,
+                                      data = covariates,
                                       BPPARAM = BiocParallel::SnowParam(n_cores))
 
   fit_dream <- dream(exprObj = voom_counts,
                      formula = design_mixed,
-                     data = metadata,
+                     data = covariates,
                      computeResiduals = TRUE,
                      BPPARAM = BiocParallel::SnowParam(n_cores))
 

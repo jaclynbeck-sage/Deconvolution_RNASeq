@@ -440,6 +440,35 @@ Load_Covariates <- function(dataset_name) {
 }
 
 
+# Save_ModelFormulas: saves a list of formulas for linear modeling to a file
+# with a specific filename format.
+#
+# Arguments:
+#   dataset_name = the name of the data set
+#   formula_list = a list of formulas ('formula_fixed' and 'formula_mixed'). The
+#                  formulas should be strings, not the 'formula' object.
+#
+# Returns:
+#   nothing
+Save_ModelFormulas <- function(dataset_name, formula_list) {
+  saveRDS(formula_list, file.path(dir_metadata,
+                                  str_glue("model_formulas_{dataset_name}.rds")))
+}
+
+# Load_ModelFormulas: loads a list of formulas for linear modeling from a file
+# with a specific filename format.
+#
+# Arguments:
+#   dataset_name = the name of the data set
+#
+# Returns:
+#   a list of formulas ('formula_fixed' and 'formula_mixed'). The formulas are
+#   strings, not the 'formula' object.
+Load_ModelFormulas <- function(dataset_name) {
+  readRDS(file.path(dir_metadata, str_glue("model_formulas_{dataset_name}.rds")))
+}
+
+
 # Save_MapReference: saves a reference data set for cell type mapping to a
 # file with a specific filename format.
 #
@@ -661,7 +690,11 @@ Load_AlgorithmOutputList <- function(algorithm, reference_dataset, test_dataset,
 Save_ErrorList <- function(dataset_name, error_list, algorithm, params_data) {
   name_base <- paste(params_data, collapse = "_")
   error_file_format <- paste0("errors_{algorithm}_{name_base}.rds")
-  saveRDS(error_list, file = file.path(dir_errors, dataset_name, str_glue(error_file_format)))
+
+  dir_errors_alg <- file.path(dir_errors, dataset_name, algorithm)
+  dir.create(dir_errors_alg, recursive = TRUE, showWarnings = FALSE)
+
+  saveRDS(error_list, file = file.path(dir_errors_alg, str_glue(error_file_format)))
 }
 
 

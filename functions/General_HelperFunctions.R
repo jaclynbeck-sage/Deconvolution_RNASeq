@@ -632,9 +632,7 @@ OrderMarkers_ByCorrelation <- function(marker_list, data) {
 ##### Clean_BulkCovariates - takes a covariates dataframe for one of the bulk
 # datasets, makes sure that categorical variables are factors, scales numerical
 # variables, and merges the cleaned covariates dataframe with the metadata
-# dataframe. This function is specific to what variables are used in the
-# regression forumla, so it doesn't look at or fix the unused variables in
-# the covariates dataframe.
+# dataframe.
 #
 # Arguments:
 #   bulk_dataset_name - the name of the data set
@@ -656,12 +654,18 @@ Clean_BulkCovariates <- function(bulk_dataset_name, metadata, covariates) {
     covariates[,batch] <- factor(covariates[,batch])
   }
 
-  # All bulk datasets have 'sex' as a categorical variable and use it in the model
-  covariates$sex <- factor(covariates$sex)
+  for (col in c("sex", "race", "spanish", "ethnicity", "individualID", "apoe4_allele")) {
+    if (col %in% colnames(covariates)) {
+      covariates[,col] <- factor(covariates[,col])
+    }
+  }
+
+  covariates$age_death[covariates$age_death == "90+"] = 90
+  covariates$age_death <- as.numeric(covariates$age_death)
 
   # Scale numerical covariates
   for (colname in colnames(covariates)) {
-    if (is.numeric(covariates[,colname])) {
+    if (is.numeric(covariates[,colname]) & colname != "apoe4_allele") {
       covariates[,colname] <- scale(covariates[,colname])
     }
   }
