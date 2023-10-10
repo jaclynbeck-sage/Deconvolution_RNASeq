@@ -161,13 +161,18 @@ for (bulk_dataset in bulk_datasets) {
       gof_means_tissue <- lapply(deconv_list, "[[", "gof_means_by_tissue")
       params <- lapply(deconv_list, "[[", "params")
 
+      valid_params <- names(gof_means_all)[lengths(gof_means_all) > 0]
+
       err_list <- list("means" = list("all_tissue" = do.call(rbind, gof_means_all),
                                       "by_tissue" = do.call(rbind, gof_means_tissue)),
                        "params" = do.call(rbind, params),
                        "by_sample" = lapply(deconv_list, "[[", "gof_by_sample"))
 
+      err_list$params <- err_list$params[valid_params,]
+      err_list$by_sample <- err_list$by_sample[valid_params]
+
       Save_ErrorList(bulk_dataset, err_list, algorithm, params_data)
-      print(paste("Errors calculated for", length(err_list), "of",
+      print(paste("Errors calculated for", length(valid_params), "of",
                   length(deconv_list), "parameter sets."))
       print("Done")
     }
