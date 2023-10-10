@@ -20,7 +20,6 @@ est_fields = list("Dtangle" = "estimates",
                   "DWLS" = "estimates")
 
 algorithms <- names(est_fields)
-algorithms <- c("DeconRNASeq")
 
 err_list <- list()
 
@@ -41,7 +40,7 @@ for (bulk_dataset in bulk_datasets) {
   # determined by log_cpm values
   bulk_tmp <- Load_BulkData(bulk_dataset, output_type = "log_cpm")
   var_genes <- apply(assay(bulk_tmp, "counts"), 1, var)
-  var_genes <- sort(var_genes, decreasing = TRUE)
+  var_genes <- names(sort(var_genes, decreasing = TRUE))
   rm(bulk_tmp)
 
   # Loop over each algorithm's results. Looping isn't strictly necessary but
@@ -128,8 +127,8 @@ for (bulk_dataset in bulk_datasets) {
 
         params <- deconv_list[[param_id]]$params
 
-        #markers <- rownames(signature)
-        markers <- highly_variable
+        markers <- rownames(signature)
+        #markers <- highly_variable
         #markers <- common_markers
 
         sig_filt <- signature[markers,]
