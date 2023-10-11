@@ -14,7 +14,7 @@ library(corrplot)
 library(dplyr)
 library(sageseqr)
 
-source(file.path("functions", "FileIO_HelperFunctions.R"))
+source(file.path("functions", "General_HelperFunctions.R"))
 
 datasets <- c("Mayo", "MSBB", "ROSMAP")
 

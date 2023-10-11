@@ -674,8 +674,8 @@ Clean_BulkCovariates <- function(bulk_dataset_name, metadata, covariates) {
   covariates <- covariates %>% select(-diagnosis, -tissue)
 
   # Merge covariates into the metadata
-  col_order <- rownames(colData(bulk_se))
-  metadata <- merge(colData(bulk_se), covariates, by.x = "sample",
+  col_order <- rownames(metadata)
+  metadata <- merge(metadata, covariates, by.x = "sample",
                     by.y = "specimenID", sort = FALSE)
   rownames(metadata) <- metadata$sample
 

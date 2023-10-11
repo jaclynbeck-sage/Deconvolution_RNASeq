@@ -9,7 +9,7 @@ source(file.path("functions", "General_HelperFunctions.R"))
 granularity <- "broad_class"
 bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
 
-cores <- 6
+cores <- 12
 cl <- makeCluster(cores, type = "FORK", outfile = str_glue("errors_output.txt"))
 registerDoParallel(cl)
 
@@ -38,10 +38,10 @@ for (bulk_dataset in bulk_datasets) {
 
   # The set of genes to use for error calculation -- highly variable genes as
   # determined by log_cpm values
-  bulk_tmp <- Load_BulkData(bulk_dataset, output_type = "log_cpm")
-  var_genes <- apply(assay(bulk_tmp, "counts"), 1, var)
-  var_genes <- names(sort(var_genes, decreasing = TRUE))
-  rm(bulk_tmp)
+  #bulk_tmp <- Load_BulkData(bulk_dataset, output_type = "log_cpm")
+  #var_genes <- apply(assay(bulk_tmp, "counts"), 1, var)
+  #var_genes <- names(sort(var_genes, decreasing = TRUE))
+  #rm(bulk_tmp)
 
   # Loop over each algorithm's results. Looping isn't strictly necessary but
   # is helpful for controlling what gets processed
@@ -72,6 +72,16 @@ for (bulk_dataset in bulk_datasets) {
                                reference_input_type, normalization, regression_method) %>%
                         distinct()
 
+      # If the error file already exists, don't re-process
+      tmp <- Load_ErrorList(algorithm, params_data)
+      if (!is.null(tmp)) {
+        msg <- paste("Error file for", algorithm,
+                     paste(params_data, collapse = " "),
+                     "found. Skipping...")
+        message(msg)
+        return(NULL)
+      }
+
       # Input data needs to be normalized by depth (cpm, tmm, or tpm). If the
       # original input was 'counts', normalize to CPM. If the original input was
       # on the log scale, normalize to linear scale.
@@ -93,7 +103,7 @@ for (bulk_dataset in bulk_datasets) {
                                           params_data$granularity,
                                           output_type = "cpm")
 
-      highly_variable <- var_genes[var_genes %in% rownames(signature)][1:5000]
+      #highly_variable <- var_genes[var_genes %in% rownames(signature)][1:5000]
 
       #marker_rows <- which(params$marker_type != "None")
 
@@ -104,6 +114,16 @@ for (bulk_dataset in bulk_datasets) {
 
       ##### Calculate error for each param set #####
       for (param_id in names(deconv_list)) {
+
+        # If the error calculation for this param_id exists, don't re-calculate
+        tmp <- Load_ErrorIntermediate(algorithm, deconv_list[[param_id]]$params)
+        if (!is.null(tmp)) {
+          deconv_list[[param_id]] <- tmp
+          message(paste("Using previously-calculated errors for", algorithm,
+                        "/", paste(params, collapse = " ")))
+          next
+        }
+
         est_pct <- deconv_list[[param_id]][[est_field]]
         est_pct <- est_pct[colnames(bulk_cpm), colnames(signature)]
 
@@ -155,6 +175,8 @@ for (bulk_dataset in bulk_datasets) {
         #deconv_list[[param_id]]$gof_glm_by_sample <- gof_glm_by_sample
         #deconv_list[[param_id]]$gof_glm_means_all <- gof_glm_means$all_tissue
         #deconv_list[[param_id]]$gof_glm_means_by_tissue <- gof_glm_means$by_tissue
+
+        Save_ErrorIntermediate(deconv_list[[param_id]], algorithm)
       }
 
       gof_means_all <- lapply(deconv_list, "[[", "gof_means_all")
@@ -170,6 +192,12 @@ for (bulk_dataset in bulk_datasets) {
 
       err_list$params <- err_list$params[valid_params,]
       err_list$by_sample <- err_list$by_sample[valid_params]
+
+      # Necessary to re-establish params_data because we altered the original
+      # variable at the beginning of the loop
+      params_data <- err_list$params[1,] %>%
+        select(reference_data_name, test_data_name, granularity,
+               reference_input_type, normalization, regression_method)
 
       Save_ErrorList(bulk_dataset, err_list, algorithm, params_data)
       print(paste("Errors calculated for", length(valid_params), "of",

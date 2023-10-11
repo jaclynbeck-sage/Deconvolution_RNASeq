@@ -14,6 +14,7 @@ dir_params_lists <- file.path(dir_output, "params_lists")
 dir_errors <- file.path(dir_output, "errors")
 
 dir_params_lists_tmp <- file.path(dir_params_lists, "tmp")
+dir_errors_tmp <- file.path(dir_errors, "tmp")
 
 dir_raw_data <- file.path(dir_input, "raw_data")
 dir_preprocessed <- file.path(dir_input, "preprocessed")

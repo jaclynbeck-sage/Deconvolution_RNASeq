@@ -54,8 +54,7 @@ required_libraries <- alg_config$required_libraries
 # NOTE: the helper functions have to be sourced inside the foreach loop
 #       so they exist in each newly-created parallel environment
 
-foreach(P = 1:nrow(params_loop1),
-        .packages = required_libraries) %dopar% {
+foreach(P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
   source(file.path("functions", "General_HelperFunctions.R"))
   source(file.path("functions", "Step09_ArgumentChecking_HelperFunctions.R"))
   source(alg_config$inner_loop_file) # defined in the config

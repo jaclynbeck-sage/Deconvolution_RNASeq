@@ -703,35 +703,69 @@ Save_ErrorList <- function(dataset_name, error_list, algorithm, params_data) {
 #
 # Arguments:
 #   algorithm = the name of the algorithm
-#   reference_dataset = the name of the reference data set
-#   test_dataset = either "donors" or "training", to signify if the algorithm was
-#                  run on donor or training pseudobulk, or one of "Mayo",
-#                  "MSBB", or "ROSMAP" if the algorithm was run on bulk data
-#   granularity = either "broad" or "fine", for which level of cell types was
-#                 used for markers and pseudobulk creation.
-#   normalization = the type of normalization used. See Load_CountsFile
-#                   output_type parameter explanation for valid values.
-#   regression_method = the type of regression used on bulk data counts. See
-#                   Load_CountsFile regression_method parameter explanation for
-#                   valid values.
+#   params = a one-row dataframe or named list of parameters used to generate
+#            the file
 #
 # Returns:
 #   a list of errors containing entries for mean errors, errors by celltype,
 #   errors by subject, goodness-of-fit, and parameters for an algorithm /
 #   dataset / datatype / granularity / normalization combo
-Load_ErrorList <- function(algorithm, reference_dataset, test_dataset,
-                           granularity, normalization, regression_method) {
-  error_file_format <- paste0("errors_{algorithm}_{reference_dataset}_",
-                              "{test_dataset}_{granularity}_{normalization}_",
-                              "{regression_method}.rds")
-  error_file <- file.path(dir_errors, str_glue(error_file_format))
+Load_ErrorList <- function(algorithm, params) {
+  name_base <- paste(params, collapse = "_")
+  error_file_format <- paste0("errors_{algorithm}_{name_base}.rds")
+  error_file <- file.path(dir_errors, test_dataset, str_glue(error_file_format))
 
   if (!file.exists(error_file)) {
     print(paste(error_file, "doesn't exist!"))
-    return(list())
+    return(NULL)
   }
 
   return(readRDS(error_file))
+}
+
+
+# Save_ErrorIntermediate: saves the error calculation from a single param set to
+# a temporary folder, to safeguard against having to re-start processing on the
+# full parameter set list in the event of a crash. The file is named with the
+# parameters used to generate the result.
+#
+# Arguments:
+#   error_obj = a named list containing both the output of one of the
+#            deconvolution algorithms plus the error calculations. It must
+#            contain an entry called "params", which is a single-row dataframe
+#            containing the parameters used to generate this result.
+#   algorithm = the name of the algorithm to pre-pend to the file name
+#
+# Returns:
+#   nothing
+Save_ErrorIntermediate <- function(error_obj, algorithm) {
+  filename <- paste(error_obj$params, collapse = "_")
+  saveRDS(result, file.path(dir_errors_tmp, str_glue("{algorithm}_{filename}.rds")))
+}
+
+
+# Load_ErrorIntermediate: loads an error calculation from a single param set
+# from a temporary folder, in order to re-load previous calculations when
+# restarting due to crash or shutdown. The file is named with the parameters
+# used to generate the result.
+#
+# Arguments:
+#   algorithm = the name of the algorithm to pre-pend to the file name
+#   params = a named vector or single-row dataframe with the parameters used to
+#            generate the result
+#
+# Returns:
+#   a named list containing both the output of one of the deconvolution
+#   algorithms plus the error calculations if a file matching the input
+#   parameters exists, or NULL if not
+Load_ErrorIntermediate <- function(algorithm, params) {
+  filename <- paste(params, collapse = "_")
+  filename <- file.path(dir_errors_tmp, str_glue("{algorithm}_{filename}.rds"))
+
+  if (file.exists(filename)) {
+    return(readRDS(filename))
+  }
+  return(NULL)
 }
 
 
