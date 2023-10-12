@@ -713,10 +713,11 @@ Save_ErrorList <- function(dataset_name, error_list, algorithm, params_data) {
 Load_ErrorList <- function(algorithm, params) {
   name_base <- paste(params, collapse = "_")
   error_file_format <- paste0("errors_{algorithm}_{name_base}.rds")
-  error_file <- file.path(dir_errors, test_dataset, str_glue(error_file_format))
+  error_file <- file.path(dir_errors, params$test_data_name, algorithm,
+                          str_glue(error_file_format))
 
   if (!file.exists(error_file)) {
-    print(paste(error_file, "doesn't exist!"))
+    #print(paste(error_file, "doesn't exist!"))
     return(NULL)
   }
 
@@ -740,7 +741,7 @@ Load_ErrorList <- function(algorithm, params) {
 #   nothing
 Save_ErrorIntermediate <- function(error_obj, algorithm) {
   filename <- paste(error_obj$params, collapse = "_")
-  saveRDS(result, file.path(dir_errors_tmp, str_glue("{algorithm}_{filename}.rds")))
+  saveRDS(error_obj, file.path(dir_errors_tmp, str_glue("{algorithm}_{filename}.rds")))
 }
 
 
