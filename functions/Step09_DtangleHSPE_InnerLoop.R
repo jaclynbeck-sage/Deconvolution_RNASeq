@@ -64,7 +64,7 @@ DtangleHSPE_InnerLoop <- function(Y, pure_samples, params, algorithm) {
                    seed = 12345)
 
     # Get rid of "diag" (index 5), which is huge and unneeded
-    result <- result %>% select(-diag)
+    result <- result[1:4]
   }
 
   # Add the params we used to generate this run
