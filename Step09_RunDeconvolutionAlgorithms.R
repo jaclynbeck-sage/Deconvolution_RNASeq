@@ -54,11 +54,7 @@ required_libraries <- alg_config$required_libraries
 # NOTE: the helper functions have to be sourced inside the foreach loop
 #       so they exist in each newly-created parallel environment
 
-foreach(P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
-  source(file.path("functions", "General_HelperFunctions.R"))
-  source(file.path("functions", "Step09_ArgumentChecking_HelperFunctions.R"))
-  source(alg_config$inner_loop_file) # defined in the config
-
+for (P in 1:nrow(params_loop1)) {
   data <- Load_AlgorithmInputData_FromParams(params_loop1[P,])
 
   data$test <- as.matrix(assay(data$test, "counts"))
@@ -68,12 +64,12 @@ foreach(P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
     data$reference <- as(data$reference, "SingleCellExperiment")
 
     # Pre-compute sc.basis to save time
-    sc_basis <- music_basis(data$reference, non.zero = TRUE,
-                            markers = rownames(data$reference),
-                            clusters = "celltype", samples = "sample",
-                            select.ct = NULL,
-                            ct.cov = FALSE,
-                            verbose = TRUE)
+    sc_basis <- MuSiC::music_basis(data$reference, non.zero = TRUE,
+                                   markers = rownames(data$reference),
+                                   clusters = "celltype", samples = "sample",
+                                   select.ct = NULL,
+                                   ct.cov = FALSE,
+                                   verbose = TRUE)
   }
 
   # Some extra pre-processing needed for Dtangle/HSPE -- reformat the input
@@ -99,7 +95,11 @@ foreach(P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
   # the algorithm with specific parameters like which markers to use, how many
   # from each cell type, and any changes to arguments in the function call.
 
-  results_list <- lapply(1:nrow(params_loop2), function(R) {
+  results_list <- foreach(R = 1:nrow(params_loop2), .packages = required_libraries) %dopar% { #lapply(1:nrow(params_loop2), function(R) {
+    source(file.path("functions", "General_HelperFunctions.R"))
+    source(file.path("functions", "Step09_ArgumentChecking_HelperFunctions.R"))
+    source(alg_config$inner_loop_file) # defined in the config
+
     params <- cbind(params_loop1[P,], params_loop2[R,])
 
     # For backward compatibility -- for algorithms that only input one kind of
@@ -139,7 +139,7 @@ foreach(P = 1:nrow(params_loop1), .packages = required_libraries) %dopar% {
     # Save each result in case of crashing
     Save_AlgorithmIntermediate(res, algorithm)
     return(res)
-  }) # end foreach loop
+  } # end foreach loop
 
   # It's possible for some items in results_list to be null if there was an error.
   # Filter them out.

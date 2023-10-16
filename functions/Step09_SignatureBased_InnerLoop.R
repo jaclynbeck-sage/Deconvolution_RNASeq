@@ -114,7 +114,8 @@ RunDWLS <- function(signature_filt, bulk_mat_filt, solver_type, params) {
   # one sample at a time so this loops over all samples. DWLS prints the output
   # of every call so we redirect this to a file to remove it from the main
   # status file from threading
-  sink('DWLS_tmp.txt')
+  sink(file.path(dir_params_lists_tmp,
+                 paste0("DWLS_tmp_", paste(params, collapse = "_"), ".txt")))
   res_pcts <- apply(bulk_mat_filt, 2, function(B) {
     return(solve_fn(signature_filt, B))
   })
