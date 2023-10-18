@@ -740,7 +740,8 @@ Load_ErrorList <- function(algorithm, params) {
 # Returns:
 #   nothing
 Save_ErrorIntermediate <- function(error_obj, algorithm) {
-  filename <- paste(error_obj$params, collapse = "_")
+  params <- error_obj$params %>% select(-total_markers_used)
+  filename <- paste(params, collapse = "_")
   saveRDS(error_obj, file.path(dir_errors_tmp, str_glue("{algorithm}_{filename}.rds")))
 }
 
