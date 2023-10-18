@@ -29,19 +29,11 @@ for (bulk_dataset in bulk_datasets) {
                     "MSBB" = dir_msbb_output,
                     "ROSMAP" = dir_rosmap_output)
 
-  # The data that will be used in the GLM (needs unadjusted counts for bulk
-  # data)
-  bulk_se <- Load_BulkData(bulk_dataset, output_type = "counts",
+  # The data that will be used in the LM (needs unadjusted log2(cpm))
+  bulk_se <- Load_BulkData(bulk_dataset, output_type = "log_cpm",
                            regression_method = "none")
   covariates <- Load_Covariates(bulk_dataset)
   covariates <- Clean_BulkCovariates(bulk_dataset, colData(bulk_se), covariates)
-
-  # The set of genes to use for error calculation -- highly variable genes as
-  # determined by log_cpm values
-  #bulk_tmp <- Load_BulkData(bulk_dataset, output_type = "log_cpm")
-  #var_genes <- apply(assay(bulk_tmp, "counts"), 1, var)
-  #var_genes <- names(sort(var_genes, decreasing = TRUE))
-  #rm(bulk_tmp)
 
   # Loop over each algorithm's results. Looping isn't strictly necessary but
   # is helpful for controlling what gets processed
@@ -50,6 +42,10 @@ for (bulk_dataset in bulk_datasets) {
     est_field <- est_fields[[algorithm]]
 
     res_files <- list.files(dir_out, pattern = algorithm, full.names = TRUE)
+    if (length(res_files) == 0) {
+      message(str_glue("No data for {algorithm} found. Skipping..."))
+      next
+    }
 
     # Process files in parallel
     foreach (F = 1:length(res_files)) %dopar% {
@@ -129,6 +125,7 @@ for (bulk_dataset in bulk_datasets) {
 
         if (any(is.na(est_pct))) {
           message(str_glue("Param set {param_id} has NA values. Skipping..."))
+          deconv_list[[param_id]] <- NULL
           next
         }
 
@@ -142,6 +139,7 @@ for (bulk_dataset in bulk_datasets) {
           msg <- str_glue(paste("Param set '{param_id}' has too many 0 estimates",
                                 "for cell type(s) [{cts}]. Skipping..."))
           message(msg)
+          deconv_list[[param_id]] <- NULL
           next
         }
 
@@ -172,6 +170,7 @@ for (bulk_dataset in bulk_datasets) {
         deconv_list[[param_id]]$gof_by_sample <- gof_by_sample
         deconv_list[[param_id]]$gof_means_all <- gof_means$all_tissue
         deconv_list[[param_id]]$gof_means_by_tissue <- gof_means$by_tissue
+        deconv_list[[param_id]]$params$total_markers_used <- length(decon_list[[params]]$markers)
         #deconv_list[[param_id]]$gof_glm_by_sample <- gof_glm_by_sample
         #deconv_list[[param_id]]$gof_glm_means_all <- gof_glm_means$all_tissue
         #deconv_list[[param_id]]$gof_glm_means_by_tissue <- gof_glm_means$by_tissue
@@ -179,19 +178,22 @@ for (bulk_dataset in bulk_datasets) {
         Save_ErrorIntermediate(deconv_list[[param_id]], algorithm)
       }
 
+      # Remove NULL (skipped) entries
+      deconv_list <- deconv_list[lengths(deconv_list) > 0]
+
       gof_means_all <- lapply(deconv_list, "[[", "gof_means_all")
       gof_means_tissue <- lapply(deconv_list, "[[", "gof_means_by_tissue")
       params <- lapply(deconv_list, "[[", "params")
 
-      valid_params <- names(gof_means_all)[lengths(gof_means_all) > 0]
+      #valid_params <- names(gof_means_all)[lengths(gof_means_all) > 0]
 
       err_list <- list("means" = list("all_tissue" = do.call(rbind, gof_means_all),
                                       "by_tissue" = do.call(rbind, gof_means_tissue)),
                        "params" = do.call(rbind, params),
                        "by_sample" = lapply(deconv_list, "[[", "gof_by_sample"))
 
-      err_list$params <- err_list$params[valid_params,]
-      err_list$by_sample <- err_list$by_sample[valid_params]
+      #err_list$params <- err_list$params[valid_params,]
+      #err_list$by_sample <- err_list$by_sample[valid_params]
 
       # Necessary to re-establish params_data because we altered the original
       # variable at the beginning of the loop
