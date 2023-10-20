@@ -1,6 +1,7 @@
 library(dplyr)
 library(Matrix)
 library(Metrics)
+library(lme4)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
 
@@ -28,36 +29,44 @@ CalcGOF_BySample <- function(meas_expr_cpm, est_expr, param_id) {
   return(gof_by_sample)
 }
 
-# NOTE: This assumes this is for all genes in the data set, if we subset to a
-# smaller number we will have to pass in the library size
-CalcGOF_BySample_GLM <- function(bulk_dataset_name, covariates, bulk_se, est_pct,
-                                 sig_matrix_cpm, log_lib_size, param_id) {
-  est_expr <- t(est_pct %*% t(sig_matrix_cpm))
-  est_expr_log <- log(est_expr + 0.0001) # Add a small pseudocount
-
-  meas_expr <- as.matrix(assay(bulk_se, "counts"))
+CalcGOF_BySample_LM <- function(bulk_dataset_name, covariates, meas_expr_log,
+                                est_pct, param_id) {
+  covariates_ct <- cbind(covariates[colnames(meas_expr_log),],
+                         est_pct[colnames(meas_expr_log),])
 
   formulas <- Load_ModelFormulas(bulk_dataset_name)
 
-  form <- paste("expr", formulas$formula_fixed, "+ est")
+  # Replace all biological variables with the cell type proportions instead
+  form <- str_replace(formulas$formula_mixed, "~ diagnosis \\+ tissue",
+                      paste(colnames(est_pct), collapse = " + "))
+  form <- str_replace(form, "sex \\+ ", "")
 
-  glm_est <- sapply(rownames(bulk_se), function(gene) {
-    expr <- meas_expr[gene,]
-    est <- est_expr_log[gene,] # Assume log(est) varies linearly with log(expr)
+  # ROSMAP benefits from a linear mixed effect model
+  # For speed we're using a fixed effect model for ROSMAP, but saving this code
+  # just in case.
+  if (bulk_dataset_name == "UNUSED") {#"ROSMAP") {
+    form <- paste("expr ~ 0 +", form)
 
-    res <- glm(as.formula(form), data = covariates, offset = log_lib_size,
-               family = "poisson")
-    return(fitted(res))
-  })
-  glm_est <- t(glm_est)
+    lm_est <- sapply(rownames(meas_expr_log), function(gene) {
+      expr <- meas_expr_log[gene,]
 
-  # These values are CPM using a truncated set of genes to calculate library
-  # size. Since we didn't estimate the GLM for all genes, we have no way to get
-  # the 'true' library size for glm_est.
-  meas_expr_cpm <- scuttle::calculateCPM(meas_expr)
-  glm_est_cpm <- scuttle::calculateCPM(glm_est)
+      res <- lmer(as.formula(form), data = covariates_ct)
+      return(fitted(res))
+    })
+  }
+  # Mayo and MSBB can use fixed effects only -- using batch as a random effect
+  # causes singular fit for a lot of genes, so we don't do that
+  else {
+    form <- str_replace(form, " \\+ \\(.*", "") # remove random effect term
+    form <- paste("t(meas_expr_log) ~ 0 +", form)
+    lm_est <- lm(as.formula(form), data = covariates_ct)
+    lm_est <- fitted(lm_est)
+  }
 
-  return(CalcGOF_BySample(meas_expr, glm_est, param_id))
+  # Reverse the log2(cpm+1) transform
+  lm_est <- t(2^lm_est-1)
+
+  return(CalcGOF_BySample(2^meas_expr_log-1, lm_est, param_id))
 }
 
 
@@ -76,6 +85,31 @@ CalcGOF_Means <- function(gof_by_sample, bulk_metadata, param_id) {
 
   return(list("all_tissue" = gof_means_all,
               "by_tissue" = gof_means_tissue))
+}
+
+
+CalcEstimateStats <- function(all_ests, bulk_metadata) {
+  estimate_stats_sample <- all_ests %>% group_by(celltype, sample) %>%
+                              summarize(mean_pct = mean(percent),
+                                        sd_pct = sd(percent),
+                                        rel_sd_pct = sd_pct / mean_pct)
+
+  # average and sd of the *mean* values for each sample
+  estimate_stats_all <- estimate_stats_sample %>% group_by(celltype) %>%
+                          summarize(mean_pct = mean(mean_pct),
+                                    mean_sd_pct = mean(sd_pct),
+                                    mean_rel_sd_pct = mean(rel_sd_pct))
+
+  estimate_stats_sample$tissue <- bulk_metadata[estimate_stats_sample$sample, "tissue"]
+
+  estimate_stats_tissue <- estimate_stats_sample %>% group_by(tissue, celltype) %>%
+                              summarize(mean_pct = mean(mean_pct),
+                                        mean_sd_pct = mean(sd_pct),
+                                        mean_rel_sd_pct = mean(rel_sd_pct))
+
+  return(list("by_sample" = estimate_stats_sample,
+              "all_tissue" = estimate_stats_all,
+              "by_tissue" = estimate_stats_tissue))
 }
 
 

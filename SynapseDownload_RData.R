@@ -24,7 +24,9 @@ download <- function(synID, downloadLocation) {
   parent <- parent$asList()
 
   for (child in parent) {
-    res = synGet(child$id, downloadLocation = downloadLocation)
+    res = synGet(child$id, downloadLocation = downloadLocation,
+                 ifcollision = "overwrite.local")
+
     if (is(res, "synapseclient.entity.Folder")) {
       new_folder <- file.path(downloadLocation, res$name)
       dir.create(new_folder, recursive = TRUE, showWarnings = FALSE)

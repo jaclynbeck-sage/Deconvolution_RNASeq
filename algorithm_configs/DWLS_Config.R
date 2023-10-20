@@ -44,5 +44,5 @@ alg_config <- list(
   required_libraries = c("DWLS"),
 
   # How many cores to use in parallel
-  cores = 8 # Machine this was run on has 16 cores
+  cores = 12 # Machine this was run on has 16 cores
 )

@@ -21,8 +21,6 @@ est_fields = list("Dtangle" = "estimates",
 
 algorithms <- names(est_fields)
 
-err_list <- list()
-
 for (bulk_dataset in bulk_datasets) {
   dir_out <- switch(bulk_dataset,
                     "Mayo" = dir_mayo_output,
@@ -30,10 +28,24 @@ for (bulk_dataset in bulk_datasets) {
                     "ROSMAP" = dir_rosmap_output)
 
   # The data that will be used in the LM (needs unadjusted log2(cpm))
-  #bulk_se <- Load_BulkData(bulk_dataset, output_type = "log_cpm",
-  #                         regression_method = "none")
-  #covariates <- Load_Covariates(bulk_dataset)
-  #covariates <- Clean_BulkCovariates(bulk_dataset, colData(bulk_se), covariates)
+  bulk_se <- Load_BulkData(bulk_dataset, output_type = "log_cpm",
+                           regression_method = "none")
+
+  meas_expr_log <- as.matrix(assay(bulk_se, "counts"))
+
+  # Get highly variable genes
+  var_genes <- rowVars(meas_expr_log, useNames = TRUE)
+  var_genes <- sort(var_genes, decreasing = TRUE)
+
+  highly_variable <- names(var_genes)[1:5000]
+  meas_expr_log <- meas_expr_log[highly_variable,]
+  bulk_metadata <- colData(bulk_se)
+
+  covariates <- Load_Covariates(bulk_dataset)
+  covariates <- Clean_BulkCovariates(bulk_dataset, bulk_metadata, covariates)
+
+  rm(bulk_se)
+  gc()
 
   # Loop over each algorithm's results. Looping isn't strictly necessary but
   # is helpful for controlling what gets processed
@@ -59,12 +71,19 @@ for (bulk_dataset in bulk_datasets) {
 
       params <- do.call(rbind, lapply(deconv_list, "[[", "params"))
 
+      # For backwards compatibility -- algorithms that input a signature didn't
+      # originally have a 'reference_input_type' field so this puts it back if
+      # it's missing.
+      if (!("reference_input_type" %in% colnames(params))) {
+        params$reference_input_type <- "signature"
+      }
+
       # All entries in this file should have the same values for these parameters,
       # so we end up with a 1-row data frame
       params_data <- params %>%
-        select(reference_data_name, test_data_name, granularity,
-               reference_input_type, normalization, regression_method) %>%
-        distinct()
+                        select(reference_data_name, test_data_name, granularity,
+                               reference_input_type, normalization, regression_method) %>%
+                        distinct()
 
       # If the error file already exists, don't re-process
       tmp <- Load_ErrorList(algorithm, params_data)
@@ -92,24 +111,13 @@ for (bulk_dataset in bulk_datasets) {
       # We need the signature matrix for error calculation, not the raw data
       params_mod$reference_input_type <- "signature"
 
-      # The data that was used to generate the estimate
+      # The data that was used to generate the estimates
       data <- Load_AlgorithmInputData_FromParams(params_mod)
       signature <- data$reference
       bulk_cpm <- assay(data$test, "counts")
 
-      # The data that will be used in the GLM (needs unadjusted signature in CPM)
-      #sig_for_glm <- Load_SignatureMatrix(params_data$reference_data_name,
-      #                                    params_data$granularity,
-      #                                    output_type = "cpm")
-
-      #highly_variable <- var_genes[var_genes %in% rownames(signature)][1:5000]
-
-      #marker_rows <- which(params$marker_type != "None")
-
-      #common_markers <- c()
-      #for (row in marker_rows) {
-      #  common_markers <- c(common_markers, deconv_list[[row]]$markers)
-      #}
+      # Needed for print output at the end
+      total_length <- length(deconv_list)
 
       ##### Calculate error for each param set #####
       # Calculated in parallel
@@ -150,36 +158,34 @@ for (bulk_dataset in bulk_datasets) {
 
         params <- deconv_list[[param_id]]$params
 
-        markers <- rownames(signature)
-        #markers <- highly_variable
-        #markers <- common_markers
+        #genes_use <- rownames(signature)
+        genes_use <- intersect(highly_variable, rownames(signature))
 
-        sig_filt <- signature[markers,]
-        bulk_cpm_filt <- bulk_cpm[markers,]
-        #bulk_se_filt <- bulk_se[markers,]
-        #sig_glm_filt <- sig_for_glm[markers,]
+        sig_filt <- signature[genes_use,]
+        bulk_cpm_filt <- bulk_cpm[genes_use,]
 
         est_expr <- t(est_pct %*% t(sig_filt))
 
         gof_by_sample <- CalcGOF_BySample(bulk_cpm_filt, est_expr, param_id)
         gof_means <- CalcGOF_Means(gof_by_sample, colData(data$test), param_id)
 
-        #log_lib_size <- log(colSums(assay(bulk_se, "counts")))
-        #gof_glm_by_sample <- CalcGOF_BySample_GLM(bulk_dataset, covariates,
-        #                                          bulk_se_filt, est_pct,
-        #                                          sig_glm_filt, log_lib_size,
-        #                                          param_id)
-        #gof_glm_means <- CalcGOF_Means(gof_glm_by_sample, colData(data$test),
-        #                               param_id)
+        gof_by_sample_lm <- CalcGOF_BySample_LM(bulk_dataset, covariates,
+                                                meas_expr_log, est_pct, param_id)
+        gof_means_lm <- CalcGOF_Means(gof_by_sample_lm, colData(data$test),
+                                      param_id)
 
         decon_new <- deconv_list[[param_id]]
         decon_new$gof_by_sample <- gof_by_sample
         decon_new$gof_means_all <- gof_means$all_tissue
         decon_new$gof_means_by_tissue <- gof_means$by_tissue
+
+        decon_new$gof_lm_by_sample <- gof_lm_by_sample
+        decon_new$gof_lm_means_all <- gof_lm_means$all_tissue
+        decon_new$gof_lm_means_by_tissue <- gof_lm_means$by_tissue
+
         decon_new$params$total_markers_used <- length(decon_new$markers)
-        #deconv_list[[param_id]]$gof_glm_by_sample <- gof_glm_by_sample
-        #deconv_list[[param_id]]$gof_glm_means_all <- gof_glm_means$all_tissue
-        #deconv_list[[param_id]]$gof_glm_means_by_tissue <- gof_glm_means$by_tissue
+        decon_new$estimates_df <- melt(est_pct)
+        colnames(decon_new$estimates_df) <- c("sample", "celltype", "percent")
 
         Save_ErrorIntermediate(decon_new, algorithm)
         print(param_id)
@@ -191,16 +197,26 @@ for (bulk_dataset in bulk_datasets) {
 
       gof_means_all <- lapply(deconv_list, "[[", "gof_means_all")
       gof_means_tissue <- lapply(deconv_list, "[[", "gof_means_by_tissue")
+      gof_means_all_lm <- lapply(deconv_list, "[[", "gof_means_all_lm")
+      gof_means_tissue_lm <- lapply(deconv_list, "[[", "gof_means_by_tissue_lm")
       params <- lapply(deconv_list, "[[", "params")
+      all_ests <- do.call(rbind, lapply(deconv_list, "[[", "estimates_df"))
+
+      est_stats <- CalcEstimateStats(all_ests, bulk_metadata)
 
       err_list <- list("means" = list("all_tissue" = do.call(rbind, gof_means_all),
-                                      "by_tissue" = do.call(rbind, gof_means_tissue)),
+                                      "by_tissue" = do.call(rbind, gof_means_tissue),
+                                      "all_tissue_lm" = do.call(rbind, gof_means_all_lm),
+                                      "by_tissue_lm" = do.call(rbind, gof_means_tissue_lm)),
                        "params" = do.call(rbind, params),
-                       "by_sample" = lapply(deconv_list, "[[", "gof_by_sample"))
+                       "by_sample" = lapply(deconv_list, "[[", "gof_by_sample"),
+                       "by_sample_lm" = lapply(deconv_list, "[[", "gof_by_sample_lm"),
+                       "estimate_stats" = est_stats)
 
       Save_ErrorList(bulk_dataset, err_list, algorithm, params_data)
+
       print(paste("Errors calculated for", nrow(err_list$params), "of",
-                  length(deconv_list), "parameter sets."))
+                  total_length, "parameter sets."))
       print("Done")
     }
   }
