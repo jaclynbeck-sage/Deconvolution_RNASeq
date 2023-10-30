@@ -124,10 +124,11 @@ RunDWLS <- function(signature_filt, bulk_mat_filt, solver_type, params) {
   res_pcts <- t(res_pcts) # puts cell types as columns, samples as rows
 
   # DWLS can produce negative numbers but these are usually really close to
-  # zero. Include a check for larger negative numbers just in case.
-  if (any(res_pcts < -1e4)) {
+  # zero. Include a check for larger negative numbers just in case. DWLS can
+  # also produce NAs, and these should get thrown out as well.
+  if (any(is.na(res_pcts)) | any(res_pcts < -1e-3)) {
     param_set <- paste(params, collapse = "  ")
-    msg <- paste("*** Negative numbers in result for for param set:",
+    msg <- paste("*** Negative numbers or NA in result for for param set:",
                  param_set, "/  *** skipping ***")
     return(NULL)
   }
