@@ -25,6 +25,7 @@ library(dplyr)
 library(lme4)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
+source(file.path("functions", "General_HelperFunctions.R"))
 
 datasets <- c("Mayo", "MSBB", "ROSMAP")
 
@@ -72,7 +73,7 @@ for (dataset in datasets) {
   #adjust <- sweep(adjust, 2, offset, "+")
 
   # Note: There are multiple ways this value could be corrected. For a linear
-  # model, it would just be exp(log(expr$counts - adjust)). For a GLM, it could
+  # model, it would just be exp(log(expr$counts) - adjust). For a GLM, it could
   # also be corrected on a linear scale by adjusting the pearson residuals:
   #   pearson = (expr$counts - mu_orig)/sqrt(variance_orig)
   #   y = mu_new + pearson * sqrt(variance_new)

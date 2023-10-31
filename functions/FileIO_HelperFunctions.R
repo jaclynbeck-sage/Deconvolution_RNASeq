@@ -649,10 +649,11 @@ Save_AlgorithmOutputList <- function(output_list, algorithm, test_dataset, name_
 #   a list of outputs from one of the deconvolution algorithms, which contains
 #   output run under different parameter sets
 Load_AlgorithmOutputList <- function(algorithm, reference_dataset, test_dataset,
-                                     granularity, normalization,
-                                     regression_method = "none") {
+                                     granularity, reference_input_type,
+                                     normalization, regression_method = "none") {
   list_file_format <- paste0("estimates_{algorithm}_{reference_dataset}_",
-                             "{test_dataset}_{granularity}_{normalization}_",
+                             "{test_dataset}_{granularity}_",
+                             "{reference_input_type}_{normalization}_",
                              "{regression_method}.rds")
 
   out_directory <- switch(test_dataset,
@@ -662,7 +663,7 @@ Load_AlgorithmOutputList <- function(algorithm, reference_dataset, test_dataset,
                           dir_params_lists
   )
 
-  params_file <- file.path(out_directory, str_glue(list_file_format))
+  params_file <- file.path(out_directory, algorithm, str_glue(list_file_format))
 
   if (!file.exists(params_file)) {
     print(paste(params_file, "doesn't exist!"))
@@ -722,6 +723,24 @@ Load_ErrorList <- function(algorithm, params) {
   }
 
   return(readRDS(error_file))
+}
+
+
+# Get_ErrorFiles: For a given combination of algorithm / reference dataset /
+# bulk dataset / granularity, get all error filenames from the errors directory.
+#
+# Arguments:
+#   algorithm = the name of the algorithm
+#   reference_dataset = the name of the single cell dataset used as reference
+#   bulk_dataset = the name of the bulk dataset
+#   granularity = either "broad_class" or "sub_class"
+#
+# Returns:
+#   a vector of filenames (including full file path)
+Get_ErrorFiles <- function(algorithm, reference_dataset, bulk_dataset, granularity) {
+  dir_alg <- file.path(dir_errors, bulk_dataset, algorithm)
+  files <- list.files(dir_alg, pattern = reference_dataset, full.names = TRUE)
+  return(files)
 }
 
 

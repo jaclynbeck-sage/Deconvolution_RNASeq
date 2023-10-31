@@ -9,11 +9,15 @@ CalcGOF_BySample <- function(meas_expr_cpm, est_expr, param_id) {
   meas_expr_cpm <- as.matrix(meas_expr_cpm)
 
   # Using log2 transformation for correlation so distributions are more gaussian
-  cor_sample <- diag(cor(log2(meas_expr_cpm+1), log2(est_expr+1), use = "na.or.complete"))
+  cor_sample <- sapply(colnames(meas_expr_cpm), function(sample) {
+    cor(log2(meas_expr_cpm[,sample]+1), log2(est_expr[,sample]+1),
+        use = "na.or.complete")
+  })
 
   rmse_sample <- sapply(colnames(meas_expr_cpm), function(sample) {
     rmse(meas_expr_cpm[,sample], est_expr[,sample])
   })
+
   mape_sample <- sapply(colnames(meas_expr_cpm), function(sample) {
     ok <- meas_expr_cpm[,sample] != 0 | est_expr[,sample] != 0
     smape(meas_expr_cpm[ok, sample], est_expr[ok, sample]) / 2
@@ -44,7 +48,7 @@ CalcGOF_BySample_LM <- function(bulk_dataset_name, covariates, meas_expr_log,
   # ROSMAP benefits from a linear mixed effect model
   # For speed we're using a fixed effect model for ROSMAP, but saving this code
   # just in case.
-  if (bulk_dataset_name == "UNUSED") {#"ROSMAP") {
+  if (bulk_dataset_name == "UNUSED") { #"ROSMAP") {
     form <- paste("expr ~ 0 +", form)
 
     lm_est <- sapply(rownames(meas_expr_log), function(gene) {
@@ -63,8 +67,8 @@ CalcGOF_BySample_LM <- function(bulk_dataset_name, covariates, meas_expr_log,
     lm_est <- fitted(lm_est)
   }
 
-  # Reverse the log2(cpm+1) transform
-  lm_est <- t(2^lm_est-1)
+  # Reverse the log2(cpm+1) transform, ensure that the estimate is in CPM
+  lm_est <- calculateCPM(t(2^lm_est-1))
 
   return(CalcGOF_BySample(2^meas_expr_log-1, lm_est, param_id))
 }
@@ -207,6 +211,47 @@ Filter_Params <- function(err_list, best_params) {
 }
 
 
+# Loads all the "best_errors" files into one big list. The errors can be
+# concatenated into one data frame but the params lists have to be coded into
+# strings because they differ between algorithms
+Get_AllBestErrorsAsDf <- function(bulk_datasets, granularity) {
+  file_list <- list.files(dir_best_errors,
+                          pattern = paste(bulk_datasets, collapse = "|"),
+                          full.names = TRUE)
+
+  best_err_list <- lapply(file_list, function(file) {
+    data <- readRDS(file)
+    print(file)
+    param_strings <- format(data$params, trim = TRUE) %>%
+                        select(-reference_data_name, -test_data_name,
+                               -total_markers_used) %>%
+                        apply(1, paste, collapse = "_")
+
+    param_strings <- data.frame(param_id = names(param_strings),
+                                param_string = as.character(param_strings))
+
+    data$means_all_tissue$tissue <- "All"
+    data$means_by_tissue <- dplyr::rename(data$means_by_tissue, tissue = tissue_assignments)
+    data$means_all_tissue <- data$means_all_tissue[, colnames(data$means_by_tissue)]
+
+    means_cat <- rbind(data$means_all_tissue, data$means_by_tissue)
+
+    errs_df <- merge(means_cat, param_strings, by = "param_id")
+
+    if (!("reference_input_type" %in% colnames(data$params))) {
+      data$params$reference_input_type <- "signature"
+    }
+    errs_df <- merge(errs_df, select(data$params, reference_data_name,
+                                     test_data_name, algorithm,
+                                     reference_input_type, normalization,
+                                     regression_method),
+                     by.x = "param_id", by.y = "row.names")
+    return(errs_df)
+  })
+
+  return(do.call(rbind, best_err_list))
+}
+
 Get_AllBestParamsAsDf <- function(reference_datasets, granularity) {
   best_params_all <- lapply(reference_datasets, function(ref_dataset) {
     data <- readRDS(file.path(dir_output, str_glue("best_params_{ref_dataset}_{granularity}.rds")))
@@ -285,7 +330,8 @@ Get_AllErrorsAsDf <- function(bulk_datasets, reference_datasets, algorithms, gra
 }
 
 
-Get_AllEstimatesAsDf <- function(ref_dataset, bulk_dataset, algorithms, granularity, params_keep) {
+Get_AllEstimatesAsDf <- function(ref_dataset, bulk_dataset, algorithms,
+                                 granularity, file_params) {
   ests_alg <- list()
 
   for (algorithm in algorithms) {
@@ -294,18 +340,33 @@ Get_AllEstimatesAsDf <- function(ref_dataset, bulk_dataset, algorithms, granular
     }
     est_field <- est_fields[[algorithm]]
 
-    ests <- Load_AlgorithmOutputList(algorithm, ref_dataset, bulk_dataset, granularity)
-    ests <- ests[names(ests) %in% params_keep]
+    alg_name <- algorithm
+    file_params_sub <- subset(file_params,
+                              reference_data_name == ref_dataset &
+                                test_data_name == bulk_dataset &
+                                algorithm == alg_name &
+                                normalization %in% c("counts", "cpm", "log_cpm") &
+                                regression_method == "none")
+    if (algorithm == "Music") {
+      file_params_sub <- subset(file_params_sub, normalization == "counts")
+    }
+
+    # TODO fix for multiple input types / normalizations
+    ests <- Load_AlgorithmOutputList(algorithm, ref_dataset, bulk_dataset,
+                                     granularity, reference_input_type = file_params_sub$reference_input_type[1],
+                                     normalization = file_params_sub$normalization[1],
+                                     regression_method = "none")
+    ests <- ests[names(ests) %in% errs_melt$param_id]
 
     if (length(ests) == 0) {
       next
     }
 
     params <- lapply(ests, function(X) {
-      as.list(X[["params"]] %>% select(-test_data_name))
+      as.list(X$params %>% select(-test_data_name))
     })
 
-    param_ids <- sapply(params, paste, collapse = " ")
+    param_ids <- sapply(params, paste, collapse = "_")
 
     ests_melt <- lapply(ests, "[[", est_field)
 
@@ -318,7 +379,7 @@ Get_AllEstimatesAsDf <- function(ref_dataset, bulk_dataset, algorithms, granular
       ests_melt[[X]]$name <- X
       ests_melt[[X]]$sample <- rownames(ests_melt[[X]])
       ests_melt[[X]]$param_id <- param_ids[X]
-      return(ests_melt[[X]])
+      ests_melt[[X]]
     })
     ests_melt <- do.call(rbind, ests_melt)
     ests_melt <- melt(ests_melt) %>% dplyr::rename(celltype = variable,
@@ -333,4 +394,16 @@ Get_AllEstimatesAsDf <- function(ref_dataset, bulk_dataset, algorithms, granular
   ests_alg <- do.call(rbind, ests_alg)
 
   return(ests_alg)
+}
+
+
+Flatten_ErrorList <- function(err_list) {
+  fields <- setdiff(names(err_list[[1]]), "by_sample")
+  err_list_new <- lapply(fields, function(field) {
+    do.call(rbind, lapply(err_list, "[[", field))
+  })
+  names(err_list_new) <- fields
+  err_list_new[["by_sample"]] <- unlist(lapply(err_list, "[[", "by_sample"),
+                                        recursive = FALSE)
+  return(err_list_new)
 }

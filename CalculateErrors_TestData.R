@@ -5,6 +5,7 @@ library(foreach)
 library(doParallel)
 
 source(file.path("functions", "General_HelperFunctions.R"))
+source(file.path("functions", "Error_HelperFunctions.R"))
 
 granularity <- "broad_class"
 bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
@@ -34,11 +35,11 @@ for (bulk_dataset in bulk_datasets) {
   meas_expr_log <- as.matrix(assay(bulk_se, "counts"))
 
   # Get highly variable genes
-  var_genes <- rowVars(meas_expr_log, useNames = TRUE)
-  var_genes <- sort(var_genes, decreasing = TRUE)
+  #var_genes <- rowVars(meas_expr_log, useNames = TRUE)
+  #var_genes <- sort(var_genes, decreasing = TRUE)
 
-  highly_variable <- names(var_genes)[1:5000]
-  meas_expr_log <- meas_expr_log[highly_variable,]
+  #highly_variable <- names(var_genes)[1:5000]
+  #meas_expr_log <- meas_expr_log[highly_variable,]
   bulk_metadata <- colData(bulk_se)
 
   covariates <- Load_Covariates(bulk_dataset)
@@ -61,8 +62,8 @@ for (bulk_dataset in bulk_datasets) {
     }
 
     # Process files
-    for (F in res_files) {
-      deconv_list <- readRDS(F)
+    for (file in res_files) {
+      deconv_list <- readRDS(file)
 
       # If the file contains a null list, skip it
       if (length(deconv_list) == 0) {
@@ -116,6 +117,9 @@ for (bulk_dataset in bulk_datasets) {
       signature <- data$reference
       bulk_cpm <- assay(data$test, "counts")
 
+      rm(data)
+      gc()
+
       # Needed for print output at the end
       total_length <- length(deconv_list)
 
@@ -156,10 +160,19 @@ for (bulk_dataset in bulk_datasets) {
           return(NULL)
         }
 
+        if (granularity == "broad_class" &
+            any(est_pct[,"Inhibitory"] > est_pct[,"Excitatory"])) {
+          num_ests <- sum(est_pct[,"Inhibitory"] > est_pct[,"Excitatory"])
+          msg <- str_glue(paste("Param set '{param_id}' has {num_ests} estimates",
+                                "that contain more inhibitory than excitatory",
+                                "neurons."))
+          warning(msg)
+        }
+
         params <- deconv_list[[param_id]]$params
 
-        #genes_use <- rownames(signature)
-        genes_use <- intersect(highly_variable, rownames(signature))
+        genes_use <- rownames(signature)
+        #genes_use <- intersect(highly_variable, rownames(signature))
 
         sig_filt <- signature[genes_use,]
         bulk_cpm_filt <- bulk_cpm[genes_use,]
@@ -167,21 +180,20 @@ for (bulk_dataset in bulk_datasets) {
         est_expr <- t(est_pct %*% t(sig_filt))
 
         gof_by_sample <- CalcGOF_BySample(bulk_cpm_filt, est_expr, param_id)
-        gof_means <- CalcGOF_Means(gof_by_sample, colData(data$test), param_id)
+        gof_means <- CalcGOF_Means(gof_by_sample, bulk_metadata, param_id)
 
         gof_by_sample_lm <- CalcGOF_BySample_LM(bulk_dataset, covariates,
                                                 meas_expr_log, est_pct, param_id)
-        gof_means_lm <- CalcGOF_Means(gof_by_sample_lm, colData(data$test),
-                                      param_id)
+        gof_means_lm <- CalcGOF_Means(gof_by_sample_lm, bulk_metadata, param_id)
 
         decon_new <- deconv_list[[param_id]]
         decon_new$gof_by_sample <- gof_by_sample
         decon_new$gof_means_all <- gof_means$all_tissue
         decon_new$gof_means_by_tissue <- gof_means$by_tissue
 
-        decon_new$gof_lm_by_sample <- gof_lm_by_sample
-        decon_new$gof_lm_means_all <- gof_lm_means$all_tissue
-        decon_new$gof_lm_means_by_tissue <- gof_lm_means$by_tissue
+        decon_new$gof_lm_by_sample <- gof_by_sample_lm
+        decon_new$gof_lm_means_all <- gof_means_lm$all_tissue
+        decon_new$gof_lm_means_by_tissue <- gof_means_lm$by_tissue
 
         decon_new$params$total_markers_used <- length(decon_new$markers)
         decon_new$estimates_df <- melt(est_pct)
