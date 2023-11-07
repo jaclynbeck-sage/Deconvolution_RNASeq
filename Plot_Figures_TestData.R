@@ -13,37 +13,40 @@ source(file.path("functions", "FileIO_HelperFunctions.R"))
 
 options(scipen = 999)
 
-datasets <- c("cain", "lau", "leng", "mathys", "morabito")#, "seaRef") #, "seaAD")
+datasets <- c("cain", "lau", "leng", "mathys", "seaRef") #, "seaAD")
 
-est_fields = list("deconRNASeq" = "out.all",
-                  "dtangle" = "estimates",
-                  "hspe" = "estimates",
-                  "music" = "Est.pctRNA.weighted"
-)
+est_fields = list("Dtangle" = "estimates",
+                  "Music" = "Est.pctRNA.weighted",
+                  "HSPE" = "estimates",
+                  "DeconRNASeq" = "out.all",
+                  "DWLS" = "estimates")
 
-algorithms <- c(names(est_fields), "random")
+algorithms <- c(names(est_fields), "Random")
 
-granularity <- c("broad")
+granularity <- c("broad_class")
 
 bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
 
-best_params_all <- Get_AllBestParamsAsDf(reference_datasets, granularity)
+best_errors <- Get_AllBestErrorsAsDf(bulk_datasets, granularity)
 
-errs_all <- Get_AllErrorsAsDf(bulk_datasets, reference_datasets, algorithms,
-                              granularity, best_params_all$params)
 
-errs_all <- melt(errs_all) %>% dplyr::rename(error_type = "variable")
+#best_params_all <- Get_AllBestParamsAsDf(reference_datasets, granularity)
 
-errs_total <- subset(errs_all, tissue == "All")
+#errs_all <- Get_AllErrorsAsDf(bulk_datasets, reference_datasets, algorithms,
+#                              granularity, best_params_all$params)
 
-errs_tissue <- subset(errs_all, tissue != "All")
+errs_melt <- melt(best_errors) %>% dplyr::rename(error_type = "variable")
+
+errs_total <- subset(errs_melt, tissue == "All")
+
+errs_tissue <- subset(errs_melt, tissue != "All")
 errs_tissue$tissue <- paste(errs_tissue$test_data_name, errs_tissue$tissue)
 
 
 ##### Color setup #####
 
-refs <- unique(errs_all$reference_data_name)
-algs <- unique(errs_all$method)
+refs <- unique(errs_melt$reference_data_name)
+algs <- unique(errs_melt$algorithm)
 tiss <- colSums(table(errs_tissue$tissue, errs_tissue$test_data_name) > 1)
 
 # Reference data sets
@@ -57,9 +60,14 @@ names(algorithm_colors) <- sort(algs)
 # Tissues (modified viridis turbo color scheme)
 tiss <- colSums(table(errs_tissue$tissue, errs_tissue$test_data_name) > 1)
 tissue_colors <- c(viridis::turbo(tiss[["Mayo"]], begin = 0.1, end = 0.2),
-                   viridis::turbo(tiss[["MSBB"]], begin = 0.4, end = 0.55),
+                   viridis::turbo(tiss[["MSBB"]], begin = 0.35, end = 0.6),
                    viridis::turbo(tiss[["ROSMAP"]], begin = 0.7, end = 0.9))
 names(tissue_colors) <- sort(unique(errs_tissue$tissue))
+
+# MSBB colors need to be darker and a little more differentiated -- original
+# colors are 20EAABFF, 67FD68FF, AEFA37FF, E1DD37FF
+tissue_colors[grepl("MSBB", names(tissue_colors))] <- c("#00CA8BFF", "#37CD38FF",
+                                                        "#7ECA07FF", "#C1BD17FF")
 
 # Slightly more pastel than default looks better
 tissue_fill_colors <- str_replace(tissue_colors, "FF$", "88")
@@ -80,20 +88,20 @@ cor_names <- setdiff(unique(grep("cor", errs_total$error_type, value = TRUE)),
                      ros_names)
 other_errs <- setdiff(errs_total$error_type, c(cor_names, ros_names))
 
-pdf(file.path(dir_figures, "error_plots_ROSMAP_broad.pdf"), width=10, height = 12)
+pdf(file.path(dir_figures, "error_plots_summary_broad_class.pdf"), width=10, height = 12)
 
-plt1 <- Plot_ErrsByMethod(errs_total, cor_names, fill = "test_data_name", fill_colors = bulk_colors)
+plt1 <- Plot_ErrsByAlgorithm(errs_total, cor_names, fill = "test_data_name", fill_colors = bulk_colors)
 plt2 <- Plot_ErrsByDataset(errs_total, cor_names, fill = "test_data_name", fill_colors = bulk_colors)
-plt3 <- Plot_ErrsByMethod(errs_total, cor_names, x_axis = "test_data_name",
+plt3 <- Plot_ErrsByAlgorithm(errs_total, cor_names, x_axis = "test_data_name",
                           fill = "reference_data_name", fill_colors = reference_colors)
 plt4 <- Plot_ErrsByDataset(errs_total, cor_names, x_axis = "test_data_name",
-                           fill = "method", fill_colors = algorithm_colors)
+                           fill = "algorithm", fill_colors = algorithm_colors)
 
 print(plt1 / plt2 / plt3 / plt4 + plot_annotation(title = "Correlation by algorithm and dataset"))
 
 # By tissue
 
-plt5 <- Plot_ErrsByMethod(errs_tissue, cor_names, color = "tissue",
+plt5 <- Plot_ErrsByAlgorithm(errs_tissue, cor_names, color = "tissue",
                           fill = "tissue", fill_colors = tissue_fill_colors) +
           scale_color_manual(values = tissue_colors)
 plt6 <- Plot_ErrsByDataset(errs_tissue, cor_names, color = "tissue",
@@ -102,8 +110,8 @@ plt6 <- Plot_ErrsByDataset(errs_tissue, cor_names, color = "tissue",
 
 print(plt5 / plt6 + plot_annotation(title = "Correlation by algorithm and dataset (by tissue, combined view)"))
 
-plt7 <- Plot_ErrsByMethod(errs_tissue, cor_names,
-                          facet_var = c("method", "test_data_name"),
+plt7 <- Plot_ErrsByAlgorithm(errs_tissue, cor_names,
+                          facet_var = c("algorithm", "test_data_name"),
                           color = "tissue", fill = "reference_data_name",
                           fill_colors = reference_colors) +
           scale_color_manual(values = tissue_fill_colors)
@@ -112,7 +120,7 @@ print(plt7 + plot_annotation(title = "Correlation by algorithm (by tissue, split
 
 plt8 <- Plot_ErrsByDataset(errs_tissue, cor_names,
                            facet_var = c("reference_data_name", "test_data_name"),
-                           color = "tissue", fill = "method",
+                           color = "tissue", fill = "algorithm",
                            fill_colors = algorithm_colors) +
           scale_color_manual(values = tissue_fill_colors)
 
@@ -123,7 +131,7 @@ print(plt8 + plot_annotation(title = "Correlation by dataset (by tissue, split v
 # page as separate rows
 plts <- list()
 for (B in other_errs) {
-  plt <- Plot_ErrsByMethod(errs_total, B, facet_var = c("error_type", "method"),
+  plt <- Plot_ErrsByAlgorithm(errs_total, B, facet_var = c("error_type", "algorithm"),
                            fill = "test_data_name", fill_colors = bulk_colors)
   plts[[B]] <- plt
 }
@@ -142,8 +150,8 @@ print(wrap_plots(plts, nrow = length(other_errs)) + plot_annotation(title = 'Err
 # By tissue
 
 for (B in other_errs) {
-  plt <- Plot_ErrsByMethod(errs_tissue, B,
-                           facet_var = c("method", "test_data_name"),
+  plt <- Plot_ErrsByAlgorithm(errs_tissue, B,
+                           facet_var = c("algorithm", "test_data_name"),
                            color = "tissue", fill = "reference_data_name",
                            fill_colors = reference_colors) +
             scale_color_manual(values = tissue_fill_colors)
@@ -153,13 +161,13 @@ for (B in other_errs) {
 for (B in other_errs) {
   plt <- Plot_ErrsByDataset(errs_tissue, B,
                             facet_var = c("reference_data_name", "test_data_name"),
-                            color = "tissue", fill = "method",
+                            color = "tissue", fill = "algorithm",
                             fill_colors = algorithm_colors) +
             scale_color_manual(values = tissue_fill_colors)
   print(plt + plot_annotation(title = paste0(B, ' by dataset (by tissue)')))
 }
 
-# ROSMAP errors
+# ROSMAP errors -- NOT UPDATED YET
 
 errs_ros <- subset(errs_total, test_data_name == "ROSMAP")
 
@@ -169,7 +177,7 @@ ros_names2 <- grep("_pct", ros_names, value = TRUE)
 
 plts <- list()
 for (B in sort(ros_names2)) {
-  plt <- Plot_ErrsByMethod(errs_ros, B, facet_var = c("error_type", "method"),
+  plt <- Plot_ErrsByAlgorithm(errs_ros, B, facet_var = c("error_type", "method"),
                            fill = "reference_data_name",
                            fill_colors = reference_colors)
   plts[[B]] <- plt
@@ -182,7 +190,7 @@ errs_ros_tissue$tissue <- str_replace(errs_ros_tissue$tissue, "ROSMAP ", "")
 
 plts <- list()
 for (B in sort(ros_names2)) {
-  plt <- Plot_ErrsByMethod(errs_ros_tissue, B, x_axis = "tissue",
+  plt <- Plot_ErrsByAlgorithm(errs_ros_tissue, B, x_axis = "tissue",
                            facet_var = c("error_type", "method"),
                            fill = "reference_data_name", fill_colors = reference_colors)
   plts[[B]] <- plt
@@ -194,73 +202,42 @@ dev.off()
 
 #### Individual dataset examination #####
 
+file_params <- best_errors %>%
+  select(reference_data_name, test_data_name, algorithm,
+         reference_input_type, normalization,
+         regression_method) %>%
+  distinct()
+
 # TODO hspe is wrong
 for (dataset in datasets) {
   pdf(file.path(dir_figures, paste0("error_plots_", dataset, "_broad_detailed.pdf")), width=10, height = 12)
 
   for (bulk_dataset in bulk_datasets) {
     bulk_se <- Load_BulkData(bulk_dataset)
-    metadata <- as.data.frame(colData(bulk_se)) %>% dplyr::rename(subject = specimenID)
+    metadata <- as.data.frame(colData(bulk_se))
 
-    ests_alg <- list()
+    ests_alg <- Get_AllEstimatesAsDf(dataset, bulk_dataset, algorithms,
+                                     granularity, file_params)
 
-    for (algorithm in algorithms) {
-      if (algorithm == "random") {
-        next
-      }
-      est_field <- est_fields[[algorithm]]
+    # TODO fix
+    #best_params <- subset(best_errors, reference_data_name == dataset &
+    #                        algorithm %in% unique(ests_alg$algorithm) &
+    #                        grepl(bulk_dataset, test_data_name))
+    #best_params <- best_params %>% group_by(algorithm) %>%
+    #  mutate(#title = paste("Best", metrics, "/", test_datasets), # TODO fix
+    #         title_short = paste(algorithm, "params", as.numeric(factor(title)))) %>%
+    #  ungroup()
+    #best_params$param_id <- sapply(best_params$params, paste, collapse = " ")
 
-      ests <- Load_AlgorithmOutputList(algorithm, dataset, bulk_dataset, granularity)
-      ests <- ests[names(ests) %in% errs_all$name]
-
-      if (length(ests) == 0) {
-        next
-      }
-
-      params <- lapply(ests, function(X) {
-        as.list(X[["params"]] %>% select(-test_data_name))
-      })
-
-      param_ids <- sapply(params, paste, collapse = " ")
-
-      ests_melt <- lapply(ests, "[[", est_field)
-
-      #if (bulk_dataset == "ROSMAP") {
-      #  ests_melt <- lapply(ests_melt, ConvertToROSMAPCelltypes, remove_unused = FALSE)
-      #}
-
-      ests_melt <- lapply(names(ests_melt), FUN = function(X) {
-        ests_melt[[X]] <- as.data.frame(ests_melt[[X]])
-        ests_melt[[X]]$name <- X
-        ests_melt[[X]]$subject <- rownames(ests_melt[[X]])
-        ests_melt[[X]]$param_id <- param_ids[X]
-        ests_melt[[X]]
-      })
-      ests_melt <- do.call(rbind, ests_melt)
-      ests_melt <- melt(ests_melt) %>% dplyr::rename(celltype = variable,
-                                                     prop_est = value)
-
-      #ests_melt$name <- str_replace(ests_melt$name, "_ROSMAP", "")
-      ests_melt$algorithm <- algorithm
-
-      ests_alg[[algorithm]] <- ests_melt
-    }
-
-    ests_alg <- do.call(rbind, ests_alg)
-
-    best_params <- subset(best_params_all, reference_data_name == dataset &
-                            algorithm %in% unique(ests_alg$algorithm) &
-                            grepl(bulk_dataset, test_datasets))
-    best_params <- best_params %>% group_by(algorithm) %>%
-      mutate(title = paste("Best", metrics, "/", test_datasets),
-             title_short = paste(algorithm, "params", as.numeric(factor(title)))) %>%
-      ungroup()
-    best_params$param_id <- sapply(best_params$params, paste, collapse = " ")
-
-    best_ests <- ests_alg %>% merge(best_params, by = c("algorithm", "param_id"))
+    #best_ests <- ests_alg %>% merge(best_params, by = c("algorithm", "param_id"))
+    best_ests <- ests_alg %>% group_by(algorithm) %>%
+                    mutate(title = paste(algorithm, "params",
+                                         as.numeric(factor(param_id))),
+                           title_short = title) %>%
+                    ungroup()
 
     # TODO this needs some fixing
-    if (bulk_dataset == "ROSMAP") {
+    if (bulk_dataset == "UNUSED") { #"ROSMAP") {
       ihc_props <- as.matrix(read.csv(file_rosmap_ihc_proportions, row.names = 1))
       A <- Load_AvgLibSize(dataset, granularity)
       A2 <- A
@@ -282,10 +259,10 @@ for (dataset in datasets) {
       A2 <- A2 / sum(A2)
       ihc_pct <- ConvertPropCellsToPctRNA(ihc_props, A2)
 
-      ihc_props <- melt(ihc_props) %>% dplyr::rename(subject = Var1, celltype = Var2, prop_est = value)
+      ihc_props <- melt(ihc_props) %>% dplyr::rename(subject = Var1, celltype = Var2, pct_est = value)
       ihc_props$title <- "IHC cell proportions"
 
-      ihc_pct <- melt(ihc_pct) %>% dplyr::rename(subject = Var1, celltype = Var2, prop_est = value)
+      ihc_pct <- melt(ihc_pct) %>% dplyr::rename(subject = Var1, celltype = Var2, pct_est = value)
       ihc_pct$title <- "IHC RNA percent"
 
       tmp <- rbind(ihc_props, ihc_pct)
@@ -303,13 +280,13 @@ for (dataset in datasets) {
       best_ests <- rbind(best_ests, tmp)
     }
 
-    tmp <- best_ests %>% select(name, title) %>% distinct()
+    tmp <- best_ests %>% select(param_id, title) %>% distinct()
     titles <- tmp$title
-    names(titles) <- tmp$name
+    names(titles) <- tmp$param_id
 
     plot_id <- paste("Reference dataset:", dataset, " / Bulk dataset:", bulk_dataset)
 
-    plt <- ggplot(best_ests, aes(x = algorithm, y = prop_est, color = title)) +
+    plt <- ggplot(best_ests, aes(x = algorithm, y = pct_est, color = title)) +
       geom_boxplot(width = 0.5) + theme_bw() +
       theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
       theme(legend.position = "bottom") +
@@ -320,7 +297,7 @@ for (dataset in datasets) {
     print(plt + plot_annotation(title = plot_id, subtitle = "Estimated proportions across all subjects (each bar is a single parameter set)"))
 
     # TODO make functions to do this and move these files to a better place
-    ests_ad <- merge(best_ests, metadata, by = "subject") %>%
+    ests_ad <- merge(best_ests, metadata, by = "sample") %>%
                 subset(diagnosis %in% c("CT", "AD")) %>%
                 subset(celltype %in% levels(ests_alg$celltype)) # Gets rid of added cell types from ROSMAP IHC
     ests_ad$celltype <- factor(ests_ad$celltype)
@@ -328,7 +305,7 @@ for (dataset in datasets) {
     significant <- list()
     for (param_set in unique(ests_ad$title_short)) {
       ests_param <- subset(ests_ad, title_short == param_set)
-      anov <- aov(prop_est ~ diagnosis*celltype*tissue, data = ests_param)
+      anov <- aov(pct_est ~ diagnosis*celltype*tissue, data = ests_param)
       tuk <- TukeyHSD(anov, "diagnosis:celltype:tissue")
 
       ct_v_tissue <- expand.grid(levels(ests_ad$celltype), levels(ests_ad$tissue))
@@ -350,7 +327,7 @@ for (dataset in datasets) {
 
     for (alg in unique(ests_ad$algorithm)) {
       ests_params <- subset(ests_ad, algorithm == alg)
-      plt <- ggplot(ests_params, aes(x = celltype, y = prop_est, fill = diagnosis, color = significant), group = tissue) +
+      plt <- ggplot(ests_params, aes(x = celltype, y = pct_est, fill = diagnosis, color = significant), group = tissue) +
         geom_boxplot(width = 0.5) + theme_bw() +
         theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
         scale_color_manual(values = c("#dddddd", "#000000")) +

@@ -12,6 +12,7 @@ dir_tmp <- file.path(dir_data, "tmp")
 dir_markers <- file.path(dir_output, "markers")
 dir_params_lists <- file.path(dir_output, "params_lists")
 dir_errors <- file.path(dir_output, "errors")
+dir_best_errors <- file.path(dir_errors, "best_errors")
 
 dir_params_lists_tmp <- file.path(dir_params_lists, "tmp")
 dir_errors_tmp <- file.path(dir_errors, "tmp")

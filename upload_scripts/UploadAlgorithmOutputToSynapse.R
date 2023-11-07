@@ -35,7 +35,7 @@ provenance_df <- merge(sce_df, pseudo_df, by = "dataset")
 
 reference_datasets <- unique(provenance_df$dataset)
 test_datasets <- unique(bulk_df$dataset)
-algorithms <- c("DeconRNASeq", "Dtangle", "Music", "DWLS")
+algorithms <- c("DeconRNASeq", "Dtangle", "Music", "DWLS", "HSPE")
 
 # Parameter output lists
 for (bulk in test_datasets) {
@@ -52,7 +52,7 @@ for (bulk in test_datasets) {
     alg_folder <- Folder(alg, parent = bulk_folder)
     alg_folder <- synStore(alg_folder, forceVersion = FALSE)
 
-    files_alg <- list.files(dir_bulk, pattern = alg, full.names = TRUE)
+    files_alg <- list.files(file.path(dir_bulk, alg), pattern = alg, full.names = TRUE)
 
     for (ref in reference_datasets) {
       files <- grep(ref, files_alg, value = TRUE)

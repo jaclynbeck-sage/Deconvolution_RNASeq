@@ -5,43 +5,53 @@ library(reshape2)
 
 source(file.path("functions", "Error_HelperFunctions.R"))
 
-reference_datasets <- c("cain", "lau", "leng", "mathys", "morabito")
-est_fields = list("deconRNASeq" = "out.all",
-                  "dtangle" = "estimates",
-                  "hspe" = "estimates",
-                  "music" = "Est.pctRNA.weighted"
-)
+reference_datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
+est_fields = list("Dtangle" = "estimates",
+                  "Music" = "Est.pctRNA.weighted",
+                  "HSPE" = "estimates",
+                  "DeconRNASeq" = "out.all",
+                  "DWLS" = "estimates")
 
-algorithms <- c(names(est_fields), "random")
+algorithms <- c(names(est_fields), "Random")
 
-granularity <- c("broad")
+granularity <- c("broad_class")
 
 bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
 
-best_params_all <- Get_AllBestParamsAsDf(reference_datasets, granularity)
+best_errors <- Get_AllBestErrorsAsDf(bulk_datasets, granularity)
 
-errs_all <- Get_AllErrorsAsDf(bulk_datasets, reference_datasets, algorithms,
-                              granularity, best_params_all$params)
+#best_params_all <- Get_AllBestParamsAsDf(reference_datasets, granularity)
 
-errs_all <- melt(errs_all) %>% dplyr::rename(error_type = "variable")
+#errs_all <- Get_AllErrorsAsDf(bulk_datasets, reference_datasets, algorithms,
+#                              granularity, best_params_all$params)
 
-errs_total <- subset(errs_all, tissue == "All")
+#errs_all <- melt(errs_all) %>% dplyr::rename(error_type = "variable")
 
-errs_tissue <- subset(errs_all, tissue != "All")
+errs_melt <- melt(best_errors) %>% dplyr::rename(error_type = "variable")
+
+errs_total <- subset(errs_melt, tissue == "All")
+
+errs_tissue <- subset(errs_melt, tissue != "All")
 errs_tissue$tissue <- paste(errs_tissue$test_data_name, errs_tissue$tissue)
+
+file_params <- best_errors %>%
+  select(reference_data_name, test_data_name, algorithm,
+         reference_input_type, normalization,
+         regression_method) %>%
+  distinct()
 
 mean_props_all <- lapply(reference_datasets, function(ref_dataset) {
   props_b <- lapply(bulk_datasets, function(bulk_dataset) {
     bulk_se <- Load_BulkData(bulk_dataset)
-    metadata <- as.data.frame(colData(bulk_se)) %>% dplyr::rename(subject = specimenID)
+    metadata <- as.data.frame(colData(bulk_se))
 
     ests_alg <- Get_AllEstimatesAsDf(ref_dataset, bulk_dataset, algorithms,
-                                     granularity, errs_all$name)
+                                     granularity, file_params)
 
     # TODO make functions to do this and move these files to a better place
-    ests_ad <- merge(ests_alg, metadata, by = "subject") %>%
-      subset(diagnosis %in% c("CT", "AD")) %>%
-      subset(celltype %in% levels(ests_alg$celltype)) # Gets rid of added cell types from ROSMAP IHC
+    ests_ad <- merge(ests_alg, metadata, by = "sample") %>%
+                  subset(diagnosis %in% c("CT", "AD")) %>%
+                  subset(celltype %in% levels(ests_alg$celltype)) # Gets rid of added cell types from ROSMAP IHC
     ests_ad$celltype <- factor(ests_ad$celltype)
 
     significant <- lapply(unique(ests_ad$name), function(param_set) {
@@ -172,13 +182,13 @@ ok <- sapply(str_split(best_params_all$metrics, ", "), function(M) {
   any(M %in% c("cor", "rMSE", "mAPE"))
 })
 
-best_params_sub <- best_params_all[ok,]
-best_params_sub$param_id <- sapply(best_params_sub$params, paste, collapse = " ")
-to_keep <- unique(subset(errs_tissue, param_id %in% best_params_sub$param_id)$name)
+#best_params_sub <- best_params_all[ok,]
+#to_keep <- unique(subset(errs_tissue, param_id %in% best_params_sub$param_id)$name)
 
-mean_props_sub <- subset(mean_props_all, name %in% to_keep)
+#mean_props_sub <- subset(mean_props_all, name %in% best_errors)
+mean_props_sub <- mean_props_all
 
-mean_astro <- subset(mean_props_sub, celltype == "Astro")
+mean_astro <- subset(mean_props_sub, celltype == "Astrocyte")
 mean_astro_tcx <- subset(mean_astro, tissue == "TCX")
 mean_astro_cbe <- subset(mean_astro, tissue == "CBE")
 
@@ -221,15 +231,22 @@ res_astro_cain_tcx <- metacont(n.e = count_AD, mean.e = mean_pct_AD, sd.e = sd_p
 metas <- lapply(levels(mean_props_sub$celltype), function(ct) {
   res_tissue <- lapply(levels(mean_props_sub$tissue), function(tiss) {
     mean_props_tmp <- subset(mean_props_sub, celltype == ct & tissue == tiss)
-    res <- metacont(n.e = count_AD, mean.e = mean_pct_AD, sd.e = sd_pct_AD,
-                    n.c = count_CT, mean.c = mean_pct_CT, sd.c = sd_pct_CT,
-                    studlab = name,
-                    data = mean_props_tmp,
-                    sm = "ROM")
-    return(data.frame(celltype = ct, tissue = tiss,
-                      effect.common = res$TE.common, pval.common = res$pval.common,
-                      effect.random = res$TE.random, pval.random = res$pval.random,
-                      I2 = res$I2, Q = res$Q, pval.Q = res$pval.Q))
+    tryCatch({
+      res <- metacont(n.e = count_AD, mean.e = mean_pct_AD, sd.e = sd_pct_AD,
+                      n.c = count_CT, mean.c = mean_pct_CT, sd.c = sd_pct_CT,
+                      studlab = name,
+                      data = mean_props_tmp,
+                      sm = "ROM")
+      return(data.frame(celltype = ct, tissue = tiss,
+                        effect.common = res$TE.common, pval.common = res$pval.common,
+                        effect.random = res$TE.random, pval.random = res$pval.random,
+                        I2 = res$I2, Q = res$Q, pval.Q = res$pval.Q))
+    },
+    error = function(err) {
+      print(paste(ct, tiss))
+      print(err)
+      return(NULL)
+    })
   })
   res_tissue <- do.call(rbind, res_tissue)
   return(res_tissue)

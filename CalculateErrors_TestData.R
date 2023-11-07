@@ -163,10 +163,10 @@ for (bulk_dataset in bulk_datasets) {
         if (granularity == "broad_class" &
             any(est_pct[,"Inhibitory"] > est_pct[,"Excitatory"])) {
           num_ests <- sum(est_pct[,"Inhibitory"] > est_pct[,"Excitatory"])
-          msg <- str_glue(paste("Param set '{param_id}' has {num_ests} estimates",
-                                "that contain more inhibitory than excitatory",
-                                "neurons."))
-          warning(msg)
+          msg <- str_glue(paste("WARNING: Param set '{param_id}' has {num_ests}",
+                                "estimates that contain more inhibitory than",
+                                "excitatory neurons."))
+          message(msg)
         }
 
         params <- deconv_list[[param_id]]$params
@@ -229,7 +229,6 @@ for (bulk_dataset in bulk_datasets) {
 
       print(paste("Errors calculated for", nrow(err_list$params), "of",
                   total_length, "parameter sets."))
-      print("Done")
     }
   }
 }

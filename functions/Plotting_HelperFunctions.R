@@ -25,10 +25,10 @@ MakePropsDataframe <- function(props_truth, props_est, est_field) {
 # It is assumed that 'error_names' is either a single name of a single error,
 # or a vector of errors that should all have the same axis constraints,
 # since the axes are fixed in the figure.
-Plot_ErrsByMethod <- function(errors_df, error_names, test_data_names = c(),
-                              x_axis = "reference_data_name",
-                              facet_var = "method",
-                              fill_colors = NULL, ...) {
+Plot_ErrsByAlgorithm <- function(errors_df, error_names, test_data_names = c(),
+                                 x_axis = "reference_data_name",
+                                 facet_var = "algorithm",
+                                 fill_colors = NULL, ...) {
   errs <- subset(errors_df, error_type %in% error_names)
   if (!is.null(test_data_names) & length(test_data_names) > 0) {
     errs <- subset(errs, test_data_name %in% test_data_names)
@@ -43,7 +43,7 @@ Plot_ErrsByMethod <- function(errors_df, error_names, test_data_names = c(),
 
 # Each facet is an error type + dataset, with algorithms on the x-axis
 Plot_ErrsByDataset <- function(errors_df, error_names, test_data_names = c(),
-                               x_axis = "method",
+                               x_axis = "algorithm",
                                facet_var = "reference_data_name",
                                fill_colors = NULL, ...) {
   errs <- subset(errors_df, error_type %in% error_names)

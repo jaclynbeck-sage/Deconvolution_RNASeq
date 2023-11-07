@@ -4,6 +4,7 @@ library(dplyr)
 library(tidyr)
 library(stringr)
 
+# TODO change to outputting to algorithm-specific directories
 source(file.path("functions", "General_HelperFunctions.R"))
 
 #### Parameter setup #####
