@@ -843,7 +843,7 @@ Save_DtangleMarkers <- function(markers, dataset, granularity, input_type, marke
 Load_Markers <- function(dataset, granularity, marker_type, marker_subtype = NULL,
                          input_type = NULL) {
   if (!(marker_type %in% c("dtangle", "autogenes", "seurat", "deseq2"))) {
-    print("marker_type must be one of 'dtangle', 'autogenes', 'seurat', or 'deseq2')")
+    message("marker_type must be one of 'dtangle', 'autogenes', 'seurat', or 'deseq2'")
     return(NULL)
   }
 
@@ -869,7 +869,22 @@ Load_Markers <- function(dataset, granularity, marker_type, marker_subtype = NUL
   }
 
   markers <- readRDS(file = marker_file)
-  markers <- markers$filtered # All 3 marker types have a 'filtered' list
+
+  if (any(lengths(markers$filtered) < 3)) {
+    message(str_glue(paste("WARNING: not enough markers in the filtered marker",
+                           "list for {marker_file_format}. Using unfiltered",
+                           "marker set.")))
+
+    if (marker_type == "dtangle") {
+      markers <- markers$L # dtangle uses "L" for its unfiltered marker list
+    }
+    else {
+      markers <- markers$all # all other algorithms have it under "all"
+    }
+  }
+  else {
+    markers <- markers$filtered # All 3 marker types have a 'filtered' list
+  }
 
   return(markers)
 }
