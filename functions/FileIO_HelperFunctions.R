@@ -871,12 +871,13 @@ Load_Markers <- function(dataset, granularity, marker_type, marker_subtype = NUL
   markers <- readRDS(file = marker_file)
 
   if (any(lengths(markers$filtered) < 3)) {
-    message(str_glue(paste("WARNING: not enough markers in the filtered marker",
-                           "list for {marker_file_format}. Using unfiltered",
-                           "marker set.")))
+    #message(paste0("WARNING: not enough markers in the filtered marker list for ",
+    #              str_glue(marker_file_format), ". Using unfiltered marker set."))
 
+    # dtangle uses "L" for its unfiltered marker list, and the gene names are
+    # actually names(list) instead of the values of the list
     if (marker_type == "dtangle") {
-      markers <- markers$L # dtangle uses "L" for its unfiltered marker list
+      markers <- lapply(markers$L, names)
     }
     else {
       markers <- markers$all # all other algorithms have it under "all"

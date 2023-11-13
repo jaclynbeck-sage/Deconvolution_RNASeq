@@ -41,7 +41,7 @@ FindMarkers_DESeq2 <- function(datasets, granularities) {
         # the mathys dataset, there is at least one sub_class that does not have
         # both a control and an AD case, so that dataset also needs to be just
         # `~ celltype` for sub_class granularity.
-        if (dataset == "seaRef" | (dataset == "mathys" & granularity == "sub_class")) {
+        if (dataset == "seaRef" || (dataset == "mathys" & granularity == "sub_class")) {
           dds <- DESeqDataSet(pb, design = ~ celltype)
         }
         else { # data with diagnosis info

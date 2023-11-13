@@ -70,7 +70,7 @@ Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
   }
 
   # Test data
-  if (test_data_name == "sc_samples" | test_data_name == "training") {
+  if (test_data_name == "sc_samples" || test_data_name == "training") {
     test_obj <- Load_Pseudobulk(reference_data_name, test_data_name,
                                 granularity, output_type)
   }
@@ -603,6 +603,11 @@ OrderMarkers_ByCorrelation <- function(marker_list, data) {
   new_list <- sapply(names(marker_list), function(N) {
     markers <- marker_list[[N]]
     markers <- markers[markers %in% rownames(data)]
+
+    if (length(markers) <= 2) {
+      return(markers)
+    }
+
     corr_mat <- cor(as.matrix(t(data[markers,])))
 
     # Re-order genes by average correlation, highest first

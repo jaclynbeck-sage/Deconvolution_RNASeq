@@ -111,7 +111,7 @@ while(continue == TRUE & iter <= 1000) {
   print(paste("**** ITER", iter, ", ERROR: ", error, "****"))
   print(p[1:3,])
   print(error - last_error)
-  if (abs(error - last_error) < tolerance | error > last_error) {
+  if (abs(error - last_error) < tolerance || error > last_error) {
     continue <- FALSE
   }
   last_error <- error
@@ -211,7 +211,7 @@ while(continue == TRUE & iter <= 1000) {
   print(paste("**** ITER", iter, ", ERROR: ", error, "****"))
   print(p[1:3,])
   print(error - last_error)
-  if (abs(error - last_error) < tolerance | error > last_error) {
+  if (abs(error - last_error) < tolerance || error > last_error) {
     continue <- FALSE
   }
   last_error <- error
@@ -310,7 +310,7 @@ while(continue == TRUE & iter <= 1000) {
   print(paste("**** ITER", iter, ", ERROR: ", error, "****"))
   print(p[1:3,])
   print(error - last_error)
-  if (abs(error - last_error) < tolerance | error > last_error) {
+  if (abs(error - last_error) < tolerance || error > last_error) {
     continue <- FALSE
   }
   last_error <- error
@@ -397,7 +397,7 @@ while(continue == TRUE & iter <= 1000) {
   print(paste("**** ITER", iter, ", ERROR: ", error, "****"))
   print(p[1:3,])
   print(error - last_error)
-  if (abs(error - last_error) < tolerance | error > last_error) {
+  if (abs(error - last_error) < tolerance || error > last_error) {
     continue <- FALSE
   }
   last_error <- error

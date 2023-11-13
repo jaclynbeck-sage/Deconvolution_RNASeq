@@ -45,8 +45,8 @@ Music_InnerLoop <- function(sce, bulk_mtx, sc_basis, params, verbose = FALSE) {
                          granularity, n_markers, marker_type, marker_subtype,
                          marker_input_type, marker_order, bulk_mtx)
 
-  if (Check_MissingMarkers(tmp, params) |
-      Check_TooFewMarkers(tmp, params, 3) |
+  if (Check_MissingMarkers(tmp, params) ||
+      Check_TooFewMarkers(tmp, params, 3) ||
       Check_NotEnoughNewMarkers(tmp, params)) {
     return(NULL)
   }

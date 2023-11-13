@@ -88,6 +88,9 @@ for (P in 1:nrow(params_loop1)) {
     # Pre-combine matrices so this isn't repeatedly done on every dtangle call.
     # Input data must be first so indices in pure_samples are correct.
     Y <- t(cbind(data$reference, data$test))
+
+    rm(data)
+    gc()
   }
 
 

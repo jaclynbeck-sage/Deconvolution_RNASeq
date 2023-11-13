@@ -42,7 +42,7 @@ for (dset in datasets) {
     input_type <- str_split(filename, "_", simplify = TRUE)[7]
     provenance <- subset(provenance_df, dataset == dset & granularity == broadfine)
 
-    if (is.na(input_type) | input_type == "singlecell") {
+    if (is.na(input_type) || input_type == "singlecell") {
       provenance <- unique(provenance$sce_id[[1]])
     }
     else {

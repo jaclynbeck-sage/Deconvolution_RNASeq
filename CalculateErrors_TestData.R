@@ -55,7 +55,7 @@ for (bulk_dataset in bulk_datasets) {
     est_field <- est_fields[[algorithm]]
 
     dir_alg <- file.path(dir_out, algorithm)
-    res_files <- list.files(dir_alg, pattern = algorithm, full.names = TRUE)
+    res_files <- list.files(dir_alg, pattern = granularity, full.names = TRUE)
     if (length(res_files) == 0) {
       message(str_glue("No data for {algorithm} found. Skipping..."))
       next

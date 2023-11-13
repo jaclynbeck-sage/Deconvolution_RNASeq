@@ -36,9 +36,9 @@ DtangleHSPE_InnerLoop <- function(Y, pure_samples, params, algorithm) {
                            available_genes = colnames(Y),
                            test_data = t(Y[-unlist(pure_samples),]))
 
-  if (Check_MissingMarkers(markers, params) |
-      Check_TooFewMarkers(markers, params, 3) |
-      Check_TooManyMarkers(markers, params, 5000) |
+  if (Check_MissingMarkers(markers, params) ||
+      Check_TooFewMarkers(markers, params, 3) ||
+      Check_TooManyMarkers(markers, params, 5000) ||
       Check_NotEnoughNewMarkers(markers, params)) {
     return(NULL)
   }

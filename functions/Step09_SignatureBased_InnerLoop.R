@@ -39,8 +39,8 @@ SignatureBased_InnerLoop <- function(signature, bulk_mat, params, algorithm) {
                                     marker_subtype, marker_input_type, marker_order,
                                     bulk_mat)
 
-  if (Check_MissingMarkers(signature, params) |
-      Check_TooFewMarkers(signature, params, 3) |
+  if (Check_MissingMarkers(signature, params) ||
+      Check_TooFewMarkers(signature, params, 3) ||
       Check_NotEnoughNewMarkers(signature, params)) {
     return(NULL)
   }

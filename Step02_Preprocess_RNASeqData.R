@@ -139,7 +139,7 @@ for (dataset in datasets) {
   }
 
   for (col in colnames(metadata)[-1]) {
-    if (!is.numeric(metadata[,col]) | col == "sample") { # fixes mathys samples being numeric
+    if (!is.numeric(metadata[,col]) || col == "sample") { # fixes mathys samples being numeric
       metadata[,col] = factor(metadata[,col])
     }
   }

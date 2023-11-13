@@ -18,7 +18,7 @@ Check_MissingMarkers <- function(markers_obj, params) {
 # have less than 3 markers as long as the other cell types have enough.
 Check_TooFewMarkers <- function(markers_obj, params, low_threshold = 3) {
   # Input is a signature matrix
-  if (is(markers_obj, "matrix") | is(markers_obj, "data.frame")) {
+  if (is(markers_obj, "matrix") || is(markers_obj, "data.frame")) {
     not_enough <- (nrow(markers_obj) < low_threshold * ncol(markers_obj))
   }
   # Input is a list of cell type markers
@@ -46,7 +46,7 @@ Check_TooFewMarkers <- function(markers_obj, params, low_threshold = 3) {
 # that are designed to use all/most genes (DeconRNASeq, MuSiC) do not call this
 # function.
 Check_TooManyMarkers <- function(markers_obj, params, high_threshold = 5000) {
-  if (is(markers_obj, "matrix") | is(markers_obj, "data.frame")) {
+  if (is(markers_obj, "matrix") || is(markers_obj, "data.frame")) {
     too_many <- (nrow(markers_obj) > high_threshold)
   }
   # Input is a list of cell type markers
@@ -80,7 +80,7 @@ Check_NotEnoughNewMarkers <- function(markers_obj, params) {
   low_threshold <- params$n_markers / 2
 
   # Input is a signature matrix
-  if (is(markers_obj, "matrix") | is(markers_obj, "data.frame")) {
+  if (is(markers_obj, "matrix") || is(markers_obj, "data.frame")) {
     not_enough <- nrow(markers_obj) <= (low_threshold * ncol(markers_obj))
   }
   # Input is a list of cell type markers

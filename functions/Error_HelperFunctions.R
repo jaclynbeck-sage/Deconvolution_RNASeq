@@ -313,7 +313,7 @@ Get_AllErrorsAsDf <- function(bulk_datasets, reference_datasets, algorithms, gra
         return(errs)
       })
 
-      if (all(sapply(errs_a, is.null)) | length(errs_a) == 0) {
+      if (all(sapply(errs_a, is.null)) || length(errs_a) == 0) {
         return(NULL)
       }
 
