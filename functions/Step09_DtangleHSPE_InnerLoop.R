@@ -45,7 +45,7 @@ DtangleHSPE_InnerLoop <- function(Y, pure_samples, params, algorithm) {
 
   ##### Dtangle-specific function call #####
   if (algorithm == "Dtangle") {
-    result <- dtangle(Y = Y,
+    result <- dtangle(Y = Y[,unlist(markers)],
                       pure_samples = pure_samples,
                       data_type = "rna-seq",
                       n_markers = lengths(markers), # pass the actual number of markers we have after filtering
@@ -57,11 +57,11 @@ DtangleHSPE_InnerLoop <- function(Y, pure_samples, params, algorithm) {
   }
   ##### HSPE-specific function call #####
   else if (algorithm == "HSPE") {
-    result <- hspe(Y = Y,
+    result <- hspe(Y = Y[,unlist(markers)],
                    pure_samples = pure_samples,
                    n_markers = lengths(markers), # pass the actual number of markers we have after filtering
                    markers = markers,
-                   loss_fn = "L2", # 'L2' converges faster than 'var'
+                   loss_fn = "L2", # 'L2' converges faster than 'var' with nearly identical results
                    seed = 12345,
                    verbose = TRUE)
 
