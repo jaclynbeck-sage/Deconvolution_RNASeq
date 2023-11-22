@@ -78,14 +78,16 @@ CalcGOF_Means <- function(gof_by_sample, bulk_metadata, param_id) {
   numeric_cols <- setdiff(colnames(gof_by_sample), c("param_id", "sample"))
   gof_means_all <- gof_by_sample %>%
                       summarise(across(all_of(numeric_cols), mean),
-                                param_id = unique(param_id))
+                                param_id = unique(param_id),
+                                .groups = "drop")
 
   tissue_assignments <- bulk_metadata[rownames(gof_by_sample), "tissue"]
 
   gof_by_sample <- cbind(gof_by_sample, tissue_assignments)
   gof_means_tissue <- gof_by_sample %>% group_by(tissue_assignments) %>%
                           summarise(across(all_of(numeric_cols), mean),
-                                    param_id = unique(param_id))
+                                    param_id = unique(param_id),
+                                    .groups = "drop")
 
   return(list("all_tissue" = gof_means_all,
               "by_tissue" = gof_means_tissue))
@@ -96,20 +98,23 @@ CalcEstimateStats <- function(all_ests, bulk_metadata) {
   estimate_stats_sample <- all_ests %>% group_by(celltype, sample) %>%
                               summarize(mean_pct = mean(percent),
                                         sd_pct = sd(percent),
-                                        rel_sd_pct = sd_pct / mean_pct)
+                                        rel_sd_pct = sd_pct / mean_pct,
+                                        .groups = "drop_last")
 
   # average and sd of the *mean* values for each sample
   estimate_stats_all <- estimate_stats_sample %>% group_by(celltype) %>%
                           summarize(mean_pct = mean(mean_pct),
                                     mean_sd_pct = mean(sd_pct),
-                                    mean_rel_sd_pct = mean(rel_sd_pct))
+                                    mean_rel_sd_pct = mean(rel_sd_pct),
+                                    .groups = "drop_last")
 
   estimate_stats_sample$tissue <- bulk_metadata[estimate_stats_sample$sample, "tissue"]
 
   estimate_stats_tissue <- estimate_stats_sample %>% group_by(tissue, celltype) %>%
                               summarize(mean_pct = mean(mean_pct),
                                         mean_sd_pct = mean(sd_pct),
-                                        mean_rel_sd_pct = mean(rel_sd_pct))
+                                        mean_rel_sd_pct = mean(rel_sd_pct),
+                                        .groups = "drop_last")
 
   return(list("by_sample" = estimate_stats_sample,
               "all_tissue" = estimate_stats_all,

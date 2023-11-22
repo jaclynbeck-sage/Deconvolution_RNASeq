@@ -166,7 +166,7 @@ for (bulk_dataset in bulk_datasets) {
           msg <- str_glue(paste("WARNING: Param set '{param_id}' has {num_ests}",
                                 "estimates that contain more inhibitory than",
                                 "excitatory neurons."))
-          message(msg)
+          #message(msg)
         }
 
         params <- deconv_list[[param_id]]$params
@@ -191,9 +191,9 @@ for (bulk_dataset in bulk_datasets) {
         decon_new$gof_means_all <- gof_means$all_tissue
         decon_new$gof_means_by_tissue <- gof_means$by_tissue
 
-        decon_new$gof_lm_by_sample <- gof_by_sample_lm
-        decon_new$gof_lm_means_all <- gof_means_lm$all_tissue
-        decon_new$gof_lm_means_by_tissue <- gof_means_lm$by_tissue
+        decon_new$gof_by_sample_lm <- gof_by_sample_lm
+        decon_new$gof_means_all_lm <- gof_means_lm$all_tissue
+        decon_new$gof_means_by_tissue_lm <- gof_means_lm$by_tissue
 
         decon_new$params$total_markers_used <- length(decon_new$markers)
         decon_new$estimates_df <- melt(est_pct)

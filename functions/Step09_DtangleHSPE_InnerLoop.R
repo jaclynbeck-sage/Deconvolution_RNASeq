@@ -61,7 +61,9 @@ DtangleHSPE_InnerLoop <- function(Y, pure_samples, params, algorithm) {
                    pure_samples = pure_samples,
                    n_markers = lengths(markers), # pass the actual number of markers we have after filtering
                    markers = markers,
-                   seed = 12345)
+                   loss_fn = "L2", # 'L2' converges faster than 'var'
+                   seed = 12345,
+                   verbose = TRUE)
 
     # Get rid of "diag" (index 5), which is huge and unneeded
     result <- result[1:4]
