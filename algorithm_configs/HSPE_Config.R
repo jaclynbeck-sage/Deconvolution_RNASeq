@@ -41,8 +41,8 @@ alg_config <- list(
   # Define the function that runs each param set
   inner_loop_file = file.path("functions", "Step09_DtangleHSPE_InnerLoop.R"),
   inner_loop_func = "DtangleHSPE_InnerLoop", # must be a string
-  required_libraries = c("hspeSparse"),
+  required_libraries = c("hspe"),
 
   # How many cores to use in parallel
-  cores = 4 # Machine this was set up for has 16 cores
+  cores = 8 # Machine this was set up for has 16 cores
 )

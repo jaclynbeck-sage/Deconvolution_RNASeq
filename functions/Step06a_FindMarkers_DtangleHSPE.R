@@ -10,7 +10,7 @@
 # available before running the algorithms.
 
 # Libraries that need to be loaded into each parallel environment
-required_libraries <- c("hspeSparse", "SingleCellExperiment", "Matrix",
+required_libraries <- c("hspe", "SingleCellExperiment", "Matrix",
                         "SummarizedExperiment", "stringr", "dplyr")
 
 FindMarkers_DtangleHSPE <- function(datasets, granularities, input_types) {

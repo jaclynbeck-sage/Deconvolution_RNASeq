@@ -22,6 +22,9 @@ install.packages(c("DWLS", "GenomicTools.fileHandler"))
 # install the MuSiC package from my fork, which has a few fixes and speedups
 devtools::install_github("jaclynbeck-sage/MuSiC")
 
+# install HSPE from my fork, which has a few fixes
+devtools::install_github("https://github.com/jaclynbeck-sage/hspe", subdir = "lib_hspe")
+
 # install sageseqr -- requires archived package from CRAN
 gt_url <- "https://cran.r-project.org/src/contrib/Archive/GenomicTools/GenomicTools_0.2.9.7.tar.gz"
 download.file(url = gt_url, destfile = "GenomicTools_0.2.9.7.tar")
@@ -30,15 +33,10 @@ unlink("GenomicTools_0.2.9.7.tar") # deletes the tar file
 
 devtools::install_github("Sage-Bionetworks/sageseqr")
 
-# HSPE doesn't provide support for sparse matrices, so I download the repo and
+# Dtangle doesn't provide support for sparse matrices, so I download the repo and
 # make a few small changes. It's then re-compiled into a package and installed
-# as "hspeSparse".
+# as "dtangleSparse".
 # NOTE: This may break if the developer updates their repo
-system("bash install_hspe.sh")
-install.packages(file.path('~', 'hspe', 'hspeSparse_0.1.tar.gz'),
-                 repos = NULL, type = "source")
-
-# Same thing with dtangle
 system("bash install_dtangle.sh")
 install.packages(file.path('~', 'dtangle', 'dtangleSparse_2.0.9.tar.gz'),
                  repos = NULL, type = "source")
