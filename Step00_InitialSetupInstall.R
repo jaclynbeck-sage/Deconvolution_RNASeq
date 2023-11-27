@@ -23,7 +23,7 @@ install.packages(c("DWLS", "GenomicTools.fileHandler"))
 devtools::install_github("jaclynbeck-sage/MuSiC")
 
 # install HSPE from my fork, which has a few fixes
-devtools::install_github("https://github.com/jaclynbeck-sage/hspe", subdir = "lib_hspe")
+devtools::install_github("jaclynbeck-sage/hspe", subdir = "lib_hspe")
 
 # install sageseqr -- requires archived package from CRAN
 gt_url <- "https://cran.r-project.org/src/contrib/Archive/GenomicTools/GenomicTools_0.2.9.7.tar.gz"
