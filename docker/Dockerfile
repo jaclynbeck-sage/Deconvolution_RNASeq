@@ -1,4 +1,4 @@
-FROM rocker/rstudio:4.3.0
+FROM rocker/rstudio:4.3.2
 
 RUN apt-get update -y && apt-get upgrade -y
 RUN apt-get install -y ssh nano less python3 python3-pip python3-venv python3-virtualenv
