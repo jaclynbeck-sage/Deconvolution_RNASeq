@@ -67,8 +67,8 @@ CalcGOF_BySample_LM <- function(bulk_dataset_name, covariates, meas_expr_log,
     lm_est <- fitted(lm_est)
   }
 
-  # Reverse the log2(cpm+1) transform, ensure that the estimate is in CPM
-  lm_est <- calculateCPM(t(2^lm_est-1))
+  # Reverse the log2(cpm+1) transform
+  lm_est <- t(2^lm_est-1)
 
   return(CalcGOF_BySample(2^meas_expr_log-1, lm_est, param_id))
 }

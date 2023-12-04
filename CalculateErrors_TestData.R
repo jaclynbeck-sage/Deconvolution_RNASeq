@@ -11,7 +11,7 @@ granularity <- "broad_class"
 bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
 
 cores <- 12
-cl <- makeCluster(cores, type = "FORK", outfile = str_glue("errors_output.txt"))
+cl <- makeCluster(cores, type = "FORK", outfile = "errors_output.txt")
 registerDoParallel(cl)
 
 est_fields = list("Dtangle" = "estimates",
@@ -35,11 +35,11 @@ for (bulk_dataset in bulk_datasets) {
   meas_expr_log <- as.matrix(assay(bulk_se, "counts"))
 
   # Get highly variable genes
-  #var_genes <- rowVars(meas_expr_log, useNames = TRUE)
-  #var_genes <- sort(var_genes, decreasing = TRUE)
+  var_genes <- rowVars(meas_expr_log, useNames = TRUE)
+  var_genes <- sort(var_genes, decreasing = TRUE)
 
-  #highly_variable <- names(var_genes)[1:5000]
-  #meas_expr_log <- meas_expr_log[highly_variable,]
+  highly_variable <- names(var_genes)[1:5000]
+  meas_expr_log <- meas_expr_log[highly_variable,]
   bulk_metadata <- colData(bulk_se)
 
   covariates <- Load_Covariates(bulk_dataset)
@@ -171,8 +171,8 @@ for (bulk_dataset in bulk_datasets) {
 
         params <- deconv_list[[param_id]]$params
 
-        genes_use <- rownames(signature)
-        #genes_use <- intersect(highly_variable, rownames(signature))
+        #genes_use <- rownames(signature)
+        genes_use <- intersect(highly_variable, rownames(signature))
 
         sig_filt <- signature[genes_use,]
         bulk_cpm_filt <- bulk_cpm[genes_use,]

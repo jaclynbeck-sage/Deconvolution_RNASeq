@@ -35,7 +35,7 @@ provenance_df <- merge(sce_df, pseudo_df, by = "dataset")
 
 reference_datasets <- unique(provenance_df$dataset)
 test_datasets <- unique(bulk_df$dataset)
-algorithms <- c("DeconRNASeq", "Dtangle", "Music", "DWLS", "HSPE")
+algorithms <- c("DeconRNASeq", "Dtangle", "Music", "DWLS", "HSPE", "Baseline")
 
 # Parameter output lists
 for (bulk in test_datasets) {
@@ -52,25 +52,35 @@ for (bulk in test_datasets) {
     alg_folder <- Folder(alg, parent = bulk_folder)
     alg_folder <- synStore(alg_folder, forceVersion = FALSE)
 
-    files_alg <- list.files(file.path(dir_bulk, alg), pattern = alg, full.names = TRUE)
+    files_alg <- list.files(file.path(dir_bulk, alg), full.names = TRUE)
 
-    for (ref in reference_datasets) {
-      files <- grep(ref, files_alg, value = TRUE)
-
-      for (filename in files) {
-        broadfine <- str_split(filename, "_", simplify = TRUE)[5]
-        broadfine <- paste0(broadfine, "_class")
-        provenance <- subset(provenance_df, dataset == ref &
-                               granularity == broadfine)
-        provenance_bulk <- subset(bulk_df, dataset == bulk)
-
+    if (alg == "Baseline") {
+      for (filename in files_alg) {
         file <- File(path = filename, parent = alg_folder)
-        file <- synStore(file,
-                         used = c(unlist(provenance$se_id),
-                                  unlist(provenance$pseudobulk_id),
-                                  unlist(provenance_bulk$se_id)),
-                         forceVersion = FALSE)
+        file <- synStore(file, forceVersion = FALSE)
         print(paste0(file$properties$id, ": ", file$properties$name))
+      }
+    }
+    else {
+
+      for (ref in reference_datasets) {
+        files <- grep(ref, files_alg, value = TRUE)
+
+        for (filename in files) {
+          broadfine <- str_split(filename, "_", simplify = TRUE)[5]
+          broadfine <- paste0(broadfine, "_class")
+          provenance <- subset(provenance_df, dataset == ref &
+                                 granularity == broadfine)
+          provenance_bulk <- subset(bulk_df, dataset == bulk)
+
+          file <- File(path = filename, parent = alg_folder)
+          file <- synStore(file,
+                           used = c(unlist(provenance$se_id),
+                                    unlist(provenance$pseudobulk_id),
+                                    unlist(provenance_bulk$se_id)),
+                           forceVersion = FALSE)
+          print(paste0(file$properties$id, ": ", file$properties$name))
+        }
       }
     }
   }

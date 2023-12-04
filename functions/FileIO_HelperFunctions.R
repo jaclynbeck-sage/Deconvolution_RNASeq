@@ -624,7 +624,12 @@ Save_AlgorithmOutputList <- function(output_list, algorithm, test_dataset, name_
                           "ROSMAP" = dir_rosmap_output,
                           dir_params_lists)
 
-  saveRDS(output_list, file = file.path(out_directory,
+  dir_alg <- file.path(out_directory, algorithm)
+  if (!dir.exists(dir_alg)) {
+    dir.create(dir_alg)
+  }
+
+  saveRDS(output_list, file = file.path(dir_alg,
                                         str_glue(list_file_format)))
 }
 
