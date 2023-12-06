@@ -18,7 +18,8 @@ est_fields = list("Dtangle" = "estimates",
                   "Music" = "Est.pctRNA.weighted",
                   "HSPE" = "estimates",
                   "DeconRNASeq" = "out.all",
-                  "DWLS" = "estimates")
+                  "DWLS" = "estimates",
+                  "Baseline" = "estimates")
 
 algorithms <- names(est_fields)
 
@@ -152,7 +153,7 @@ for (bulk_dataset in bulk_datasets) {
         zeros <- colSums(est_pct == 0)
         zero_thresh <- 0.75 * nrow(est_pct) # 75% can be zeros
 
-        if (granularity == "broad_class" & any(zeros > zero_thresh)) {
+        if (granularity == "broad_class" && any(zeros > zero_thresh) && algorithm != "Baseline") {
           cts <- paste(colnames(est_pct)[which(zeros > zero_thresh)], collapse = ", ")
           msg <- str_glue(paste("Param set '{param_id}' has too many 0 estimates",
                                 "for cell type(s) [{cts}]. Skipping..."))
