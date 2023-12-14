@@ -10,12 +10,12 @@
 # For the gene list, we pull multiple sources of data to make sure we have as
 # much coverage as possible: All genes in the current Biomart database, the
 # genes used for ROSMAP/Mayo/MSBB in the RNASeq Harmonization Study, the genes
-# used for the Mathys data set, and all genes from Ensembl versions 84, 93, 94,
-# and 98, corresponding to the versions used in the single cell data. Some
-# symbols from previous versions of Ensembl are different and some
-# Ensembl IDs exist in those lists that are no longer in Biomart. We merge
-# the multiple lists by Ensembl ID and create a list of all possible gene
-# symbols associated with each ID.
+# used for the Seattle Reference Atlas, those used for the Mathys data set, and
+# all genes from Ensembl versions 84, 93, and 98, corresponding to the versions
+# used in the single cell data. Some symbols from previous versions of Ensembl
+# are different and some Ensembl IDs exist in those lists that are no longer in
+# Biomart. We merge the multiple lists by Ensembl ID and create a list of all
+# possible gene symbols associated with each ID.
 #
 # For the cell type proportions, the data was determined from separate stains,
 # so the proportions do not add up to 1 and some cell types are missing from
@@ -26,7 +26,7 @@
 # conversion between percent cells -> percent RNA for deconvolution algorithms
 # that output percent RNA. This conversion is handled downstream.
 
-# TODO compartment specific genes
+# TODO compartment specific genes?
 
 library(stringr)
 library(biomaRt)
@@ -42,7 +42,7 @@ synLogin()
 ##### Gene symbol / Ensembl ID conversions #####
 
 # Biomart query to get all genes in the database
-mart <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+mart <- useMart("ensembl", dataset = "hsapiens_gene_ensembl", version = "Ensembl Genes 110")
 biomart_genes <- getBM(attributes = c("external_gene_name", "ensembl_gene_id"),
                        mart = mart)
 colnames(biomart_genes) <- c("symbol_Biomart", "ensembl_gene_id")
@@ -67,11 +67,11 @@ filename <- synGet("syn18687959", downloadLocation = dir_gene_files)
 mathys_genes <- read.table(filename$path, header = FALSE) %>%
                     rename(ensembl_gene_id = V1, symbol_Mathys = V2)
 
-# GRCh38 Ensembl releases 84, 93, 94, and 98
-files <- list("symbol_v98" = c(filename = file.path(dir_gene_files, "Homo_sapiens.GRCh38.98.gtf.gz"),
+# GRCh38 Ensembl releases 84, 93, and 98, plus the seaRef GTF file
+files <- list("symbol_seaRef" = c(filename = file.path(dir_gene_files, "seaRef_genes.gtf.gz"),
+                                  url = "https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/67/39/67390730-a684-47a5-b9f4-89c47cd4e3fc/genesgtf.gz"),
+              "symbol_v98" = c(filename = file.path(dir_gene_files, "Homo_sapiens.GRCh38.98.gtf.gz"),
                                url = "https://ftp.ensembl.org/pub/release-98/gtf/homo_sapiens/Homo_sapiens.GRCh38.98.gtf.gz"),
-              "symbol_v94" = c(filename = file.path(dir_gene_files, "Homo_sapiens.GRCh38.94.gtf.gz"),
-                               url = "https://ftp.ensembl.org/pub/release-94/gtf/homo_sapiens/Homo_sapiens.GRCh38.94.gtf.gz"),
               "symbol_v93" = c(filename = file.path(dir_gene_files, "Homo_sapiens.GRCh38.93.gtf.gz"),
                                url = "https://ftp.ensembl.org/pub/release-93/gtf/homo_sapiens/Homo_sapiens.GRCh38.93.gtf.gz"),
               "symbol_v84" = c(filename = file.path(dir_gene_files, "Homo_sapiens.GRCh38.84.gtf.gz"),

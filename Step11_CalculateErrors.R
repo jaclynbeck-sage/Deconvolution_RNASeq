@@ -5,7 +5,7 @@ library(foreach)
 library(doParallel)
 
 source(file.path("functions", "General_HelperFunctions.R"))
-source(file.path("functions", "Error_HelperFunctions.R"))
+source(file.path("functions", "Step11_Error_HelperFunctions.R"))
 
 granularity <- "broad_class"
 bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
@@ -128,7 +128,7 @@ for (bulk_dataset in bulk_datasets) {
       # Calculated in parallel
       deconv_list <- foreach (P = 1:length(deconv_list)) %dopar% {
         source(file.path("functions", "General_HelperFunctions.R"))
-        source(file.path("functions", "Error_HelperFunctions.R"))
+        source(file.path("functions", "Step11_Error_HelperFunctions.R"))
 
         param_id = names(deconv_list)[P]
 
