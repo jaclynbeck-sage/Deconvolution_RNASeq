@@ -7,6 +7,10 @@ RUN apt-get install -y liblzma-dev libbz2-dev libhdf5-dev
 RUN apt-get install -y libmysqlclient21 # for GenomicFeatures
 RUN apt-get install -y libgsl-dev # for sageseqr
 
+# Install docker for CIBERSORTx
+RUN cd /home/rstudio && curl -fsSL https://get.docker.com -o install-docker.sh
+RUN cd /home/rstudio && sh install-docker.sh
+
 # TODO Remove libopenblas-dev, libopenblas-pthread-dev, replace with libblas-dev and liblapack-dev?
 # Unclear if these packages are still needed
 #RUN apt-get install -y libffi-dev libgeos-dev

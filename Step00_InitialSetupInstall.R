@@ -1,7 +1,7 @@
 install.packages(c("BiocManager", "devtools", "stringr", "Metrics",
                    "dplyr", "ggplot2", "DEoptimR", "nloptr", "anndata",
                    "readxl", "Hmisc", "RMariaDB", "lme4", "corrplot",
-                   "Hmisc", "circlize", "gMWT"))
+                   "Hmisc", "circlize", "gMWT", "pak", "uuid"))
 
 # If synapser fails to install because it can't find "synapseclient", go to
 # RStudio options (Tools->Global Options) -> Python, uncheck "Automatically
@@ -49,5 +49,6 @@ reticulate::virtualenv_create("autogenes_env",
                               packages = c("scanpy", "anndata", "autogenes",
                                            "scikit-misc"))
 
-#install.packages("pak")
-#pak::pkg_install("omnideconv/omnideconv", dependencies = c("Imports", "Remotes"))
+# Install omnideconv
+pak::pkg_install("omnideconv/omnideconv")
+omnideconv::install_all_python()
