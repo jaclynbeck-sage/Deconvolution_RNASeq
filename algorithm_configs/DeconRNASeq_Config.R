@@ -34,7 +34,7 @@ alg_config <- list(
   reference_input_types = c("signature"), # DeconRNASeq uses a signature matrix
 
   # For params_loop2 (algorithm-specific arguments) in main function
-  params_markers = CreateParams_FilterableSignature(filter_level = c(1, 2, 3)), # all other args are default
+  params_markers = CreateParams_FilterableSignature(filter_levels = c(1, 2, 3)), # all other args are default
   additional_args = expand_grid(use_scale = c(TRUE, FALSE)),
 
   # Define the function that runs each param set

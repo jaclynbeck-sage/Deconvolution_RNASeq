@@ -8,8 +8,8 @@ source(file.path("functions", "General_HelperFunctions.R"))
 
 #### Parameter setup #####
 
-# options: "DWLS", "DeconRNASeq", "Dtangle", "HSPE", "Music"
-algorithm <- "DWLS"
+# options: "CibersortX", "DWLS", "DeconRNASeq", "Dtangle", "HSPE", "Music"
+algorithm <- "CibersortX"
 
 datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
 
@@ -34,9 +34,10 @@ params_loop2 <- expand_grid(alg_config$params_markers,
 
 # NOTE: Recommendations for number of cores, per algorithm:
 #   DWLS: 1/2 the available cores, as this doesn't need much RAM but multi-threads a little
-#   deconRNASeq and music: 1/4 to 1/2 the available cores, as these algorithms multi-thread
-#   dtangle and hspe: as many cores as will fit in RAM. Assume between 5-20 GB
+#   DeconRNASeq and Music: 1/4 to 1/2 the available cores, as these algorithms multi-thread
+#   Dtangle and HSPE: as many cores as will fit in RAM. Assume between 5-20 GB
 #                     of RAM needed per core, depending on the dataset.
+#   CibersortX: only 1 core because of the memory usage
 # NOTE: "FORK" is more memory-efficient but only works on Unix systems. For
 #       other systems, use "PSOCK" and reduce the number of cores.
 cores <- alg_config$cores
@@ -49,8 +50,8 @@ required_libraries <- alg_config$required_libraries
 #### Iterate through parameters ####
 
 # Outer loop - each row of params_loop1 represents a single/unique call to
-# Load_AlgorithmInputData in its own thread. The inner loop then runs through
-# all parameter sets on that data.
+# Load_AlgorithmInputData. The inner loop then runs through all parameter sets
+# on that data.
 # NOTE: the helper functions have to be sourced inside the foreach loop
 #       so they exist in each newly-created parallel environment
 
@@ -92,6 +93,16 @@ for (P in 1:nrow(params_loop1)) {
     gc()
   }
 
+  # Extra processing for CibersortX: create CibersortX-formatted data file for
+  # single cell reference input, then replace the reference object with the
+  # filename.
+  if (algorithm == "CibersortX") {
+    f_name <- Save_SingleCellToCibersort(data$reference,
+                                         dataset_name = params_loop1$reference_data_name[P],
+                                         granularity = params_loop1$granularity[P])
+    data$reference <- f_name
+    gc()
+  }
 
   ##### Loop through algorithm-specific arguments #####
   # Inner loop - each row of params_loop2 represents a single/unique call to
@@ -134,6 +145,11 @@ for (P in 1:nrow(params_loop1)) {
     # Dtangle/HSPE need "Y" and "pure_samples" passed in
     else if (algorithm %in% c("Dtangle", "HSPE")) {
       res <- inner_loop_func(Y, pure_samples, params, algorithm)
+    }
+    # CibersortX needs the signature passed in
+    else if (algorithm == "CibersortX") {
+      res <- inner_loop_func(data$reference, data$test,
+                             data$cibersortx_signature, params)
     }
     else {
       res <- inner_loop_func(data$reference, data$test, params, algorithm)

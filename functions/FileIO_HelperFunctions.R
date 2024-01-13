@@ -6,6 +6,7 @@ library(scuttle)
 library(stringr)
 library(DESeq2)
 library(preprocessCore)
+library(vroom)
 source("Filenames.R")
 
 ##### Single cell / Pseudobulk objects #####
@@ -386,6 +387,9 @@ Load_SignatureMatrix <- function(dataset, granularity, output_type) {
 
   if (grepl("tmm", output_type)) {
     sig <- sig_matrix$tmm[[granularity]]
+  }
+  else if (output_type == "cibersortx") {
+    sig <- sig_matrix$cibersortx[[granularity]]
   }
   else {
     sig <- sig_matrix$cpm[[granularity]]
@@ -893,4 +897,38 @@ Load_Markers <- function(dataset, granularity, marker_type, marker_subtype = NUL
   }
 
   return(markers)
+}
+
+
+# Save_SingleCellToCibersort: CibersortX requires passing files to its docker
+# container, so the single cell data needs to be written as a dense matrix
+# in a specific format. The file is saved to the directory that is shared
+# with the CibersortX docker container. omnideconv will do this automatically
+# if you pass it a matrix instead of a filename, but it doesn't clear out the
+# memory after casting to a dense matrix and doesn't expose its write function,
+# so this is a re-implementation.
+#
+# Arguments:
+#   sce - a SingleCellExperiment object, which must have a column for "celltype"
+#   dataset_name - the name of this dataset
+#   granularity - either 'broad_class' or 'sub_class'
+#
+# Returns:
+#   f_name - the filename of the newly-created file
+Save_SingleCellToCibersort <- function(sce, dataset_name, granularity) {
+  df <- as.data.frame(as.matrix(counts(sce)))
+  df <- rbind(as.character(sce$celltype), df)
+  rownames(df)[1] <- "GeneSymbol"
+  df <- cbind("GeneSymbol" = rownames(df), df)
+
+  #f_name <- file.path(dir_cibersort, str_glue("{dataset_name}_{granularity}.tsv"))
+  # TODO temporary to get omnideconv to work properly
+  f_name <- file.path(dir_cibersort, "sample_file_for_cibersort.tsv")
+  vroom_write(df, file = f_name, delim = "\t", col_names = FALSE,
+              num_threads = parallel::detectCores()-1)
+
+  rm(df)
+  gc()
+
+  return(f_name)
 }

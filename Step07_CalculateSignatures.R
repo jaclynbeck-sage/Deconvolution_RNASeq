@@ -2,7 +2,8 @@
 # class cell type assignments output from mapping in Step 04. It also calculates
 # the average cell size (average counts per cell per cell type, normalized) for
 # use with MuSiC.
-library(SummarizedExperiment)
+library(SingleCellExperiment)
+library(omnideconv)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
 source(file.path("functions", "General_HelperFunctions.R"))
@@ -26,6 +27,43 @@ for (dataset in datasets) {
   })
 
   names(signatures) <- c("cpm", "tmm")
+
+  # Calculate the CibersortX signature for each cell type
+  # Very memory and disk space intensive
+  cx_signatures <- lapply(c("broad_class", "sub_class"), function(granularity) {
+    # omnideconv will do this automatically but doesn't clear out the memory
+    # after casting to a dense matrix and doesn't expose their write function,
+    # so this is a re-implementation.
+    sce <- Load_SingleCell(dataset, granularity, "counts")
+    f_name <- Save_SingleCellToCibersort(sce, dataset, granularity)
+    celltypes <- sce$celltype
+    rm(sce)
+    gc()
+
+    set_cibersortx_credentials(email = Sys.getenv("CIBERSORT_EMAIL"),
+                               token = Sys.getenv("CIBERSORT_TOKEN"))
+
+    sig <- build_model_cibersortx(f_name,
+                                  cell_type_annotations = as.character(celltypes),
+                                  container = "docker",
+                                  input_dir = dir_cibersort,
+                                  output_dir = dir_cibersort,
+                                  verbose = TRUE)
+
+    # Cell types are out of order and some genes have had "-" replaced by ".",
+    # this undoes that
+    sig <- sig[, levels(celltypes)]
+    rownames(sig) <- str_replace(rownames(sig), "\\.", "-")
+
+    # Cleanup finished docker container
+    system("docker rm $(docker ps -a -q --filter ancestor=cibersortx/fractions)")
+    gc()
+
+    return(sig)
+  })
+
+  names(cx_signatures) <- c("broad_class", "sub_class")
+  signatures[["cibersortx"]] <- cx_signatures
 
   saveRDS(signatures,
           file = file.path(dir_input, str_glue("{dataset}_signature.rds")))

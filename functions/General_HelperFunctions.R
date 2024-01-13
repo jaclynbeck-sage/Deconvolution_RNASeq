@@ -28,6 +28,10 @@ source(file.path("functions", "FileIO_HelperFunctions.R"))
 #                           "pseudobulk": pseudobulked "pure" samples as a
 #                                         SummarizedExperiment object
 #                           "signature": the signature matrix
+#                           "cibersortx": the signature matrix created by
+#                                         CibersortX PLUS the full single cell
+#                                         data set as a SingleCellExperiment
+#                                         object
 #   output_type = if reference_input_type is "singlecell" or "pseudobulk",
 #                 specifies how the counts are transformed:
 #                   "counts" will return raw, unaltered counts
@@ -45,7 +49,9 @@ source(file.path("functions", "FileIO_HelperFunctions.R"))
 #   input data in different formats, the objects are returned in the format they
 #   originated in (a SingleCellExperiment, SummarizedExperiment, or matrix)
 #   and it is assumed that the individual algorithms will manipulate the formats
-#   afterward.
+#   afterward. If the reference_input_type is "cibersortx", the "reference" slot
+#   will be the single cell data and the list will have an additional field
+#   called "cibersortx_signature" with CibersortX's calculated signature matrix.
 Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
                                     granularity = "broad_class",
                                     reference_input_type = "singlecell",
@@ -64,6 +70,12 @@ Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
     reference_obj <- Load_SignatureMatrix(reference_data_name, granularity,
                                           output_type)
   }
+  else if (reference_input_type == "cibersortx") {
+    reference_obj <- Load_SingleCell(reference_data_name, granularity,
+                                     output_type)
+    cx_signature <- Load_SignatureMatrix(reference_data_name, granularity,
+                                         output_type = "cibersortx")
+  }
   else {
     print("*** Error: Invalid reference_input_type specified! ***")
     return(NULL)
@@ -79,12 +91,19 @@ Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
     test_obj <- Load_BulkData(test_data_name, output_type, regression_method)
   }
 
+  # CibersortX input doesn't need gene filtering and needs the extra signature
+  if (reference_input_type == "cibersortx") {
+    return(list("reference" = reference_obj, "test" = test_obj,
+                "cibersortx_signature" = cx_signature))
+  }
+
   genes <- intersect(rownames(reference_obj), rownames(test_obj))
   reference_obj <- reference_obj[genes,]
   test_obj <- test_obj[genes,]
 
   return(list("reference" = reference_obj, "test" = test_obj))
 }
+
 
 # Load_AlgorithmInputData_FromParams: Ease-of-use shortcut function that takes in
 # a list of parameters and calls Load_AlgorithmInputData from the broken-out list.
