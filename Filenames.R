@@ -18,6 +18,8 @@ dir_best_errors <- file.path(dir_errors, "best_errors")
 dir_params_lists_tmp <- file.path(dir_params_lists, "tmp")
 dir_errors_tmp <- file.path(dir_errors, "tmp")
 
+dir_scaden_models <- file.path(dir_output, "scaden_models")
+
 dir_raw_data <- file.path(dir_input, "raw_data")
 dir_preprocessed <- file.path(dir_input, "preprocessed")
 dir_map_reference <- file.path(dir_input, "map_reference")

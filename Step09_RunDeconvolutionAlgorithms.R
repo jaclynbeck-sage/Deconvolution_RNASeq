@@ -8,8 +8,8 @@ source(file.path("functions", "General_HelperFunctions.R"))
 
 #### Parameter setup #####
 
-# options: "CibersortX", "DWLS", "DeconRNASeq", "Dtangle", "HSPE", "Music"
-algorithm <- "CibersortX"
+# options: "CibersortX", "DWLS", "DeconRNASeq", "Dtangle", "HSPE", "Music", "Scaden"
+algorithm <- "Scaden"
 
 datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
 
@@ -37,7 +37,7 @@ params_loop2 <- expand_grid(alg_config$params_markers,
 #   DeconRNASeq and Music: 1/4 to 1/2 the available cores, as these algorithms multi-thread
 #   Dtangle and HSPE: as many cores as will fit in RAM. Assume between 5-20 GB
 #                     of RAM needed per core, depending on the dataset.
-#   CibersortX: only 1 core because of the memory usage
+#   CibersortX and Scaden: only 1 core because of the memory usage
 # NOTE: "FORK" is more memory-efficient but only works on Unix systems. For
 #       other systems, use "PSOCK" and reduce the number of cores.
 cores <- alg_config$cores
