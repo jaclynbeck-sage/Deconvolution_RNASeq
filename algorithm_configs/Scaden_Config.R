@@ -30,7 +30,7 @@
 #           uses too much memory and disk space to be able to stack processes.
 alg_config <- list(
   # Used to create params_loop1 (data-specific arguments) in main function
-  normalizations = c("cpm"), # Scaden works on linear-scale data
+  normalizations = c("cpm", "tmm"), # Scaden works on linear-scale data
   reference_input_types = c("singlecell"),
 
   # For params_loop2 (algorithm-specific arguments) in main function
