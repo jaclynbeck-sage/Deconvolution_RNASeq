@@ -916,16 +916,30 @@ Load_Markers <- function(dataset, granularity, marker_type, marker_subtype = NUL
 # Returns:
 #   f_name - the filename of the newly-created file
 Save_SingleCellToCibersort <- function(sce, dataset_name, granularity) {
-  df <- as.data.frame(as.matrix(counts(sce)))
-  df <- rbind(as.character(sce$celltype), df)
-  rownames(df)[1] <- "GeneSymbol"
-  df <- cbind("GeneSymbol" = rownames(df), df)
-
   #f_name <- file.path(dir_cibersort, str_glue("{dataset_name}_{granularity}.tsv"))
   # TODO temporary to get omnideconv to work properly
   f_name <- file.path(dir_cibersort, "sample_file_for_cibersort.tsv")
-  vroom_write(df, file = f_name, delim = "\t", col_names = FALSE,
-              num_threads = parallel::detectCores()-1)
+
+  # Header (column names) is "GeneSymbol" followed by the cell type labels for
+  # each cell
+  cts <- as.data.frame(t(c("GeneSymbol", as.character(sce$celltype))))
+  vroom_write(cts, file = f_name, delim = "\t", col_names = FALSE)
+
+  # Write in blocks of 500 genes to avoid loading the whole matrix into memory
+  # at once, and to speed this process up considerably.
+  block_size <- 500
+  n_blocks <- ceiling(nrow(sce) / block_size)
+
+  for (block in 1:n_blocks) {
+    start <- (block-1) * block_size + 1
+    end <- min(block * block_size, nrow(sce))
+
+    df <- as.data.frame(as.matrix(counts(sce[start:end,])))
+    df <- cbind(rownames(df), df)
+    vroom_write(df, file = f_name, delim = "\t", col_names = FALSE,
+                append = TRUE,
+                num_threads = parallel::detectCores()-1)
+  }
 
   rm(df)
   gc()

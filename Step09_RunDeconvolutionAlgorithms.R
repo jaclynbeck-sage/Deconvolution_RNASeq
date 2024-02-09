@@ -95,8 +95,12 @@ for (P in 1:nrow(params_loop1)) {
 
   # Extra processing for CibersortX: create CibersortX-formatted data file for
   # single cell reference input, then replace the reference object with the
-  # filename.
+  # filename. Cell type names also can't have any "." in them, so this does a
+  # string replace to change them to "_".
   if (algorithm == "CibersortX") {
+    data$reference$celltype <- str_replace(data$reference$celltype, "\\.", "_")
+    colnames(data$cibersortx_signature) <- str_replace(colnames(data$cibersortx_signature), "\\.", "_")
+
     f_name <- Save_SingleCellToCibersort(data$reference,
                                          dataset_name = params_loop1$reference_data_name[P],
                                          granularity = params_loop1$granularity[P])
