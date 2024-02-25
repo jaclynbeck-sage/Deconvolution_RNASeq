@@ -71,10 +71,8 @@ Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
                                           output_type)
   }
   else if (reference_input_type == "cibersortx") {
-    reference_obj <- Load_SingleCell(reference_data_name, granularity,
-                                     output_type)
-    cx_signature <- Load_SignatureMatrix(reference_data_name, granularity,
-                                         output_type = "cibersortx")
+    reference_obj <- Load_SignatureMatrix(reference_data_name, granularity,
+                                          output_type = "cibersortx")
   }
   else {
     print("*** Error: Invalid reference_input_type specified! ***")
@@ -91,15 +89,12 @@ Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
     test_obj <- Load_BulkData(test_data_name, output_type, regression_method)
   }
 
-  # CibersortX input doesn't need gene filtering and needs the extra signature
-  if (reference_input_type == "cibersortx") {
-    return(list("reference" = reference_obj, "test" = test_obj,
-                "cibersortx_signature" = cx_signature))
+  # CibersortX signature doesn't need gene filtering, everything else does
+  if (reference_input_type != "cibersortx") {
+    genes <- intersect(rownames(reference_obj), rownames(test_obj))
+    reference_obj <- reference_obj[genes,]
+    test_obj <- test_obj[genes,]
   }
-
-  genes <- intersect(rownames(reference_obj), rownames(test_obj))
-  reference_obj <- reference_obj[genes,]
-  test_obj <- test_obj[genes,]
 
   return(list("reference" = reference_obj, "test" = test_obj))
 }

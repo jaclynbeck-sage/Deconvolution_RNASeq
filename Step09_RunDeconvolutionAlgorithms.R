@@ -98,13 +98,16 @@ for (P in 1:nrow(params_loop1)) {
   # filename. Cell type names also can't have any "." in them, so this does a
   # string replace to change them to "_".
   if (algorithm == "CibersortX") {
-    data$reference$celltype <- str_replace(data$reference$celltype, "\\.", "_")
-    colnames(data$cibersortx_signature) <- str_replace(colnames(data$cibersortx_signature), "\\.", "_")
+    sce <- Load_SingleCell(dataset = params_loop1$reference_data_name[P],
+                           granularity = params_loop1$granularity[P],
+                           output_type = params_loop1$normalization)
+    sce$celltype <- str_replace(sce$celltype, "\\.", "_")
+    colnames(data$reference) <- str_replace(colnames(data$reference), "\\.", "_")
 
-    f_name <- Save_SingleCellToCibersort(data$reference,
+    f_name <- Save_SingleCellToCibersort(sce = sce,
                                          dataset_name = params_loop1$reference_data_name[P],
                                          granularity = params_loop1$granularity[P])
-    data$reference <- f_name
+    data$singlecell_file <- f_name
     gc()
   }
 
@@ -150,10 +153,10 @@ for (P in 1:nrow(params_loop1)) {
     else if (algorithm %in% c("Dtangle", "HSPE")) {
       res <- inner_loop_func(Y, pure_samples, params, algorithm)
     }
-    # CibersortX needs the signature passed in
+    # CibersortX needs the signature and single cell filename passed in
     else if (algorithm == "CibersortX") {
-      res <- inner_loop_func(data$reference, data$test,
-                             data$cibersortx_signature, params)
+      res <- inner_loop_func(data$singlecell_filename, data$test,
+                             data$reference, params)
     }
     else {
       res <- inner_loop_func(data$reference, data$test, params, algorithm)
