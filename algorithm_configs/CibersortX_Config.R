@@ -31,12 +31,17 @@
 alg_config <- list(
   # Used to create params_loop1 (data-specific arguments) in main function
   normalizations = c("cpm"), # CibersortX works on linear-scale data
-  reference_input_types = c("cibersortx"), # CibersortX uses a signature matrix it creates
+  reference_input_types = c("cibersortx", "signature"), # CibersortX can use a signature matrix it creates,
+                                                        # or the signature created by this pipeline
 
   # For params_loop2 (algorithm-specific arguments) in main function
-  params_markers = CreateParams_FilterableSignature(filter_levels = 0), # all other args are default, this
-                                                                        # produces one row with filter = 0
-                                                                        # since this alg doesn't use markers
+  # Note: If the input type is "cibersortx", only filter_level = 0 will be used.
+  params_markers = CreateParams_FilterableSignature(filter_levels = c(0, 3),
+                                                    n_markers = 500,
+                                                    marker_types = list("dtangle" = "p.value"),
+                                                    marker_input_types = "pseudobulk",
+                                                    marker_order = "correlation"),
+
   additional_args = NULL, # No additional args. Most non-default CibersortX config variables are incompatible with single cell data
 
   # Define the function that runs each param set

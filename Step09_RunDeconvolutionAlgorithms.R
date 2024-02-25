@@ -107,8 +107,20 @@ for (P in 1:nrow(params_loop1)) {
     f_name <- Save_SingleCellToCibersort(sce = sce,
                                          dataset_name = params_loop1$reference_data_name[P],
                                          granularity = params_loop1$granularity[P])
-    data$singlecell_file <- f_name
+    data$singlecell_filename <- f_name
+    rm(sce)
     gc()
+
+    # Filter params_loop2: if the reference_input_type = cibersortx, only use
+    # filter_level = 0 because CibersortX already filtered its signature. If
+    # reference_input_type = signature, only use filter_level = 3 because
+    # CibersortX expects a filtered signature.
+    if (reference_input_type == "cibersortx") {
+      params_loop2 <- subset(params_loop2, filter_level == 0)
+    }
+    else {
+      params_loop2 <- subset(params_loop2, filter_level > 0)
+    }
   }
 
   ##### Loop through algorithm-specific arguments #####
@@ -127,9 +139,9 @@ for (P in 1:nrow(params_loop1)) {
     # data (DeconRNASeq and DWLS are signature-only), remove the
     # reference_input_type variable since it wasn't there originally for these
     # algorithms
-    if ("signature" %in% params_loop1$reference_input_type) {
-      params <- params %>% select(-reference_input_type)
-    }
+    #if ("signature" %in% params_loop1$reference_input_type) {
+    #  params <- params %>% select(-reference_input_type)
+    #}
 
     # If we are picking up from a failed/crashed run, and we've already run
     # this parameter set, load the result instead of re-running the algorithm
