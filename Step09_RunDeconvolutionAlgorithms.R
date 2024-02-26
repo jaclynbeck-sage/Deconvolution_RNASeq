@@ -100,7 +100,7 @@ for (P in 1:nrow(params_loop1)) {
   if (algorithm == "CibersortX") {
     sce <- Load_SingleCell(dataset = params_loop1$reference_data_name[P],
                            granularity = params_loop1$granularity[P],
-                           output_type = params_loop1$normalization)
+                           output_type = params_loop1$normalization[P])
     sce$celltype <- str_replace(sce$celltype, "\\.", "_")
     colnames(data$reference) <- str_replace(colnames(data$reference), "\\.", "_")
 
