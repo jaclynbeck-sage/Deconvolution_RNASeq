@@ -115,7 +115,7 @@ for (P in 1:nrow(params_loop1)) {
     # filter_level = 0 because CibersortX already filtered its signature. If
     # reference_input_type = signature, only use filter_level = 3 because
     # CibersortX expects a filtered signature.
-    if (reference_input_type == "cibersortx") {
+    if (params_loop1$reference_input_type[P] == "cibersortx") {
       params_loop2 <- subset(params_loop2, filter_level == 0)
     }
     else {

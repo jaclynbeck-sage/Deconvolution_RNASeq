@@ -47,6 +47,10 @@ CibersortX_InnerLoop <- function(reference_filename, bulk_mat, signature, params
     }
   }
 
+  file_label <- paste(params$reference_data_name, params$test_data_name,
+                      params$granularity, params$reference_input_type,
+                      params$normalization, sep = "_")
+
   res_pcts <- deconvolute_cibersortx(bulk_mat, signature,
                                      single_cell_object = basename(reference_filename),
                                      cell_type_annotations = colnames(signature), # dummy variable, not used if a filename is provided but has to have a non-null value
@@ -55,7 +59,8 @@ CibersortX_InnerLoop <- function(reference_filename, bulk_mat, signature, params
                                      input_dir = dir_cibersort,
                                      output_dir = dir_cibersort,
                                      qn = FALSE,
-                                     absolute = FALSE)
+                                     absolute = FALSE,
+                                     label = file_label)
 
   # Cleanup finished docker container
   system("docker rm $(docker ps -a -q --filter ancestor=cibersortx/fractions)")
