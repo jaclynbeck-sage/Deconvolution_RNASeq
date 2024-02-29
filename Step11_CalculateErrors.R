@@ -136,18 +136,10 @@ for (bulk_dataset in bulk_datasets) {
       }
       params_mod$normalization <- str_replace(params_mod$normalization, "log_", "")
 
-      # We need the signature matrix for error calculation, not the raw data
-      #if (!(params_mod$reference_input_type %in% c("signature", "cibersortx"))) {
-      if (params_mod$reference_input_type != "signature") {
-        params_mod$reference_input_type <- "signature"
-      }
-
       # The data that was used to generate the estimates
-      #data <- Load_AlgorithmInputData_FromParams(params_mod)
       data <- Load_BulkData(params_mod$test_data_name,
                             output_type = params_mod$normalization,
                             regression_method = params_mod$regression_method)
-      #signature <- data$reference
 
       if (params_mod$normalization == "tmm") {
         filtered_signatures <- filtered_signatures_tmm
@@ -155,11 +147,6 @@ for (bulk_dataset in bulk_datasets) {
       else {
         filtered_signatures <- filtered_signatures_cpm
       }
-
-      # CibersortX doesn't subtract the 1 when calculating its signature
-      #if (params_mod$reference_input_type == "cibersortx") {
-      #  signature[signature == 1] <- 0
-      #}
 
       bulk_cpm <- assay(data, "counts")
 
@@ -171,8 +158,7 @@ for (bulk_dataset in bulk_datasets) {
 
       ##### Calculate error for each param set #####
 
-      foreach (P = 1:length(deconv_list)) %dopar% {
-      #deconv_list <- lapply(names(deconv_list), function(param_id) {
+      deconv_list <- foreach (P = 1:length(deconv_list)) %dopar% {
         param_id <- names(deconv_list)[[P]]
 
         # If the error calculation for this param_id exists, don't re-calculate
@@ -236,11 +222,7 @@ for (bulk_dataset in bulk_datasets) {
 
         params <- deconv_list[[param_id]]$params
 
-        #sig_filt <- signature[intersect(genes_use, rownames(signature)),]
         bulk_cpm_filt <- bulk_cpm[genes_use,]
-
-        #est_expr <- t(est_pct %*% t(sig_filt))
-        #gof_by_sample <- CalcGOF_BySample(bulk_cpm_filt, est_expr, param_id)
 
         # Calculate error using all signatures
         gof_by_sample <- lapply(names(filtered_signatures), function(N) {
@@ -252,7 +234,6 @@ for (bulk_dataset in bulk_datasets) {
         })
         names(gof_by_sample) <- names(filtered_signatures)
 
-        #gof_means <- CalcGOF_Means(gof_by_sample, bulk_metadata, param_id)
         gof_means <- lapply(gof_by_sample, function(gof) {
           return(CalcGOF_Means(gof, bulk_metadata, param_id))
         })
@@ -294,8 +275,8 @@ for (bulk_dataset in bulk_datasets) {
         next
       }
 
-      gof_means_all <- do.call(rbind, lapply(deconv_list, "[[", "gof_means_all"))
-      gof_means_all_lm <- do.call(rbind, lapply(deconv_list, "[[", "gof_means_all_lm"))
+      gof_means_all <- do.call(rbind, lapply(deconv_list, "[[", "gof_means"))
+      gof_means_all_lm <- do.call(rbind, lapply(deconv_list, "[[", "gof_means_lm"))
       params <- do.call(rbind, lapply(deconv_list, "[[", "params"))
       pct_inh <- sapply(deconv_list, "[[", "pct_bad_inhibitory_ratio")
       names(pct_inh) <- rownames(params)

@@ -739,14 +739,16 @@ Load_ErrorList <- function(algorithm, params) {
 # bulk dataset / granularity, get all error filenames from the errors directory.
 #
 # Arguments:
-#   algorithm = the name of the algorithm
-#   reference_dataset = the name of the single cell dataset used as reference
 #   bulk_dataset = the name of the bulk dataset
+#   algorithm = the name of the algorithm
 #   granularity = either "broad_class" or "sub_class"
+#   reference_dataset = the name of the single cell dataset used as reference.
+#                       If NULL, all error files for the bulk_dataset/algorithm/
+#                       granularity are returned.
 #
 # Returns:
 #   a vector of filenames (including full file path)
-Get_ErrorFiles <- function(algorithm, reference_dataset, bulk_dataset, granularity) {
+Get_ErrorFiles <- function(bulk_dataset, algorithm, granularity, reference_dataset = NULL) {
   dir_alg <- file.path(dir_errors, bulk_dataset, algorithm)
   patt <- paste0(reference_dataset, ".*", granularity)
   files <- list.files(dir_alg, pattern = patt, full.names = TRUE)
