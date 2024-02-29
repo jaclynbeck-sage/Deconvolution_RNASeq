@@ -748,7 +748,8 @@ Load_ErrorList <- function(algorithm, params) {
 #   a vector of filenames (including full file path)
 Get_ErrorFiles <- function(algorithm, reference_dataset, bulk_dataset, granularity) {
   dir_alg <- file.path(dir_errors, bulk_dataset, algorithm)
-  files <- list.files(dir_alg, pattern = reference_dataset, full.names = TRUE)
+  patt <- paste0(reference_dataset, ".*", granularity)
+  files <- list.files(dir_alg, pattern = patt, full.names = TRUE)
   return(files)
 }
 

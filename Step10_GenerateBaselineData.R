@@ -32,7 +32,7 @@ bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
 # do this without duplicating error calculation code or other downstream
 # processing is to make copies of each of the estimates, one file for each
 # combination, even though the files are all the same.
-params_permute <- expand.grid(reference_data_name = reference_datasets,
+params_permute <- expand.grid(reference_data_name = c("none"),
                               normalization = c("cpm", "tmm", "tpm"),
                               regression_method = c("none", "edger", "deseq2", "dream"),
                               reference_input_type = c("signature"),
@@ -177,7 +177,7 @@ for (granularity in c("broad_class", "sub_class")) {
 
 
     ##### Write copies of the estimate list #####
-    # One copy per combination of reference dataset / normalization / regression
+    # One copy per combination of test dataset / normalization / regression
 
     for (R in 1:nrow(params_permute)) {
       # Add one row of params_permute to all the params in the list

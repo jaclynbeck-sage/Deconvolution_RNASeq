@@ -16,8 +16,8 @@ registerDoParallel(cl)
 
 est_fields = list("CibersortX" = "estimates",
                   "DeconRNASeq" = "out.all",
-                  "DWLS" = "estimates",
                   "Dtangle" = "estimates",
+                  "DWLS" = "estimates",
                   "HSPE" = "estimates",
                   "Music" = "Est.pctRNA.weighted",
                   "Scaden" = "estimates",
@@ -25,8 +25,11 @@ est_fields = list("CibersortX" = "estimates",
 
 algorithms <- names(est_fields)
 
-all_signatures <- sapply(c("cain", "lau", "leng", "mathys", "seaRef"), function(X) {
+all_signatures_cpm <- sapply(c("cain", "lau", "leng", "mathys", "seaRef"), function(X) {
   Load_SignatureMatrix(X, granularity, "cpm")
+})
+all_signatures_tmm <- sapply(c("cain", "lau", "leng", "mathys", "seaRef"), function(X) {
+  Load_SignatureMatrix(X, granularity, "tmm")
 })
 
 for (bulk_dataset in bulk_datasets) {
@@ -56,12 +59,15 @@ for (bulk_dataset in bulk_datasets) {
   # Get the top 5000 most variable genes that exist in all signatures and in
   # the bulk dataset
   genes_use <- names(var_genes)
-  for (name in names(all_signatures)) {
-    genes_use <- intersect(genes_use, rownames(all_signatures[[name]]))
+  for (name in names(all_signatures_cpm)) {
+    genes_use <- intersect(genes_use, rownames(all_signatures_cpm[[name]]))
   }
   genes_use <- genes_use[1:5000]
 
-  filtered_signatures <- lapply(all_signatures, function(X) {
+  filtered_signatures_cpm <- lapply(all_signatures_cpm, function(X) {
+    X[genes_use,]
+  })
+  filtered_signatures_tmm <- lapply(all_signatures_tmm, function(X) {
     X[genes_use,]
   })
 
@@ -80,16 +86,15 @@ for (bulk_dataset in bulk_datasets) {
     }
 
     # Process files in parallel
-    foreach (file = 1:length(res_files)) %dopar% {
+    for (file in res_files) {
       source(file.path("functions", "General_HelperFunctions.R"))
       source(file.path("functions", "Step11_Error_HelperFunctions.R"))
 
-      deconv_list <- readRDS(res_files[file])
+      deconv_list <- readRDS(file)
 
       # If the file contains a null list, skip it
       if (length(deconv_list) == 0) {
-        #next
-        return(NULL)
+        next
       }
 
       params <- do.call(rbind, lapply(deconv_list, "[[", "params"))
@@ -115,8 +120,7 @@ for (bulk_dataset in bulk_datasets) {
                      paste(params_data, collapse = " "),
                      "found. Skipping...")
         message(msg)
-        #next
-        return(NULL)
+        next
       }
 
       msg <- paste("Calculating errors for", algorithm,
@@ -133,20 +137,31 @@ for (bulk_dataset in bulk_datasets) {
       params_mod$normalization <- str_replace(params_mod$normalization, "log_", "")
 
       # We need the signature matrix for error calculation, not the raw data
-      if (!(params_mod$reference_input_type %in% c("signature", "cibersortx"))) {
+      #if (!(params_mod$reference_input_type %in% c("signature", "cibersortx"))) {
+      if (params_mod$reference_input_type != "signature") {
         params_mod$reference_input_type <- "signature"
       }
 
       # The data that was used to generate the estimates
-      data <- Load_AlgorithmInputData_FromParams(params_mod)
-      signature <- data$reference
+      #data <- Load_AlgorithmInputData_FromParams(params_mod)
+      data <- Load_BulkData(params_mod$test_data_name,
+                            output_type = params_mod$normalization,
+                            regression_method = params_mod$regression_method)
+      #signature <- data$reference
 
-      # CibersortX doesn't subtract the 1 when calculating its signature
-      if (params_mod$reference_input_type == "cibersortx") {
-        signature[signature == 1] <- 0
+      if (params_mod$normalization == "tmm") {
+        filtered_signatures <- filtered_signatures_tmm
+      }
+      else {
+        filtered_signatures <- filtered_signatures_cpm
       }
 
-      bulk_cpm <- assay(data$test, "counts")
+      # CibersortX doesn't subtract the 1 when calculating its signature
+      #if (params_mod$reference_input_type == "cibersortx") {
+      #  signature[signature == 1] <- 0
+      #}
+
+      bulk_cpm <- assay(data, "counts")
 
       rm(data)
       gc()
@@ -156,8 +171,10 @@ for (bulk_dataset in bulk_datasets) {
 
       ##### Calculate error for each param set #####
 
-      #foreach (P = 1:length(deconv_list)) %dopar% {
-      deconv_list <- lapply(names(deconv_list), function(param_id) {
+      foreach (P = 1:length(deconv_list)) %dopar% {
+      #deconv_list <- lapply(names(deconv_list), function(param_id) {
+        param_id <- names(deconv_list)[[P]]
+
         # If the error calculation for this param_id exists, don't re-calculate
         tmp <- Load_ErrorIntermediate(algorithm, deconv_list[[param_id]]$params)
         if (!is.null(tmp)) {
@@ -167,7 +184,7 @@ for (bulk_dataset in bulk_datasets) {
         }
 
         est_pct <- deconv_list[[param_id]][[est_field]]
-        est_pct <- est_pct[colnames(bulk_cpm), colnames(signature)]
+        est_pct <- est_pct[colnames(bulk_cpm), colnames(filtered_signatures[[1]])]
 
         if (any(is.na(est_pct))) {
           message(str_glue("Param set {param_id} has NA values. Skipping..."))
@@ -219,50 +236,54 @@ for (bulk_dataset in bulk_datasets) {
 
         params <- deconv_list[[param_id]]$params
 
-        sig_filt <- signature[intersect(genes_use, rownames(signature)),]
-        bulk_cpm_filt <- bulk_cpm[intersect(genes_use, rownames(signature)),]
+        #sig_filt <- signature[intersect(genes_use, rownames(signature)),]
+        bulk_cpm_filt <- bulk_cpm[genes_use,]
 
-        est_expr <- t(est_pct %*% t(sig_filt))
-        gof_by_sample <- CalcGOF_BySample(bulk_cpm_filt, est_expr, param_id)
+        #est_expr <- t(est_pct %*% t(sig_filt))
+        #gof_by_sample <- CalcGOF_BySample(bulk_cpm_filt, est_expr, param_id)
 
         # Calculate error using all signatures
-        #gof_by_sample <- lapply(filtered_signatures, function(sig_filt) {
-        #  est_expr <- t(est_pct %*% t(sig_filt))
-        #  return(CalcGOF_BySample(bulk_cpm_filt, est_expr, param_id))
-        #})
+        gof_by_sample <- lapply(names(filtered_signatures), function(N) {
+          est_expr <- t(est_pct %*% t(filtered_signatures[[N]]))
+          gof <- CalcGOF_BySample(bulk_cpm_filt, est_expr, param_id)
+          gof$signature <- N
+          gof$solve_type <- "signature"
+          return(gof)
+        })
+        names(gof_by_sample) <- names(filtered_signatures)
 
-        gof_means <- CalcGOF_Means(gof_by_sample, bulk_metadata, param_id)
-        #gof_means <- lapply(names(gof_by_sample), function(N) {
-        #  means <- CalcGOF_Means(gof_by_sample[[N]], bulk_metadata, param_id)
-        #  means$all_tissue$signature <- N
-        #  means$by_tissue$signature <- N
-        #  return(means)
-        #})
-        #gof_means <- list("all_tissue" = do.call(rbind, lapply(gof_means, "[[", "all_tissue")),
-        #                  "by_tissue" = do.call(rbind, lapply(gof_means, "[[", "by_tissue")))
+        #gof_means <- CalcGOF_Means(gof_by_sample, bulk_metadata, param_id)
+        gof_means <- lapply(gof_by_sample, function(gof) {
+          return(CalcGOF_Means(gof, bulk_metadata, param_id))
+        })
+        gof_means <- do.call(rbind, gof_means)
 
         # Calculate error using signature-less lm
         gof_by_sample_lm <- CalcGOF_BySample_LM(bulk_dataset, covariates,
                                                 meas_expr_log, est_pct, param_id)
+        gof_by_sample_lm$signature <- "none"
+        gof_by_sample_lm$solve_type <- "lm"
+
         gof_means_lm <- CalcGOF_Means(gof_by_sample_lm, bulk_metadata, param_id)
 
-        decon_new <- list("gof_by_sample" = gof_by_sample,
-                          "gof_means_all" = gof_means$all_tissue,
-                          "gof_means_by_tissue" = gof_means$by_tissue,
+        decon_new <- list("gof_by_sample" = do.call(rbind, gof_by_sample),
+                          "gof_means" = gof_means,
                           "gof_by_sample_lm" = gof_by_sample_lm,
-                          "gof_means_all_lm" = gof_means_lm$all_tissue,
-                          "gof_means_by_tissue_lm" = gof_means_lm$by_tissue,
+                          "gof_means_lm" = gof_means_lm,
                           "params" = deconv_list[[param_id]]$params,
                           "pct_bad_inhibitory_ratio" = pct_bad_inhibitory_ratio,
-                          "estimates_df" = melt(est_pct))
+                          "estimates" = as.data.frame(est_pct))
 
         decon_new$params$total_markers_used <- length(deconv_list[[param_id]]$markers)
-        colnames(decon_new$estimates_df) <- c("sample", "celltype", "percent")
+        rownames(decon_new$params) <- param_id
+
+        decon_new$estimates$sample <- rownames(decon_new$estimates)
+        decon_new$estimates$param_id <- param_id
 
         Save_ErrorIntermediate(decon_new, algorithm)
         #print(param_id)
         return(decon_new)
-      })
+      }
 
       # Remove NULL (skipped) entries
       deconv_list <- deconv_list[lengths(deconv_list) > 0]
@@ -270,30 +291,33 @@ for (bulk_dataset in bulk_datasets) {
       if (length(deconv_list) == 0) {
         print(paste("No valid parameter sets for", algorithm,
                     paste(params_data, collapse = " ")))
-        #next
-        return(NULL)
+        next
       }
 
-      gof_means_all <- lapply(deconv_list, "[[", "gof_means_all")
-      gof_means_tissue <- lapply(deconv_list, "[[", "gof_means_by_tissue")
-      gof_means_all_lm <- lapply(deconv_list, "[[", "gof_means_all_lm")
-      gof_means_tissue_lm <- lapply(deconv_list, "[[", "gof_means_by_tissue_lm")
-      params <- lapply(deconv_list, "[[", "params")
-      all_ests <- do.call(rbind, lapply(deconv_list, "[[", "estimates_df"))
+      gof_means_all <- do.call(rbind, lapply(deconv_list, "[[", "gof_means_all"))
+      gof_means_all_lm <- do.call(rbind, lapply(deconv_list, "[[", "gof_means_all_lm"))
+      params <- do.call(rbind, lapply(deconv_list, "[[", "params"))
+      pct_inh <- sapply(deconv_list, "[[", "pct_bad_inhibitory_ratio")
+      names(pct_inh) <- rownames(params)
+      all_ests <- do.call(rbind, lapply(deconv_list, "[[", "estimates"))
+      all_ests <- melt(all_ests, variable.name = "celltype",
+                       value.name = "percent", id.vars = c("param_id", "sample"))
 
       est_stats <- CalcEstimateStats(all_ests, bulk_metadata)
 
-      err_list <- list("means" = list("all_tissue" = do.call(rbind, gof_means_all),
-                                      "by_tissue" = do.call(rbind, gof_means_tissue),
-                                      "all_tissue_lm" = do.call(rbind, gof_means_all_lm),
-                                      "by_tissue_lm" = do.call(rbind, gof_means_tissue_lm)),
-                       "params" = do.call(rbind, params),
+      err_list <- list("means" = list("all_signature" = gof_means_all,
+                                      "all_lm" = gof_means_all_lm),
+                       "params" = params,
                        "by_sample" = lapply(deconv_list, "[[", "gof_by_sample"),
                        "by_sample_lm" = lapply(deconv_list, "[[", "gof_by_sample_lm"),
                        "estimate_stats" = est_stats,
-                       "pct_bad_inhibitory_ratio" = sapply(deconv_list, "[[", "pct_bad_inhibitory_ratio"),
+                       "pct_bad_inhibitory_ratio" = pct_inh,
                        "n_valid_results" = length(deconv_list),
-                       "n_possible_results" = total_length)
+                       "n_possible_results" = total_length,
+                       "estimates" = all_ests)
+
+      names(err_list$by_sample) <- rownames(err_list$params)
+      names(err_list$by_sample_lm) <- rownames(err_list$params)
 
       Save_ErrorList(bulk_dataset, err_list, algorithm, params_data)
 
