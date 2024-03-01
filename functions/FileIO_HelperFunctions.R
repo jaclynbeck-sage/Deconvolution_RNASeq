@@ -469,7 +469,12 @@ Save_ModelFormulas <- function(dataset_name, formula_list) {
 #   a list of formulas ('formula_fixed' and 'formula_mixed'). The formulas are
 #   strings, not the 'formula' object.
 Load_ModelFormulas <- function(dataset_name) {
-  readRDS(file.path(dir_metadata, str_glue("model_formulas_{dataset_name}.rds")))
+  model_filename <- file.path(dir_metadata,
+                              str_glue("model_formulas_{dataset_name}.rds"))
+  if (file.exists(model_filename)) {
+    return(readRDS(model_filename))
+  }
+  return(NULL)
 }
 
 
