@@ -146,7 +146,7 @@ for (granularity in c("broad_class", "sub_class")) {
         ests <- sweep(ests, 1, rowSums(ests), "/")
 
         # Needed so error calculations have unique params for each item
-        params_tmp <- cbind(params, "trial" = paste(ct, N, sep = "_"))
+        params_tmp <- cbind(params, "trial" = paste(celltypes[ct], N, sep = "_"))
 
         return(list("estimates" = ests, "params" = params_tmp))
       })
@@ -184,7 +184,15 @@ for (granularity in c("broad_class", "sub_class")) {
       err_list_copy <- full_dataset
       err_list_copy <- lapply(err_list_copy, function(err_item) {
         err_item$params <- cbind(err_item$params, params_permute[R,])
+        cols_keep <- c("test_data_name", "granularity", "normalization",
+                       "regression_method", "random_method", "trial")
+        rownames(err_item$params) <- paste(err_item$params[cols_keep],
+                                           collapse = "_")
         return(err_item)
+      })
+
+      names(err_list_copy) <- sapply(err_list_copy, function(err_item) {
+        rownames(err_item$params)
       })
 
       # Create the same naming scheme as other algorithm output
