@@ -11,10 +11,6 @@ RUN apt-get install -y libgsl-dev # for sageseqr
 RUN cd /home/rstudio && curl -fsSL https://get.docker.com -o install-docker.sh
 RUN cd /home/rstudio && sh install-docker.sh
 
-# TODO Remove libopenblas-dev, libopenblas-pthread-dev, replace with libblas-dev and liblapack-dev?
-# Unclear if these packages are still needed
-#RUN apt-get install -y libffi-dev libgeos-dev
-
 USER rstudio
 
 RUN cd /home/rstudio && git clone https://github.com/jaclynbeck-sage/Deconvolution_RNASeq.git

@@ -11,8 +11,7 @@ install.packages("synapser", repos = c("http://ran.synapse.org", "http://cran.fh
 BiocManager::install(c("Biobase", "SingleCellExperiment", "TOAST", "scuttle",
                        "DeconRNASeq", "Seurat", "MAST", "GEOquery", "biomaRt",
                        "DESeq2", "edgeR", "GenomicFeatures", "snpStats",
-                       "HDF5Array")) #,
-                       # "rhdf5"))
+                       "HDF5Array"))
 
 BiocManager::install("preprocessCore", configure.args="--disable-threading")
 

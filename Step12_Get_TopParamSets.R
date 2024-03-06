@@ -21,7 +21,7 @@ for (bulk_dataset in bulk_datasets) {
 
     if (length(err_files) == 0) {
       message(str_glue("No data found for {bulk_dataset}/{algorithm}/{granularity}. Skipping..."))
-      return(NULL)
+      next
     }
 
     errs_alg <- lapply(err_files, function(EF) {

@@ -66,6 +66,9 @@ CibersortX_InnerLoop <- function(reference_filename, bulk_mat, signature, params
   system("docker rm $(docker ps -a -q --filter ancestor=cibersortx/fractions)")
   gc()
 
+  # Undo replacement of "." in the cell type names that was needed for CibersortX
+  colnames(res_pcts) <- str_replace(colnames(res_pcts), "_", ".")
+
   res <- list("estimates" = res_pcts,
               "params" = params,
               "markers" = rownames(signature))

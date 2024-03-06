@@ -87,9 +87,6 @@ for (bulk_dataset in bulk_datasets) {
 
     # Process files in parallel
     for (file in res_files) {
-      source(file.path("functions", "General_HelperFunctions.R"))
-      source(file.path("functions", "Step11_Error_HelperFunctions.R"))
-
       deconv_list <- readRDS(file)
 
       # If the file contains a null list, skip it
@@ -159,6 +156,9 @@ for (bulk_dataset in bulk_datasets) {
       ##### Calculate error for each param set #####
 
       deconv_list <- foreach (P = 1:length(deconv_list)) %dopar% {
+        source(file.path("functions", "General_HelperFunctions.R"))
+        source(file.path("functions", "Step11_Error_HelperFunctions.R"))
+
         param_id <- names(deconv_list)[[P]]
 
         # If the error calculation for this param_id exists, don't re-calculate
@@ -170,6 +170,8 @@ for (bulk_dataset in bulk_datasets) {
         }
 
         est_pct <- deconv_list[[param_id]][[est_field]]
+        # CibersortX produced cell types with underscores instead of periods
+        colnames(est_pct) <- str_replace(colnames(est_pct), "_", ".")
         est_pct <- est_pct[colnames(bulk_cpm), colnames(filtered_signatures[[1]])]
 
         if (any(is.na(est_pct))) {

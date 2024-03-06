@@ -224,7 +224,9 @@ Filter_Params <- function(err_list, best_params) {
 # strings because they differ between algorithms
 Get_AllBestErrorsAsDf <- function(bulk_datasets, granularity) {
   file_list <- list.files(dir_best_errors,
-                          pattern = paste(bulk_datasets, collapse = "|"),
+                          pattern = paste0("[",
+                                           paste(bulk_datasets, collapse = "|"),
+                                           "].*", granularity),
                           full.names = TRUE)
 
   best_err_list <- lapply(file_list, function(file) {
@@ -238,14 +240,7 @@ Get_AllBestErrorsAsDf <- function(bulk_datasets, granularity) {
     param_strings <- data.frame(param_id = names(param_strings),
                                 param_string = as.character(param_strings))
 
-    data$means_all_tissue$tissue <- "All"
-    #data$means_by_tissue <- dplyr::rename(data$means_by_tissue, tissue = tissue_assignments)
-    #data$means_all_tissue <- data$means_all_tissue[, colnames(data$means_by_tissue)]
-
-    means_cat <- data$means_all_tissue #rbind(data$means_all_tissue, data$means_by_tissue)
-
-    errs_df <- merge(means_cat, param_strings, by = "param_id")
-    errs_df <- merge(errs_df, data$metrics, by = "param_id")
+    errs_df <- merge(data$means, param_strings, by = "param_id")
 
     if (!("reference_input_type" %in% colnames(data$params))) {
       data$params$reference_input_type <- "signature"
