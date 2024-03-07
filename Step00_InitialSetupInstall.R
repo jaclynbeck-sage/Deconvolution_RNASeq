@@ -39,6 +39,7 @@ devtools::install_github("Sage-Bionetworks/sageseqr")
 system("bash install_dtangle.sh")
 install.packages(file.path('~', 'dtangle', 'dtangleSparse_2.0.9.tar.gz'),
                  repos = NULL, type = "source")
+system(paste("rm -rf", file.path("~", "dtangle")))
 
 # Extra package needed for pre-processing seaRef
 reticulate::virtualenv_install("r-reticulate", packages = c("anndata"))
@@ -50,4 +51,3 @@ reticulate::virtualenv_create("autogenes_env",
 
 # Install omnideconv
 pak::pkg_install("omnideconv/omnideconv")
-omnideconv::install_all_python()
