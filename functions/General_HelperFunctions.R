@@ -617,6 +617,7 @@ OrderMarkers_ByCorrelation <- function(marker_list, data) {
   new_list <- sapply(names(marker_list), function(N) {
     markers <- marker_list[[N]]
     markers <- markers[markers %in% rownames(data)]
+    markers <- markers[rowSums(data[markers,] > 0) >= 3]
 
     if (length(markers) <= 2) {
       return(markers)
@@ -658,14 +659,15 @@ OrderMarkers_ByCorrelation <- function(marker_list, data) {
 #   metadata - the metadata dataframe (colData()) from a SummarizedExperiment
 #   covariates - a dataframe of covariates, where rows are samples and columns
 #                are the covariates
+#   scale - TRUE or FALSE, whether to scale numeric columns
 #
 # Returns:
 #   a dataframe with merged metadata and cleaned covariates
-Clean_BulkCovariates <- function(bulk_dataset_name, metadata, covariates) {
+Clean_BulkCovariates <- function(bulk_dataset_name, metadata, covariates, scale = TRUE) {
   covariates <- subset(covariates, specimenID %in% rownames(metadata))
 
   batch_vars <- list("Mayo" = "flowcell",
-                     "MSBB" = c("individualID", "sequencingBatch"),
+                     "MSBB" = "sequencingBatch",
                      "ROSMAP" = "final_batch")
 
   # Ensure categorical covariates are factors
@@ -673,7 +675,8 @@ Clean_BulkCovariates <- function(bulk_dataset_name, metadata, covariates) {
     covariates[,batch] <- factor(covariates[,batch])
   }
 
-  for (col in c("sex", "race", "spanish", "ethnicity", "individualID", "apoe4_allele")) {
+  for (col in c("sex", "race", "spanish", "ethnicity", "individualID",
+                "apoe4_allele", "projid")) {
     if (col %in% colnames(covariates)) {
       covariates[,col] <- factor(covariates[,col])
     }
@@ -683,9 +686,11 @@ Clean_BulkCovariates <- function(bulk_dataset_name, metadata, covariates) {
   covariates$age_death <- as.numeric(covariates$age_death)
 
   # Scale numerical covariates
-  for (colname in colnames(covariates)) {
-    if (is.numeric(covariates[,colname]) & colname != "apoe4_allele") {
-      covariates[,colname] <- scale(covariates[,colname])
+  if (scale) {
+    for (colname in colnames(covariates)) {
+      if (is.numeric(covariates[,colname])) {
+        covariates[,colname] <- scale(covariates[,colname])
+      }
     }
   }
 

@@ -13,8 +13,7 @@ source(file.path("functions", "General_HelperFunctions.R"))
 
 ##### Setup #####
 
-datasets <- c("cain", "lau", "leng", "mathys", #"morabito",
-              "seaRef", #"seaAD", # Single cell
+datasets <- c("cain", "lau", "leng", "mathys", "seaRef", # Single cell
               "Mayo", "MSBB", "ROSMAP") # Bulk
 
 is_singlecell <- function(dataset) {

@@ -354,6 +354,12 @@ Get_AllEstimatesAsDf <- function(ref_dataset, bulk_dataset, algorithms,
                            regression_method) %>%
                     distinct()
 
+    if (nrow(file_params) == 0) {
+      print(str_glue(paste0("No valid data found for {algorithm} / {bulk_dataset}",
+                            "/ {ref_dataset} / {granularity}. Skipping...")))
+      next
+    }
+
     ests_list <- lapply(1:nrow(file_params), function(P) {
       ests <- Load_AlgorithmOutputList(algorithm, ref_dataset, bulk_dataset,
                                        granularity,
@@ -365,13 +371,13 @@ Get_AllEstimatesAsDf <- function(ref_dataset, bulk_dataset, algorithms,
 
       ests <- lapply(names(ests), FUN = function(X) {
         ests[[X]] <- as.data.frame(ests[[X]])
-        ests[[X]]$name <- X
         ests[[X]]$sample <- rownames(ests[[X]])
-        ests[[X]]$param_id <- X #param_ids[X]
+        ests[[X]]$param_id <- X
         return(ests[[X]])
       })
 
       ests_df <- do.call(rbind, ests)
+
       return(ests_df)
     })
 
@@ -391,15 +397,10 @@ Get_AllEstimatesAsDf <- function(ref_dataset, bulk_dataset, algorithms,
     #  ests_melt <- lapply(ests_melt, ConvertToROSMAPCelltypes, remove_unused = FALSE)
     #}
 
-    ests_df <- melt(ests_df) %>% dplyr::rename(celltype = variable,
-                                               pct_est = value)
+    ests_df <- melt(ests_df, variable.name = "celltype", value.name = "pct_est")
 
     #ests_melt$name <- str_replace(ests_melt$name, "_ROSMAP", "")
     ests_df$algorithm <- algorithm
-
-    metrics <- best_errors %>% select(param_id, metrics) %>%
-                subset(param_id %in% ests_df$param_id)
-    ests_df <- merge(ests_df, metrics, by = "param_id")
 
     ests_alg[[algorithm]] <- ests_df
   }
