@@ -8,14 +8,19 @@
 #      determined by IHC on the same tissue as the RNA sequencing samples.
 #
 # For the gene list, we pull multiple sources of data to make sure we have as
-# much coverage as possible: All genes in the current Biomart database, the
-# genes used for ROSMAP/Mayo/MSBB in the RNASeq Harmonization Study, the genes
-# used for the Seattle Reference Atlas, those used for the Mathys data set, and
-# all genes from Ensembl versions 84, 93, and 98, corresponding to the versions
-# used in the single cell data. Some symbols from previous versions of Ensembl
-# are different and some Ensembl IDs exist in those lists that are no longer in
-# Biomart. We merge the multiple lists by Ensembl ID and create a list of all
-# possible gene symbols associated with each ID.
+# much coverage as possible:
+#   1. All genes in the current Biomart database,
+#   2. The genes used for ROSMAP/Mayo/MSBB in the RNASeq Harmonization Study,
+#   3. The genes used for the Seattle Reference Atlas,
+#   4. All genes from Ensembl versions 98, 93, and 84, corresponding to the
+#      versions used in some of the single cell data, and
+#   5. The genes used for the Mathys data set
+# Some symbols from previous versions of Ensembl are different and some Ensembl
+# IDs exist in those lists that are no longer in Biomart. We merge the multiple
+# lists by Ensembl ID and create a list of all possible gene symbols associated
+# with each ID. We then assign a "canonical" symbol that will be used in every
+# data set by finding the first non-null symbol for a given Ensembl ID in the
+# list of symbols (ordered by source, as above).
 #
 # For the cell type proportions, the data was determined from separate stains,
 # so the proportions do not add up to 1 and some cell types are missing from
@@ -25,8 +30,6 @@
 # NOTE: this is percent of cells, not percent of RNA. There needs to be a
 # conversion between percent cells -> percent RNA for deconvolution algorithms
 # that output percent RNA. This conversion is handled downstream.
-
-# TODO compartment specific genes?
 
 library(stringr)
 library(biomaRt)
@@ -39,12 +42,21 @@ source("Filenames.R")
 
 synLogin()
 
-##### Gene symbol / Ensembl ID conversions #####
+# URLs for GTF files -----------------------------------------------------------
+
+gtf_seaRef <- "https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/67/39/67390730-a684-47a5-b9f4-89c47cd4e3fc/genesgtf.gz"
+gtf_v98 <- "https://ftp.ensembl.org/pub/release-98/gtf/homo_sapiens/Homo_sapiens.GRCh38.98.gtf.gz"
+gtf_v93 <- "https://ftp.ensembl.org/pub/release-93/gtf/homo_sapiens/Homo_sapiens.GRCh38.93.gtf.gz"
+gtf_v84 <- "https://ftp.ensembl.org/pub/release-84/gtf/homo_sapiens/Homo_sapiens.GRCh38.84.gtf.gz"
+
+
+# Gene symbol / Ensembl ID conversions -----------------------------------------
 
 # Biomart query to get all genes in the database
-mart <- useMart("ensembl", dataset = "hsapiens_gene_ensembl", version = "Ensembl Genes 110")
+mart <- useEnsembl(biomart = "genes", dataset = "hsapiens_gene_ensembl", version = "110")
 biomart_genes <- getBM(attributes = c("external_gene_name", "ensembl_gene_id"),
                        mart = mart)
+
 colnames(biomart_genes) <- c("symbol_Biomart", "ensembl_gene_id")
 biomart_genes <- subset(biomart_genes, symbol_Biomart != "")
 
@@ -57,60 +69,69 @@ dir.create(dir_gene_files, showWarnings = FALSE)
 filename <- synGet("syn26967452", downloadLocation = dir_gene_files)
 
 ros_genes <- read.table(filename$path, header = TRUE) %>%
-                select(ensembl_gene_id, hgnc_symbol) %>%
-                rename(symbol_RNASeq = hgnc_symbol)
+  select(ensembl_gene_id, hgnc_symbol) %>%
+  rename(symbol_RNASeq = hgnc_symbol)
 
 # Mathys genes -- this is the only single cell data set that provides their own
 # mapping from gene symbol to Ensembl ID
 filename <- synGet("syn18687959", downloadLocation = dir_gene_files)
 
 mathys_genes <- read.table(filename$path, header = FALSE) %>%
-                    rename(ensembl_gene_id = V1, symbol_Mathys = V2)
+  rename(ensembl_gene_id = V1, symbol_Mathys = V2)
 
 # GRCh38 Ensembl releases 84, 93, and 98, plus the seaRef GTF file
 files <- list("symbol_seaRef" = c(filename = file.path(dir_gene_files, "seaRef_genes.gtf.gz"),
-                                  url = "https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/67/39/67390730-a684-47a5-b9f4-89c47cd4e3fc/genesgtf.gz"),
+                                  url = gtf_seaRef),
               "symbol_v98" = c(filename = file.path(dir_gene_files, "Homo_sapiens.GRCh38.98.gtf.gz"),
-                               url = "https://ftp.ensembl.org/pub/release-98/gtf/homo_sapiens/Homo_sapiens.GRCh38.98.gtf.gz"),
+                               url = gtf_v98),
               "symbol_v93" = c(filename = file.path(dir_gene_files, "Homo_sapiens.GRCh38.93.gtf.gz"),
-                               url = "https://ftp.ensembl.org/pub/release-93/gtf/homo_sapiens/Homo_sapiens.GRCh38.93.gtf.gz"),
+                               url = gtf_v93),
               "symbol_v84" = c(filename = file.path(dir_gene_files, "Homo_sapiens.GRCh38.84.gtf.gz"),
-                               url = "https://ftp.ensembl.org/pub/release-84/gtf/homo_sapiens/Homo_sapiens.GRCh38.84.gtf.gz"))
+                               url = gtf_v84))
 
 gtf_genes <- lapply(names(files), function(version) {
   file_info <- files[[version]]
   if (!file.exists(file_info["filename"])) {
-    download.file(file_info["url"], destfile = file_info["filename"],
+    download.file(file_info["url"],
+                  destfile = file_info["filename"],
                   method = "curl")
   }
 
   df <- rtracklayer::import(gzfile(file_info[["filename"]]), format = "gtf") %>%
-    as.data.frame() %>% select(gene_id, gene_name) %>% distinct()
+    as.data.frame() %>%
+    select(gene_id, gene_name) %>%
+    distinct()
 
   colnames(df) <- c("ensembl_gene_id", version)
   return(df)
 })
 
-gtf_genes <- reduce(gtf_genes, full_join, by = "ensembl_gene_id")
+gtf_genes <- purrr::reduce(gtf_genes, full_join, by = "ensembl_gene_id")
 
-# Merge all gene sets together
+
+# Merge all gene sets together -------------------------------------------------
+
 all_genes <- merge(biomart_genes, ros_genes,
-                   by = "ensembl_gene_id", all = TRUE) %>%
+                   by = "ensembl_gene_id",
+                   all = TRUE) %>%
   merge(gtf_genes, by = "ensembl_gene_id", all = TRUE) %>%
   merge(mathys_genes, by = "ensembl_gene_id", all = TRUE)
 
 # For each row/gene, take the first non-NA symbol. The symbol columns are
-# ordered left to right in order of priority (1 - Biomart, 2 - RNASeq, 3 - GTF
-# genes in descending version order, 4 - Mathys), so the first entry from
-# c_across with NAs removed will be the highest-priority non-NA gene symbol.
+# ordered left to right in order of priority (1 - Biomart, 2 - RNASeq,
+# 3 - seaRef genes, 4 - GTF genes in descending version order, 5 - Mathys), so
+# the first entry from c_across with NAs removed will be the highest-priority
+# non-NA gene symbol.
 first_symbol <- function(...) {
   vec <- c_across(starts_with("symbol_"))
-  return( na.omit(vec)[1] )
+  return(na.omit(vec)[1])
 }
 
-all_genes <- all_genes %>% rowwise() %>%
-                mutate(canonical_symbol = first_symbol()) %>%
-                arrange(ensembl_gene_id) %>% as.data.frame()
+all_genes <- all_genes %>%
+  rowwise() %>%
+  mutate(canonical_symbol = first_symbol()) %>%
+  arrange(ensembl_gene_id) %>%
+  as.data.frame()
 
 # Get exon lengths for each gene, for the purpose of calculating TPM on the
 # bulk datasets. The bulk datasets were aligned to Ensembl release 97.
@@ -127,11 +148,11 @@ all_genes <- subset(all_genes, !is.na(canonical_symbol))
 write.csv(all_genes, file_gene_list, quote = FALSE, row.names = FALSE)
 
 
-##### Ground-truth proportions for some ROSMAP samples, generated from IHC #####
+# Ground-truth proportions for some ROSMAP samples, generated from IHC ---------
 
 dir_ihc_git <- file.path(dir_metadata, "CortexCellDeconv")
-system(paste0("git clone https://github.com/ellispatrick/CortexCellDeconv.git ",
-              dir_ihc_git))
+system(paste("git clone https://github.com/ellispatrick/CortexCellDeconv.git",
+             dir_ihc_git))
 
 celltypes <- c("astro", "endo", "microglia", "neuro", "oligo")
 
@@ -159,16 +180,20 @@ props_df <- select(props_df, -donor)
 colnames(props_df) <- c("Astro", "Endo", "Micro", "Neuro", "Oligo")
 
 # Save unaltered data to a file for reference
-write.csv(props_df, file = file.path(dir_metadata, "ihc_proportions_unnormalized.csv"),
-          quote = FALSE, row.names = TRUE)
+write.csv(props_df,
+          file = file.path(dir_metadata, "ihc_proportions_unnormalized.csv"),
+          quote = FALSE,
+          row.names = TRUE)
 
 # Remove donors with missing measurements
 good <- rowSums(is.na(props_df)) == 0
-props_df <- props_df[good,]
+props_df <- props_df[good, ]
 
 # Adjust all rows to sum to 1
 props_df <- sweep(props_df, 1, rowSums(props_df), "/")
 
 # Write normalized proportions file
-write.csv(props_df, file = file_rosmap_ihc_proportions,
-          quote = FALSE, row.names = TRUE)
+write.csv(props_df,
+          file = file_rosmap_ihc_proportions,
+          quote = FALSE,
+          row.names = TRUE)
