@@ -15,9 +15,9 @@
 # Examination of UMAPs of each SCTransformed broad class shows fairly good
 # grouping by subclass, so that should be sufficient for mapping.
 #
-# Note: Oligodendrocytes are mostly clustered by subclass but the subclasses do
-# not have clear boundaries between them, as noted in the paper, so it is
-# unclear whether these subclasses will provide good mappings.
+# Note: At this time only Excitatory, Inhibitory, and Vascular cell types are
+# broken out into subclasses, as the glial cells (Astrocytes, Microglia, OPCs,
+# Oligodendrocytes) do not have well-defined subclasses.
 #
 # Note: This requires > 64 GB of RAM to do the SCTransform.
 
@@ -33,14 +33,14 @@ reference_dataset <- "cain"
 
 sce <- Load_PreprocessedData(reference_dataset, remove_excluded = TRUE)
 
-##### Create a "Vascular" broad class for endo, peri, and VLMCs #####
+# Create a "Vascular" broad class for endo, peri, and VLMCs --------------------
 
 metadata <- colData(sce)
 metadata$broad_class <- as.character(metadata$broad_class)
 metadata$sub_class <- as.character(metadata$sub_class)
 
 # Re-group endothelial cells, pericytes, and VLMCs under "Vascular" at the
-# broad_class level
+# broad_class level. Remove endothelial subtypes.
 endos <- metadata$broad_class == "Endothelial"
 metadata$sub_class[endos] <- "Endothelial"
 
@@ -59,19 +59,21 @@ metadata$sub_class <- factor(metadata$sub_class)
 colData(sce) <- metadata
 
 
-########## Broad cell types ##########
+# Broad cell types -------------------------------------------------------------
 
-##### SCTransform Seurat object #####
+## SCTransform Seurat object ---------------------------------------------------
 
 seurat <- CreateSeuratObject(counts(sce),
                              meta.data = data.frame(colData(sce)))
 
 n_cells <- round(ncol(seurat) * 0.1)
-seurat <- SCTransform(seurat, ncells = n_cells, method = "glmGamPoi",
+seurat <- SCTransform(seurat,
+                      ncells = n_cells,
+                      method = "glmGamPoi",
                       do.correct.umi = FALSE)
 
 seurat <- RunPCA(seurat) %>%
-          RunUMAP(dims = 1:30, return.model = TRUE)
+  RunUMAP(dims = 1:30, return.model = TRUE)
 
 metadata_fixed <- seurat@meta.data
 
@@ -82,7 +84,7 @@ seurat <- DietSeurat(seurat, counts = FALSE, data = TRUE,
 Save_MapReference(reference_dataset, seurat, "broad_class")
 
 
-########## Fine cell types ##########
+# Fine cell types --------------------------------------------------------------
 
 sce <- Load_PreprocessedData(reference_dataset, remove_excluded = TRUE)
 
@@ -90,6 +92,7 @@ seurat <- CreateSeuratObject(counts(sce),
                              meta.data = metadata_fixed)
 seurat <- SplitObject(seurat, split.by = "broad_class")
 
+# Number of PCs to use was determined by visual inspection of ElbowPlot
 pcs <- list("Astrocyte" = 30,
             "Excitatory" = 30,
             "Inhibitory" = 30,
@@ -102,8 +105,8 @@ seurat <- lapply(seurat, function(S) {
   bc <- unique(as.character(S$broad_class))
 
   S <- SCTransform(S, method = "glmGamPoi", do.correct.umi = FALSE) %>%
-          RunPCA() %>%
-          RunUMAP(dims = 1:pcs[[bc]], return.model = TRUE)
+    RunPCA() %>%
+    RunUMAP(dims = 1:pcs[[bc]], return.model = TRUE)
 
   S <- DietSeurat(S, counts = FALSE, data = TRUE,
                   scale.data = TRUE, assays = "SCT",

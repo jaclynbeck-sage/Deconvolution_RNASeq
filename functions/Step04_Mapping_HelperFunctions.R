@@ -7,9 +7,11 @@
 #
 # Returns:
 #   A single Seurat object
-MergeQueries <- function(query_list) {
-  merge(query_list[[1]], query_list[2:length(query_list)],
-        merge.data = FALSE, merge.dr = c("ref.pca", "ref.umap"))
+Merge_Queries <- function(query_list) {
+  merged <- merge(query_list[[1]], query_list[2:length(query_list)],
+                  merge.data = FALSE,
+                  merge.dr = c("ref.pca", "ref.umap"))
+  return(merged)
 }
 
 
@@ -34,7 +36,6 @@ MergeQueries <- function(query_list) {
 #   "ref.umap".
 Map_Cells <- function(query, reference, dims_use = 1:30, map_cols = NULL,
                       recompute_residuals = TRUE) {
-
   anchors <- FindTransferAnchors(reference = reference,
                                  query = query,
                                  dims = dims_use,
@@ -44,10 +45,11 @@ Map_Cells <- function(query, reference, dims_use = 1:30, map_cols = NULL,
 
   # Doing a full MapQuery instead of just TransferData isn't strictly necessary
   # but is useful for examining how well the mapping went
-  MapQuery(anchorset = anchors,
-           reference = reference,
-           query = query,
-           refdata = map_cols,
-           reference.reduction = "pca",
-           reduction.model = "umap")
+  mapped <- MapQuery(anchorset = anchors,
+                     reference = reference,
+                     query = query,
+                     refdata = map_cols,
+                     reference.reduction = "pca",
+                     reduction.model = "umap")
+  return(mapped)
 }
