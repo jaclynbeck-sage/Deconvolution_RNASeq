@@ -12,17 +12,17 @@ library(sageseqr)
 
 source("Filenames.R")
 
-##### Generic functions #####
+# Generic helper functions -----------------------------------------------------------
 
 # Assumes you have already authenticated a Synapse login or have a Synapse
 # config set up with proper credentials
 DownloadFromSynapse <- function(synIDs, downloadLocation) {
   synLogin()
-
   files <- list()
 
   for (name in names(synIDs)) {
-    files[[name]] <- synGet(synIDs[[name]]$id, version = synIDs[[name]]$version,
+    files[[name]] <- synGet(synIDs[[name]]$id,
+                            version = synIDs[[name]]$version,
                             downloadLocation = downloadLocation)
   }
 
@@ -30,9 +30,8 @@ DownloadFromSynapse <- function(synIDs, downloadLocation) {
 }
 
 # Standardize cell type names across all data sets.
-# Broad cell types only for now, we'll deal with fine cell types later...
 RemapCelltypeNames <- function(celltypes) {
-  # Reduces the number of possible variations
+  # Use only the first 2 characters (reduces the number of possible variations)
   celltypes_mod <- str_to_lower(str_sub(celltypes, end = 2))
 
   remap <- melt(list(Astrocyte = c("as"),
@@ -49,29 +48,6 @@ RemapCelltypeNames <- function(celltypes) {
   return(remap[celltypes_mod, "L1"])
 }
 
-# This function is unused, saving just in case.
-# gene.list is a vector of gene symbols
-# TODO: Seurat has a GeneSymbolThesaurus function to get aliases. Might be useful
-GeneSymbolToEnsembl_Biomart <- function(gene.list) {
-  mart <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
-  ens.genes <- getBM(attributes = c("external_gene_name", "ensembl_gene_id"),
-                     filters = "external_gene_name",
-                     values = gene.list,
-                     mart = mart)
-
-  dupes <- duplicated(ens.genes$external_gene_name)
-  ens.genes <- ens.genes[!dupes,]
-
-  genes <- data.frame(Symbol = gene.list)
-  genes <- merge(genes, ens.genes,
-                 by.x = "Symbol", by.y = "external_gene_name", all = TRUE)
-  colnames(genes) <- c("Symbol", "Ensembl.ID")
-  rownames(genes) <- genes$Symbol
-
-  return(genes)
-}
-
-
 # Use the gene conversion list from Step01 to get the mapping between Ensembl ID
 # and gene symbol
 EnsemblIdToGeneSymbol <- function(gene_list) {
@@ -80,12 +56,12 @@ EnsemblIdToGeneSymbol <- function(gene_list) {
   rownames(gene_conversions) <- gene_conversions$ensembl_gene_id
   overlap <- intersect(gene_list, gene_conversions$ensembl_gene_id)
 
-  gene_conversions <- gene_conversions[overlap,]
+  gene_conversions <- gene_conversions[overlap, ]
 
   genes <- gene_conversions %>%
-              select(ensembl_gene_id, canonical_symbol, exon_length) %>%
-              dplyr::rename(hgnc_symbol = canonical_symbol) %>%
-              arrange(ensembl_gene_id)
+    select(ensembl_gene_id, canonical_symbol, exon_length) %>%
+    dplyr::rename(hgnc_symbol = canonical_symbol) %>%
+    arrange(ensembl_gene_id)
   return(genes)
 }
 
@@ -98,26 +74,24 @@ UpdateGeneSymbols <- function(dataset, gene_list) {
                     "lau" = "symbol_v93",
                     "leng" = "symbol_v84",
                     "mathys" = "symbol_Mathys", # They provided their mapping as a file
-                    "morabito" = "symbol_v94",
-                    "seaRef" = "symbol_v98",
-                    "seaAD" = "symbol_v98") # TODO I haven't checked the larger SEA-AD set
+                    "seaRef" = "symbol_seaRef")
 
   gene_conversions <- read.csv(file_gene_list)
-  gene_conversions$original_symbol <- gene_conversions[,version]
+  gene_conversions$original_symbol <- gene_conversions[, version]
 
   genes <- subset(gene_conversions, original_symbol %in% gene_list)
   rownames(genes) <- make.unique(genes$original_symbol, sep = "/")
 
-  genes <- genes[rownames(genes) %in% gene_list,] %>%
-              dplyr::select(ensembl_gene_id, canonical_symbol, original_symbol) %>%
-              dplyr::rename(hgnc_symbol = canonical_symbol) %>%
-              arrange(ensembl_gene_id)
+  genes <- genes[rownames(genes) %in% gene_list, ] %>%
+    dplyr::select(ensembl_gene_id, canonical_symbol, original_symbol) %>%
+    dplyr::rename(hgnc_symbol = canonical_symbol) %>%
+    arrange(ensembl_gene_id)
 
   return(genes)
 }
 
 
-##### Generic functions that call dataset-specific functions #####
+# Generic functions that call dataset-specific functions ----------------------
 
 DownloadData <- function(dataset, metadata_only = FALSE) {
   files <- switch(dataset,
@@ -125,13 +99,10 @@ DownloadData <- function(dataset, metadata_only = FALSE) {
                   "lau" = DownloadData_Lau(metadata_only),
                   "leng" = DownloadData_Leng(metadata_only),
                   "mathys" = DownloadData_Mathys(metadata_only),
-                  "morabito" = DownloadData_Morabito(metadata_only),
                   "seaRef" = DownloadData_SEARef(metadata_only),
-                  "seaAD" = DownloadData_SEAAD(metadata_only),
                   "Mayo" = DownloadData_Mayo(metadata_only),
                   "MSBB" = DownloadData_MSBB(metadata_only),
                   "ROSMAP" = DownloadData_ROSMAP(metadata_only))
-
   return(files)
 }
 
@@ -141,9 +112,7 @@ ReadMetadata <- function(dataset, files) {
                      "lau" = ReadMetadata_Lau(files),
                      "leng" = ReadMetadata_Leng(files),
                      "mathys" = ReadMetadata_Mathys(files),
-                     "morabito" = ReadMetadata_Morabito(files),
                      "seaRef" = ReadMetadata_SEARef(files),
-                     "seaAD" = ReadMetadata_SEAAD(files),
                      "Mayo" = ReadMetadata_BulkData(files),
                      "MSBB" = ReadMetadata_BulkData(files),
                      "ROSMAP" = ReadMetadata_BulkData(files))
@@ -156,9 +125,7 @@ ReadCovariates <- function(dataset, files) {
                        "lau" = ReadCovariates_Lau(files),
                        "leng" = ReadMetadata_Leng(files)$covariates,
                        "mathys" = ReadMetadata_Mathys(files)$covariates,
-                       "morabito" = ReadMetadata_Morabito(files),
                        "seaRef" = ReadMetadata_SEARef(files)$covariates,
-                       "seaAD" = ReadMetadata_SEAAD(files)$covariates,
                        "Mayo" = ReadMetadata_BulkData(files)$covariates,
                        "MSBB" = ReadMetadata_BulkData(files)$covariates,
                        "ROSMAP" = ReadMetadata_BulkData(files)$covariates)
@@ -171,9 +138,7 @@ ReadCounts <- function(dataset, files, metadata) {
                    "lau" = ReadCounts_Lau(files, metadata),
                    "leng" = ReadCounts_Leng(files),
                    "mathys" = ReadCounts_Mathys(files),
-                   "morabito" = ReadCounts_Morabito(files),
                    "seaRef" = ReadCounts_SEARef(files),
-                   "seaAD" = ReadCounts_SEAAD(files),
                    "Mayo" = ReadCounts_BulkData(files),
                    "MSBB" = ReadCounts_BulkData(files),
                    "ROSMAP" = ReadCounts_BulkData(files))
@@ -181,10 +146,10 @@ ReadCounts <- function(dataset, files, metadata) {
 }
 
 
-##### Custom functions for each data set #####
+# Custom functions for each data set ------------------------------------------
 
 
-##### Cain, et al., 2020 [preprint] #####
+## Cain, et al., 2020 [preprint] -----------------------------------------------
 # https://doi.org/10.1101/2020.12.22.424084
 
 DownloadData_Cain <- function(metadata_only = FALSE) {
@@ -232,20 +197,20 @@ ReadMetadata_Cain <- function(files) {
   # subtypes by using the highest-weighted 'topic'.
   cols <- paste0("oligodendrocytes.topicweight.", 1:4)
   oligos <- which(metadata$Cell.Type == "Oligodendrocyte")
-  olig_types <- apply(metadata[oligos,cols], 1, which.max)
+  olig_types <- apply(metadata[oligos, cols], 1, which.max)
   metadata$sub.cluster[oligos] <- paste0("Oligo.", olig_types)
 
   metadata <- metadata[, c("cell_name", "specimenID", "diagnosis",
-                           "Cell.Type", "sub.cluster" )]
+                           "Cell.Type", "sub.cluster")]
 
   biospecimen <- read.csv(files$biospecimen_metadata$path)
   biospecimen <- subset(biospecimen, specimenID %in% metadata$specimenID) %>%
-                    select(individualID, specimenID)
+    select(individualID, specimenID)
 
   clinical <- read.csv(files$clinical_metadata$path)
   clinical <- subset(clinical, individualID %in% biospecimen$individualID)
   clinical <- merge(clinical, biospecimen, by = "individualID") %>%
-                  dplyr::rename(sample = specimenID)
+    dplyr::rename(sample = specimenID)
 
   # Fix age fields to be numeric
   clinical$age_death[clinical$age_death == "90+"] <- 90
@@ -273,7 +238,7 @@ ReadCounts_Cain <- function(files, metadata) {
 }
 
 
-##### Lau, et al., 2020 #####
+## Lau, et al., 2020 -----------------------------------------------------------
 # https://doi.org/10.1073/pnas.2008762117
 
 DownloadData_Lau <- function(metadata_only = FALSE) {
@@ -285,9 +250,9 @@ DownloadData_Lau <- function(metadata_only = FALSE) {
 
   if (!metadata_only) {
     # For some reason this function call is failing
-    #geo <- getGEOSuppFiles(GEO = "GSE157827", makeDirectory = FALSE,
+    # geo <- getGEOSuppFiles(GEO = "GSE157827", makeDirectory = FALSE,
     #                       baseDir = dir_lau_raw)
-    #untar(rownames(geo)[1], exdir = dir_lau_raw)
+    # untar(rownames(geo)[1], exdir = dir_lau_raw)
 
     url_geo_tar <- "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE157827&format=file"
     destfile_tar <- file.path(dir_lau_raw, "GSE157827.tar")
@@ -300,31 +265,32 @@ DownloadData_Lau <- function(metadata_only = FALSE) {
 
   files <- DownloadFromSynapse(synIDs, dir_lau_raw)
 
-  files[["geo_metadata"]] = file_geo_metadata
+  files[["geo_metadata"]] <- file_geo_metadata
   return(files)
 }
 
 ReadMetadata_Lau <- function(files) {
   # We have to get the barcodes from individual files
   geo_metadata <- read.csv(files$geo_metadata, row.names = 1) %>%
-                    select(title, diagnosis.ch1) %>%
-                    dplyr::rename(sample = title, diagnosis = diagnosis.ch1)
+    select(title, diagnosis.ch1) %>%
+    dplyr::rename(sample = title, diagnosis = diagnosis.ch1)
 
   barcode_files <- list.files(path = dir_lau_raw, pattern = "barcodes",
                               full.names = TRUE)
   barcodes <- lapply(barcode_files, function(filename) {
     bc <- read.table(gzfile(filename)) %>% dplyr::rename(barcode = V1)
     file_info <- str_split(filename, pattern = "/", simplify = TRUE)
-    file_info <- str_split(file_info[,length(file_info)], pattern = "_",
+    file_info <- str_split(file_info[, length(file_info)],
+                           pattern = "_",
                            simplify = TRUE)
-    bc$sample <- file_info[,2]
+    bc$sample <- file_info[, 2]
     bc$barcode <- paste(bc$barcode, bc$sample, sep = "_")
     return(bc)
   })
 
   metadata <- do.call(rbind, barcodes) %>%
-                merge(geo_metadata, by = "sample") %>%
-                select(barcode, sample, diagnosis)
+    merge(geo_metadata, by = "sample") %>%
+    select(barcode, sample, diagnosis)
 
   # This data set doesn't come with pre-labeled cells
   metadata$broad_class <- NA
@@ -348,13 +314,19 @@ ReadCounts_Lau <- function(files, metadata) {
 
   for (sample in samples) {
     files <- list.files(path = dir_lau_raw,
-                        pattern = paste0(sample, "_.*\\.gz"), full.names = TRUE)
+                        pattern = paste0(sample, "_.*\\.gz"),
+                        full.names = TRUE)
+
     matrix_file <- grep("matrix", files, value = TRUE)
     barcodes_file <- grep("barcodes", files, value = TRUE)
     features_file <- grep("features", files, value = TRUE)
 
-    counts <- ReadMtx(mtx = matrix_file, cells = barcodes_file, features = features_file)
-    colnames(counts) <- paste(colnames(counts), geo_metadata[sample, "title"], sep = "_")
+    counts <- ReadMtx(mtx = matrix_file,
+                      cells = barcodes_file,
+                      features = features_file)
+    colnames(counts) <- paste(colnames(counts),
+                              geo_metadata[sample, "title"],
+                              sep = "_")
 
     counts_list[[sample]] <- counts
   }
@@ -362,7 +334,7 @@ ReadCounts_Lau <- function(files, metadata) {
   # Make sure all counts are in the same gene order
   genes <- unique(unlist(lapply(counts_list, rownames)))
   counts_list <- lapply(counts_list, function(X) {
-    X[genes,]
+    X[genes, ]
   })
 
   counts <- do.call(cbind, counts_list)
@@ -372,7 +344,7 @@ ReadCounts_Lau <- function(files, metadata) {
   n_umi <- colSums(counts)
 
   mt_genes <- grepl("^MT-", rownames(counts))
-  pct_mt <- colSums(counts[mt_genes,]) / n_umi
+  pct_mt <- colSums(counts[mt_genes, ]) / n_umi
 
   # For some reason this gives 10 more cells than stated in the paper
   # (169,506 instead of 169,496).They don't specify which mitochondrial genes
@@ -380,11 +352,11 @@ ReadCounts_Lau <- function(files, metadata) {
   # the difference.
   cells_keep <- (n_genes > 200) & (n_umi < 20000) & (pct_mt < 0.2)
 
-  return(counts[,cells_keep])
+  return(counts[, cells_keep])
 }
 
 
-##### Leng, et al., 2021 #####
+## Leng, et al., 2021 ----------------------------------------------------------
 # https://doi.org/10.1038/s41593-020-00764-7
 
 # metadata_only is an unused variable for this dataset as the metadata is
@@ -412,13 +384,13 @@ ReadMetadata_Leng <- function(files) {
 
   metadata <- as.data.frame(metadata)
 
-  covariates <- metadata %>% select(SampleID, PatientID, BrainRegion,
-                                    BraakStage, SampleBatch, diagnosis) %>%
-                    distinct() %>%
-                    dplyr::rename(sample = SampleID)
+  covariates <- metadata %>%
+    select(SampleID, PatientID, BrainRegion, BraakStage, SampleBatch, diagnosis) %>%
+    distinct() %>%
+    dplyr::rename(sample = SampleID)
 
-  metadata <- metadata %>% select(cell_id, SampleID, diagnosis,
-                                  clusterCellType, sub_cluster)
+  metadata <- metadata %>%
+    select(cell_id, SampleID, diagnosis, clusterCellType, sub_cluster)
 
   return(list("metadata" = metadata, "covariates" = covariates))
 }
@@ -432,7 +404,7 @@ ReadCounts_Leng <- function(files) {
 }
 
 
-##### Mathys, et al., 2019 #####
+## Mathys, et al., 2019 --------------------------------------------------------
 # http://dx.doi.org/10.1038/s41586-019-1195-2
 
 DownloadData_Mathys <- function(metadata_only = FALSE) {
@@ -468,8 +440,8 @@ ReadMetadata_Mathys <- function(files) {
   metadata <- merge(metadata, diagnosis.codes, by = "cogdx")
 
   covariates <- metadata[, c(colnames(clinical), "diagnosis")] %>%
-                    distinct() %>%
-                    dplyr::rename(sample = projid)
+    distinct() %>%
+    dplyr::rename(sample = projid)
 
   # Fix age fields to be numeric
   covariates$age_death[covariates$age_death == "90+"] <- 90
@@ -491,40 +463,7 @@ ReadCounts_Mathys <- function(files) {
 }
 
 
-##### Morabito, et al., 2021 #####
-# https://doi.org/10.1038/s41588-021-00894-z
-
-# NOTE: This data is currently inaccessible on Synapse, so these functions
-# have not been updated to get covariate information and this data set will
-# not be used.
-
-DownloadData_Morabito <- function() {
-  synIDs <- list("metadata" = "syn22130806",
-                 "barcodes" = "syn24978676",
-                 "genes" = "syn24978737",
-                 "counts" = "syn22130805")
-
-  files <- DownloadFromSynapse(synIDs, dir_morabito_raw)
-  return(files)
-}
-
-ReadMetadata_Morabito <- function(files) {
-  metadata <- read.csv(files[["metadata"]]$path)
-  metadata <- metadata[, c("X", "Sample.ID", "Diagnosis", "celltype", "cluster")]
-
-  return(metadata)
-}
-
-ReadCounts_Morabito <- function(files) {
-  counts <- ReadMtx(mtx = files[["counts"]]$path,
-                    cells = files[["barcodes"]]$path,
-                    features = files[["genes"]]$path,
-                    feature.column = 1)
-  return(counts)
-}
-
-
-##### SEA-AD #####
+## Seattle Reference Atlas -----------------------------------------------------
 # Reference data set (5 donors): https://portal.brain-map.org/atlases-and-data/rnaseq/human-mtg-10x_sea-ad
 # Full data set (84 donors): https://portal.brain-map.org/explore/seattle-alzheimers-disease/seattle-alzheimers-disease-brain-cell-atlas-download?edit&language=en
 # Metadata: https://www.synapse.org/#!Synapse:syn28256462
@@ -543,27 +482,10 @@ DownloadData_SEARef <- function(metadata_only = FALSE) {
   synIDs <- list("individual_metadata" = list(id = "syn31149116", version = 5))
   files <- DownloadFromSynapse(synIDs, downloadLocation = dir_seaad_raw)
 
-  files[["counts"]] = file_searef_h5
+  files[["counts"]] <- file_searef_h5
 
   if (!file.exists(files[["counts"]]) & !metadata_only) { # Don't re-download, this file is large
-    download.file(url_searef_h5,
-                  destfile = files[["counts"]], method = "curl")
-  }
-
-  return(files)
-}
-
-# metadata_only is an unused variable for this data set, as we need to download
-# the data to access the metadata in the anndata file.
-DownloadData_SEAAD <- function(metadata_only = FALSE) {
-  synIDs <- list("individual_metadata" = list(id = "syn31149116", version = 5))
-  files <- DownloadFromSynapse(synIDs, downloadLocation = dir_seaad_raw)
-
-  files[["counts"]] = file_seaad_h5
-
-  if (!file.exists(files[["counts"]]) & !metadata_only) { # Don't re-download, this file is large
-    download.file(url_seaad_h5,
-                  destfile = files[["counts"]], method = "curl")
+    download.file(url_searef_h5, destfile = files[["counts"]], method = "curl")
   }
 
   return(files)
@@ -573,55 +495,28 @@ ReadMetadata_SEARef <- function(files) {
   donor_metadata <- read.csv(files$individual_metadata$path, row.names = 1)
 
   ad <- import("anndata")
-  adata <- ad$read_h5ad(files$counts, backed = 'r')
+  adata <- ad$read_h5ad(files$counts, backed = "r")
 
   metadata <- adata$obs
 
   metadata$broad_class <- as.character(metadata$subclass_label)
-  metadata$broad_class[metadata$class_label == "Neuronal: GABAergic"] = "GABA"
-  metadata$broad_class[metadata$class_label == "Neuronal: Glutamatergic"] = "Glut"
+  metadata$broad_class[metadata$class_label == "Neuronal: GABAergic"] <- "GABA"
+  metadata$broad_class[metadata$class_label == "Neuronal: Glutamatergic"] <- "Glut"
 
   metadata <- merge(metadata, donor_metadata,
-                    by.x = "external_donor_name_label", by.y = "individualID")
+                    by.x = "external_donor_name_label",
+                    by.y = "individualID")
 
-  metadata <- metadata[, c("sample_name", "external_donor_name_label",
-                           "diagnosis", "broad_class", "subclass_label")]
-                           #"cluster_label")]
+  metadata <- select(metadata, sample_name, external_donor_name_label,
+                     diagnosis, broad_class, subclass_label)
 
   covariates <- subset(donor_metadata,
                        individualID %in% metadata$external_donor_name_label) %>%
-                    dplyr::rename(sample = individualID)
+    dplyr::rename(sample = individualID)
 
   covariates$ageDeath <- as.numeric(covariates$ageDeath)
 
   return(list("metadata" = metadata, "covariates" = covariates))
-}
-
-ReadMetadata_SEAAD <- function(files) {
-  donor_metadata <- read.csv(files$individual_metadata$path, row.names = 1)
-
-  ad <- import("anndata")
-  adata <- ad$read_h5ad(files$counts, backed = 'r')
-
-  metadata <- adata$obs
-
-  metadata$broad_class <- as.character(metadata$Subclass)
-  metadata$broad_class[metadata$Class == "Neuronal: GABAergic"] = "GABA"
-  metadata$broad_class[metadata$Class == "Neuronal: Glutamatergic"] = "Glut"
-
-  metadata <- merge(metadata, donor_metadata,
-                    by.x = "Donor.ID", by.y = "individualID")
-
-  metadata <- metadata[, c("sample_id", "Donor.ID", "diagnosis",
-                           "broad_class", "Subclass")]
-
-  covariates <- subset(donor_metadata,
-                       individualID %in% metadata$Donor.ID) %>%
-                    dplyr::rename(sample = individualID)
-
-  covariates$ageDeath <- as.numeric(covariates$ageDeath)
-
-  return(metadata)
 }
 
 ReadCounts_SEARef <- function(files) {
@@ -633,18 +528,8 @@ ReadCounts_SEARef <- function(files) {
   return(counts)
 }
 
-ReadCounts_SEAAD <- function(files) {
-  counts <- H5ADMatrix(files$counts)
 
-  col_names <- as.character(HDF5Array(files$counts,
-                                      file.path("obs", "sample_id")))
-  dimnames(counts)[[2]] <- col_names
-
-  return(counts)
-}
-
-
-##### Mayo #####
+## Mayo ------------------------------------------------------------------------
 # Bulk RNA seq data from the Mayo RNA Seq Study:
 # https://adknowledgeportal.synapse.org/Explore/Studies/DetailsPage/StudyDetails?Study=syn5550404
 #
@@ -657,7 +542,7 @@ DownloadData_Mayo <- function(metadata_only = FALSE) {
                  "counts" = list(id = "syn27024951", version = 1))
 
   if (metadata_only) {
-    synIDs <- synIDs[1:2]
+    synIDs <- synIDs[1]
   }
 
   files <- DownloadFromSynapse(synIDs, dir_mayo_raw)
@@ -665,7 +550,7 @@ DownloadData_Mayo <- function(metadata_only = FALSE) {
 }
 
 
-##### MSBB #####
+## MSBB ------------------------------------------------------------------------
 # Bulk RNA seq data from the Mount Sinai Brain Bank Study:
 # https://adknowledgeportal.synapse.org/Explore/Studies/DetailsPage/StudyDetails?Study=syn3159438
 #
@@ -678,7 +563,7 @@ DownloadData_MSBB <- function(metadata_only = FALSE) {
                  "counts" = list(id = "syn27068754", version = 1))
 
   if (metadata_only) {
-    synIDs <- synIDs[1:2]
+    synIDs <- synIDs[1]
   }
 
   files <- DownloadFromSynapse(synIDs, dir_msbb_raw)
@@ -686,7 +571,7 @@ DownloadData_MSBB <- function(metadata_only = FALSE) {
 }
 
 
-##### ROSMAP #####
+## ROSMAP ----------------------------------------------------------------------
 # Bulk RNA seq data from the ROSMAP study:
 # https://adknowledgeportal.synapse.org/Explore/Studies/DetailsPage/StudyDetails?Study=syn3219045
 #
@@ -700,7 +585,7 @@ DownloadData_ROSMAP <- function(metadata_only = FALSE) {
                  "counts" = list(id = "syn26967451", version = 1))
 
   if (metadata_only) {
-    synIDs <- synIDs[1:3]
+    synIDs <- synIDs[1:2]
   }
 
   files <- DownloadFromSynapse(synIDs, dir_rosmap_raw)
@@ -708,24 +593,24 @@ DownloadData_ROSMAP <- function(metadata_only = FALSE) {
 }
 
 
-##### Generic bulk functions #####
+## Generic bulk functions ------------------------------------------------------
 # These functions all work on Mayo, MSBB, and ROSMAP since the files all come
-# from the harmonization effort
+# from the harmonization effort and are in the same format
 
 ReadMetadata_BulkData <- function(files) {
   metadata <- read.table(files$metadata$path, header = T)
 
   covariates <- metadata
-  metadata <- metadata[,c("specimenID", "diagnosis", "tissue")]
+  metadata <- metadata[, c("specimenID", "diagnosis", "tissue")]
 
   # ROSMAP needs an extra step to go from biospecimen -> projid, which is needed
   # for comparison with the IHC data
   if ("clinical_metadata" %in% names(files)) {
     clinical <- read.csv(files$clinical_metadata$path) %>%
-                      select(projid, individualID) %>% distinct()
+      select(projid, individualID) %>%
+      distinct()
 
-    covariates <- merge(covariates, clinical,
-                        by = c("individualID"))
+    covariates <- merge(covariates, clinical, by = c("individualID"))
   }
 
   # Necessary because the column names of the counts matrix get converted this
@@ -739,14 +624,6 @@ ReadMetadata_BulkData <- function(files) {
 ReadCounts_BulkData <- function(files) {
   counts <- read.table(files[["counts"]]$path, header = TRUE, row.names = 1)
   return(counts)
-}
-
-ReadNormCounts_BulkData <- function(files, assay_name, genes, samples) {
-  assay <- read.table(files[[assay_name]]$path, header = TRUE, row.names = 1)
-
-  assay <- assay[genes$ensembl_gene_id, samples]
-  rownames(assay) <- genes$hgnc_symbol
-  return(assay)
 }
 
 # Per-batch outlier detection via PCA. Unlike the RNAseq harmonization study,
@@ -768,7 +645,6 @@ ReadNormCounts_BulkData <- function(files, assay_name, genes, samples) {
 #   a vector containing the sample names of outliers
 FindOutliers_BulkData <- function(dataset, covariates, counts, sd_threshold = 4,
                                   do_plot = FALSE) {
-
   # Define how to split the data into batches for batch-specific outlier
   # detection. Mayo and MSBB are split by tissue, which has a much larger
   # effect on the PCA plot than sequencing batch. ROSMAP is split by batch, with
@@ -781,13 +657,13 @@ FindOutliers_BulkData <- function(dataset, covariates, counts, sd_threshold = 4,
   # Two ROSMAP batches need to also be split by tissue
   if (dataset == "ROSMAP") {
     split_batches <- grepl("2_[3|9]", covariates$batch)
-    covariates$batch[split_batches] <- paste0(covariates$tissue,
-                                              covariates$batch)[split_batches]
+    covariates$batch[split_batches] <- paste0(covariates$tissue[split_batches],
+                                              covariates$batch[split_batches])
   }
 
   # Ensure covariates are in the same order as counts
   rownames(covariates) <- covariates$specimenID
-  covariates <- covariates[colnames(counts),]
+  covariates <- covariates[colnames(counts), ]
 
   # Find outliers by batch
   outliers <- lapply(unique(covariates$batch), function(batch) {
@@ -795,8 +671,9 @@ FindOutliers_BulkData <- function(dataset, covariates, counts, sd_threshold = 4,
 
     if (sum(batch_samples) > 20) {
       # Use sagesqr's function
-      res <- identify_outliers(counts[,batch_samples],
-                               covariates[batch_samples,], color = "diagnosis",
+      res <- identify_outliers(counts[, batch_samples],
+                               covariates[batch_samples, ],
+                               color = "diagnosis",
                                shape = "tissue", size = "tissue",
                                z = sd_threshold)
 
