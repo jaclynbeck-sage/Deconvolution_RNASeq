@@ -31,35 +31,35 @@
 #
 # Returns: nothing
 
-source("Filenames.R")
-source(file.path("functions", "FileIO_HelperFunctions.R"))
-source(file.path("functions", "General_HelperFunctions.R"))
-
 CreatePseudobulk_BySample <- function(singlecell_counts, metadata, dataset) {
-
-  y <- model.matrix(~0 + sample, data = metadata)
+  y <- model.matrix(~ 0 + sample, data = metadata)
   counts <- singlecell_counts %*% y
 
   # colnames end up as "sample<#>" because of model.matrix. Remove the "sample".
   colnames(counts) <- str_replace(colnames(counts), "sample", "")
   counts <- as(counts, "matrix")
 
-  pb_meta <- as.data.frame(metadata) %>% select(sample, diagnosis) %>% distinct()
+  pb_meta <- as.data.frame(metadata) %>%
+    select(sample, diagnosis) %>%
+    distinct()
   pb_meta$diagnosis <- factor(pb_meta$diagnosis)
   rownames(pb_meta) <- pb_meta$sample
-  pb_meta <- pb_meta[colnames(counts),]
-  pb_meta$tmm_factors <- calcNormFactors(counts, method = "TMMwsp")
+  pb_meta <- pb_meta[colnames(counts), ]
+  pb_meta$tmm_factors <- edgeR::calcNormFactors(counts, method = "TMMwsp")
 
   propCells_broad <- table(metadata$sample, metadata$broad_class)
   propCells_broad <- sweep(propCells_broad, 1, rowSums(propCells_broad), "/")
 
-  pctRNA_broad <- CalculatePercentRNA(singlecell_counts, metadata$sample,
-                                      metadata$broad_class)
+  pctRNA_broad <- CalculatePercentRNA(singlecell_counts,
+                                      samples = metadata$sample,
+                                      celltypes = metadata$broad_class)
+
+  meta <- list("propCells" = propCells_broad,
+               "pctRNA" = pctRNA_broad)
 
   pseudobulk <- SummarizedExperiment(assays = SimpleList(counts = counts),
                                      colData = pb_meta,
-                                     metadata = list("propCells" = propCells_broad,
-                                                     "pctRNA" = pctRNA_broad))
+                                     metadata = meta)
   Save_Pseudobulk(pseudobulk, dataset, "sc_samples", "broad_class")
 
   # The counts for the fine cell types pseudobulk set are the same, only the
@@ -68,12 +68,15 @@ CreatePseudobulk_BySample <- function(singlecell_counts, metadata, dataset) {
   propCells_fine <- table(metadata$sample, metadata$sub_class)
   propCells_fine <- sweep(propCells_fine, 1, rowSums(propCells_fine), "/")
 
-  pctRNA_fine <- CalculatePercentRNA(singlecell_counts, metadata$sample,
-                                     metadata$sub_class)
+  pctRNA_fine <- CalculatePercentRNA(singlecell_counts,
+                                     samples = metadata$sample,
+                                     celltypes = metadata$sub_class)
+
+  meta <- list("propCells" = propCells_fine,
+               "pctRNA" = pctRNA_fine)
 
   pseudobulk_fine <- SummarizedExperiment(assays = SimpleList(counts = counts),
                                           colData = pb_meta,
-                                          metadata = list("propCells" = propCells_fine,
-                                                          "pctRNA" = pctRNA_fine))
+                                          metadata = meta)
   Save_Pseudobulk(pseudobulk_fine, dataset, "sc_samples", "sub_class")
 }

@@ -64,10 +64,9 @@
 CreatePseudobulk_Training <- function(singlecell_counts, cell_assigns,
                                       main_celltype, proportion, num_cells,
                                       num_samples) {
-
   # Ensure we always get the same result from the same data
   celltype_ind <- which(levels(cell_assigns) == main_celltype)
-  set.seed(celltype_ind*10000 + proportion*100)
+  set.seed(celltype_ind * 10000 + proportion * 100)
 
   n_celltypes <- length(levels(cell_assigns))
   names(cell_assigns) <- colnames(singlecell_counts)
@@ -86,9 +85,11 @@ CreatePseudobulk_Training <- function(singlecell_counts, cell_assigns,
   for (samp in 1:num_samples) {
     # Randomly pick a percent for each non-main cell type, normalize it to be
     # out of (1-proportion) instead of 100.
-    tmp <- sample.int(100, n_celltypes-1, replace = TRUE)
-    tmp <- c(proportion, (tmp / sum(tmp)) * (1-proportion))
-    names(tmp) <- c(main_celltype, setdiff(levels(cell_assigns), main_celltype))
+    tmp <- sample.int(100, n_celltypes - 1, replace = TRUE)
+    tmp <- c(proportion,
+             (tmp / sum(tmp)) * (1 - proportion))
+    names(tmp) <- c(main_celltype,
+                    setdiff(levels(cell_assigns), main_celltype))
 
     probs_samp <- rep(0, ncol(singlecell_counts))
 
@@ -119,8 +120,10 @@ CreatePseudobulk_Training <- function(singlecell_counts, cell_assigns,
   for (samp in 1:ncol(probs)) {
     # Will sample the cells with the probabilities above. We will get *approximately*
     # the assigned proportions, but not exactly due to randomness.
-    cells <- sample(colnames(singlecell_counts), size = num_cells,
-                    replace = TRUE, prob = probs[,samp])
+    cells <- sample(colnames(singlecell_counts),
+                    size = num_cells,
+                    replace = TRUE,
+                    prob = probs[, samp])
     totals <- table(cells)
     groups[names(totals), samp] <- totals
 
@@ -129,9 +132,9 @@ CreatePseudobulk_Training <- function(singlecell_counts, cell_assigns,
     propCells[samp, names(tab1)] <- tab1 / sum(tab1)
 
     # Percent RNA
-    pct <- CalculatePercentRNA(singlecell_counts[,cells],
-                               rep(samp, length(cells)),
-                               cell_assigns[cells])
+    pct <- CalculatePercentRNA(singlecell_counts[, cells],
+                               samples = rep(samp, length(cells)),
+                               celltypes = cell_assigns[cells])
     pctRNA[samp, colnames(pct)] <- pct
   }
 

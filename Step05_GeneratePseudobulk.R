@@ -1,6 +1,5 @@
-##### Generation of pseudobulk data sets from single cell data #####
-# This script creates the following pseudobulk data sets for both broad and
-# fine cell types:
+# This script generates pseudobulk data sets from single cell data sets. The
+# following pseudobulk data sets are created for both broad and fine cell types:
 #   1. Pseudobulk of each sample
 #   2. Pseudobulk of each cell type + sample combination, to create "pure"
 #      pseudobulk samples of each cell type
@@ -35,11 +34,12 @@ library(dplyr)
 library(edgeR)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
+source(file.path("functions", "General_HelperFunctions.R"))
 source(file.path("functions", "Step05a_CreatePseudobulk_BySample.R"))
 source(file.path("functions", "Step05b_CreatePseudobulk_PureSamples.R"))
 #source(file.path("functions", "Step05c_CreatePseudobulk_Training.R"))
 
-datasets <- c("cain", "lau", "leng", "mathys", "seaRef") #, "morabito", "seaAD")
+datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
 
 for (dataset in datasets) {
   sce <- Load_SingleCell(dataset, "broad_class", output_type = "counts")
@@ -61,8 +61,7 @@ for (dataset in datasets) {
     # fine cell types depending on the for-loop
     if (granularity == "broad_class") {
       metadata$celltype <- metadata$broad_class
-    }
-    else if (granularity == "sub_class") {
+    } else if (granularity == "sub_class") {
       metadata$celltype <- metadata$sub_class
     }
 
@@ -80,12 +79,12 @@ for (dataset in datasets) {
     # The largest proportion of each cell type from any sample, x 2 determines
     # the range of percents we test for that cell type
     maxs <- colMaxs(pcts, useNames = TRUE)
-    maxs <- ceiling(20*maxs)/10 # Rounds 2*X to the next-highest 10%
+    maxs <- ceiling(20 * maxs) / 10 # Rounds 2*X to the next-highest 10%
     maxs[maxs > 1] <- 1.0
 
     # Each cell type gets its own range of percents, divided into 20 increments
     ints <- sapply(maxs, function(X) {
-      seq(from = 0, to = X, by = (X/20))
+      seq(from = 0, to = X, by = (X / 20))
     })
 
     pseudobulk <- list()
@@ -95,7 +94,7 @@ for (dataset in datasets) {
     # Create randomly-sampled data sets to fill out pseudobulk data
 
     for (ct in 1:length(celltypes)) {
-      for (prop in ints[,ct]) {
+      for (prop in ints[, ct]) {
         # Limit the total number of cells in the resample to be proportional
         # to the number of cells for this cell type. We don't want to resample
         # a population of 100 cells 10,000 times, for example
@@ -108,9 +107,9 @@ for (dataset in datasets) {
                                             num_cells = numcells,
                                             num_samples = num_samples)
         name <- paste(ct, prop)
-        pseudobulk[[name]] <- result[["counts"]]
-        propCells[[name]] <- result[["propCells"]]
-        pctRNA[[name]] <- result[["pctRNA"]]
+        pseudobulk[[name]] <- result$counts
+        propCells[[name]] <- result$propCells
+        pctRNA[[name]] <- result$pctRNA
 
         print(c(dataset, celltypes[ct], prop))
       }
@@ -121,7 +120,7 @@ for (dataset in datasets) {
     pctRNA <- do.call(rbind, pctRNA)
 
     pseudobulk <- as(pseudobulk, "matrix")
-    tmm <- calcNormFactors(pseudobulk, method = "TMMwsp")
+    tmm <- edgeR::calcNormFactors(pseudobulk, method = "TMMwsp")
 
     se <- SummarizedExperiment(assays = SimpleList(counts = pseudobulk),
                                colData = data.frame(tmm_factors = tmm),

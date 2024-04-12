@@ -34,38 +34,36 @@
 #
 # Returns: nothing
 
-source(file.path("functions", "FileIO_HelperFunctions.R"))
-
 CreatePseudobulk_PureSamples <- function(singlecell_counts, metadata, dataset) {
-
   for (granularity in c("broad_class", "sub_class")) {
     if (granularity == "broad_class") {
       metadata$celltype <- metadata$broad_class
-    }
-    else { # "sub_class"
+    } else { # "sub_class"
       metadata$celltype <- metadata$sub_class
     }
 
     metadata$celltypesample <- paste(metadata$celltype, metadata$sample, sep = "_")
     metadata$celltypesample <- factor(metadata$celltypesample)
 
-    y <- model.matrix(~0 + celltypesample, data = metadata)
+    y <- model.matrix(~ 0 + celltypesample, data = metadata)
     colnames(y) <- str_replace(colnames(y), "celltypesample", "puresample_")
 
     counts <- singlecell_counts %*% y
     counts <- as(counts, "matrix")
 
     pb_meta <- as.data.frame(metadata) %>%
-                  select(sample, diagnosis, celltypesample) %>% distinct() %>%
-                  mutate(sample = paste0("puresample_", celltypesample),
-                         celltype = str_replace(celltypesample, "_.*", "")) %>%
-                  select(-celltypesample)
+      select(sample, diagnosis, celltypesample) %>%
+      distinct() %>%
+      mutate(sample = paste0("puresample_", celltypesample),
+             celltype = str_replace(celltypesample, "_.*", "")) %>%
+      select(-celltypesample)
+
     pb_meta$celltype <- factor(pb_meta$celltype)
     pb_meta$diagnosis <- factor(pb_meta$diagnosis)
     rownames(pb_meta) <- pb_meta$sample
-    pb_meta <- pb_meta[colnames(counts),]
+    pb_meta <- pb_meta[colnames(counts), ]
     pb_meta$n_cells <- colSums(y) # number of cells in each sample
-    pb_meta$tmm_factors <- calcNormFactors(counts, method = "TMMwsp")
+    pb_meta$tmm_factors <- edgeR::calcNormFactors(counts, method = "TMMwsp")
 
     propCells <- table(metadata$celltypesample, metadata$celltype)
     rownames(propCells) <- paste0("puresample_", rownames(propCells))
@@ -75,10 +73,11 @@ CreatePseudobulk_PureSamples <- function(singlecell_counts, metadata, dataset) {
     # matches the pure sample.
     pctRNA <- propCells
 
+    meta <- list("propCells" = propCells,
+                 "pctRNA" = pctRNA)
     pseudobulk <- SummarizedExperiment(assays = SimpleList(counts = counts),
                                        colData = pb_meta,
-                                       metadata = list("propCells" = propCells,
-                                                       "pctRNA" = pctRNA))
+                                       metadata = meta)
 
     Save_PseudobulkPureSamples(pseudobulk, dataset, granularity)
   }
