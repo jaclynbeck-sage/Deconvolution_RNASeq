@@ -1,7 +1,7 @@
 install.packages(c("BiocManager", "devtools", "stringr", "Metrics",
                    "dplyr", "ggplot2", "DEoptimR", "nloptr", "anndata",
                    "readxl", "Hmisc", "RMariaDB", "lme4", "corrplot",
-                   "Hmisc", "circlize", "gMWT", "pak", "uuid"))
+                   "circlize", "gMWT", "pak", "uuid"))
 
 # If synapser fails to install because it can't find "synapseclient", go to
 # RStudio options (Tools->Global Options) -> Python, uncheck "Automatically
@@ -11,7 +11,7 @@ install.packages("synapser", repos = c("http://ran.synapse.org", "http://cran.fh
 BiocManager::install(c("Biobase", "SingleCellExperiment", "TOAST", "scuttle",
                        "DeconRNASeq", "Seurat", "MAST", "GEOquery", "biomaRt",
                        "DESeq2", "edgeR", "GenomicFeatures", "snpStats",
-                       "HDF5Array"))
+                       "HDF5Array", "glmGamPoi"))
 
 BiocManager::install("preprocessCore", configure.args="--disable-threading")
 
@@ -21,25 +21,12 @@ install.packages(c("DWLS", "GenomicTools.fileHandler"))
 # install the MuSiC package from my fork, which has a few fixes and speedups
 devtools::install_github("jaclynbeck-sage/MuSiC")
 
-# install HSPE from my fork, which has a few fixes
+# install Dtangle and HSPE from my forks, which have a few fixes
+devtools::install_github("jaclynbeck-sage/dtangle", subdir = "lib_dtangle")
 devtools::install_github("jaclynbeck-sage/hspe", subdir = "lib_hspe")
 
-# install sageseqr -- requires archived package from CRAN
-gt_url <- "https://cran.r-project.org/src/contrib/Archive/GenomicTools/GenomicTools_0.2.9.7.tar.gz"
-download.file(url = gt_url, destfile = "GenomicTools_0.2.9.7.tar")
-install.packages(pkgs="GenomicTools_0.2.9.7.tar", type="source", repos=NULL)
-unlink("GenomicTools_0.2.9.7.tar") # deletes the tar file
-
-devtools::install_github("Sage-Bionetworks/sageseqr")
-
-# Dtangle doesn't provide support for sparse matrices, so I download the repo and
-# make a few small changes. It's then re-compiled into a package and installed
-# as "dtangleSparse".
-# NOTE: This may break if the developer updates their repo
-system("bash install_dtangle.sh")
-install.packages(file.path('~', 'dtangle', 'dtangleSparse_2.0.9.tar.gz'),
-                 repos = NULL, type = "source")
-system(paste("rm -rf", file.path("~", "dtangle")))
+# install sageseqr -- uses my fork with updated package dependencies
+devtools::install_github("jaclynbeck-sage/sageseqr")
 
 # Extra package needed for pre-processing seaRef
 reticulate::virtualenv_install("r-reticulate", packages = c("anndata"))

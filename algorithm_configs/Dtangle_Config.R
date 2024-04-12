@@ -31,7 +31,7 @@
 alg_config <- list(
   # Used to create params_loop1 (data-specific arguments) in main function
   normalizations = c("log_cpm", "log_tmm", "log_tpm"), # Dtangle works on log-scale data
-  reference_input_types = c("singlecell", "pseudobulk"),
+  reference_input_types = c("pseudobulk"),
 
   # For params_loop2 (algorithm-specific arguments) in main function
   params_markers = CreateParams_MarkerTypes(), # all args are default
@@ -40,7 +40,7 @@ alg_config <- list(
   # Define the function that runs each param set
   inner_loop_file = file.path("functions", "Step09_DtangleHSPE_InnerLoop.R"),
   inner_loop_func = "DtangleHSPE_InnerLoop", # must be a string
-  required_libraries = c("dtangleSparse"),
+  required_libraries = c("dtangle"),
 
   # How many cores to use in parallel
   cores = 6 # Machine this was set up for has 16 cores
