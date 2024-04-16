@@ -48,7 +48,7 @@ gc()
 # Map the other data sets to the reference -------------------------------------
 
 for (query_dataset in query_datasets) {
-  print(str_glue("Mapping dataset {query_dataset}..."))
+  message(str_glue("Mapping dataset {query_dataset}..."))
 
   query_sce <- Load_PreprocessedData(query_dataset, remove_excluded = TRUE)
 

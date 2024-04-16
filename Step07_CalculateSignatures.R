@@ -1,7 +1,7 @@
 # This script calculates cell-type gene signatures, using the broad and sub
 # class cell type assignments output from mapping in Step 04. It also calculates
 # the average cell size (average counts per cell per cell type, normalized) for
-# use with MuSiC.
+# use with error comparison.
 library(SingleCellExperiment)
 library(omnideconv)
 
@@ -40,6 +40,8 @@ for (dataset in datasets) {
     rm(sce)
     gc()
 
+    # Assumes that environment variables CIBERSORT_EMAIL and CIBERSORT_TOKEN
+    # exist. Works on Linux/Mac, not tested on Windows.
     set_cibersortx_credentials(email = Sys.getenv("CIBERSORT_EMAIL"),
                                token = Sys.getenv("CIBERSORT_TOKEN"))
 

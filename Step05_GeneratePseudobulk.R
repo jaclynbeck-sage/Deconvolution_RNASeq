@@ -45,17 +45,17 @@ for (dataset in datasets) {
   sce <- Load_SingleCell(dataset, "broad_class", output_type = "counts")
   metadata <- colData(sce)
 
-  print(str_glue("{dataset}: creating pseudobulk by sample..."))
+  message(str_glue("{dataset}: creating pseudobulk by sample..."))
   CreatePseudobulk_BySample(counts(sce), metadata, dataset)
 
-  print(str_glue("{dataset}: creating pseudobulk pure samples..."))
+  message(str_glue("{dataset}: creating pseudobulk pure samples..."))
   CreatePseudobulk_PureSamples(counts(sce), metadata, dataset)
 
   # Skip making training pseudobulk but keep the code just in case
   next
 
   for (granularity in c("broad_class", "sub_class")) {
-    print(str_glue("{dataset}: creating pseudobulk training set for {granularity} cell types..."))
+    message(str_glue("{dataset}: creating pseudobulk training set for {granularity} cell types..."))
 
     # Create a generic "celltype" column that is populated with either broad or
     # fine cell types depending on the for-loop

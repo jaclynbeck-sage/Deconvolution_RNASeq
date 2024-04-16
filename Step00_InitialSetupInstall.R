@@ -9,9 +9,15 @@ install.packages(c("BiocManager", "devtools", "stringr", "Metrics",
 install.packages("synapser", repos = c("http://ran.synapse.org", "http://cran.fhcrc.org"))
 
 BiocManager::install(c("Biobase", "SingleCellExperiment", "TOAST", "scuttle",
-                       "DeconRNASeq", "Seurat", "MAST", "GEOquery", "biomaRt",
+                       "DeconRNASeq", "MAST", "GEOquery", "biomaRt",
                        "DESeq2", "edgeR", "GenomicFeatures", "snpStats",
                        "HDF5Array", "glmGamPoi"))
+
+# Install version 4 of Seurat instead of version 5
+remotes::install_version("SeuratObject", "4.1.4",
+                         repos = c("https://satijalab.r-universe.dev", getOption("repos")))
+remotes::install_version("Seurat", "4.4.0",
+                         repos = c("https://satijalab.r-universe.dev", getOption("repos")))
 
 BiocManager::install("preprocessCore", configure.args="--disable-threading")
 

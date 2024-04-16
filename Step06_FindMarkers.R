@@ -1,14 +1,18 @@
+# Finds cell type markers in single cell data using 4 different algorithms:
+# Dtangle, Seurat/MAST, AutogeneS, and DESeq2
+
 library(dplyr)
 library(foreach)
 library(doParallel)
 library(stringr)
 
-##### Settings #####
+# Settings ---------------------------------------------------------------------
 
 # Which algorithms to run for marker finding
 marker_types_run <- c("dtangle", "seurat", "autogenes", "deseq2")
 
-# Run multiple parameter sets in parallel for dtangle/HSPE marker finding?
+# Run multiple parameter sets in parallel for dtangle/HSPE marker finding if
+# dtangle_do_parallel is TRUE. Other algorithms can't be run in parallel.
 # Assume most data sets use <20 GB of RAM per core, but seaRef will use > 100 GB
 # for single cell.
 dtangle_do_parallel <- TRUE
@@ -16,7 +20,7 @@ dtangle_n_cores <- 4
 dtangle_clust_type <- "FORK" # Use PSOCK for non-Unix systems
 
 # Which datasets to run on
-datasets <- c("cain", "lau", "leng", "mathys", "seaRef") #, "morabito", "seaAD")
+datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
 
 # What granularities?
 granularities <- c("broad_class", "sub_class")
@@ -25,10 +29,9 @@ granularities <- c("broad_class", "sub_class")
 dtangle_input_types <- c("singlecell", "pseudobulk")
 
 
-##### Dtangle/HSPE markers #####
+# Dtangle/HSPE markers ---------------------------------------------------------
 
 if ("dtangle" %in% marker_types_run) {
-
   if (dtangle_do_parallel) {
     cl <- makeCluster(dtangle_n_cores, type = dtangle_clust_type, outfile = "")
     registerDoParallel(cl)
@@ -43,9 +46,9 @@ if ("dtangle" %in% marker_types_run) {
 }
 
 
-##### Seurat / MAST markers #####
+# Seurat / MAST markers --------------------------------------------------------
 
-# Needs all available CPUs, so this isn't run in parallel.
+# Uses all available CPUs already, so this isn't run in parallel.
 
 if ("seurat" %in% marker_types_run) {
   source(file.path("functions", "Step06b_FindMarkers_Seurat.R"))
@@ -53,7 +56,7 @@ if ("seurat" %in% marker_types_run) {
 }
 
 
-##### AutogeneS markers (requires python/reticulate) #####
+# AutogeneS markers (requires python/reticulate) -------------------------------
 
 # This section uses reticulate, so it's not run in parallel in case that causes
 # issues with python environments.
@@ -64,7 +67,7 @@ if ("autogenes" %in% marker_types_run) {
 }
 
 
-##### DESeq2 markers from pseudobulk #####
+# DESeq2 markers from pseudobulk -----------------------------------------------
 
 if ("deseq2" %in% marker_types_run) {
   source(file.path("functions", "Step06d_FindMarkers_DESeq2.R"))

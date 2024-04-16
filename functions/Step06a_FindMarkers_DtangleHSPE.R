@@ -3,11 +3,8 @@
 # per parameter set is needed for use with both algorithms.
 #
 # This function runs through multiple parameters and data input types and saves
-# the resulting markers to files for later usage. This is done outside the
-# main algorithm loops because both algorithms can use the same markers file for
-# the same parameters, so this removes redundancy. Additionally, we use Dtangle
-# markers for the other deconvolution algorithms, so these markers need to be
-# available before running the algorithms.
+# the resulting markers to files for later usage with all of the deconvolution
+# algorithms.
 
 # Libraries that need to be loaded into each parallel environment
 required_libraries <- c("hspe", "SingleCellExperiment", "Matrix",
@@ -17,10 +14,12 @@ FindMarkers_DtangleHSPE <- function(datasets, granularities, input_types) {
   params_data <- expand.grid(dataset = datasets,
                              granularity = granularities,
                              input_type = input_types,
-                             stringsAsFactors = FALSE) %>% arrange(dataset)
+                             stringsAsFactors = FALSE) %>% dplyr::arrange(dataset)
 
   # Each param set is completely independent of others, so we run it in parallel.
-  foreach (R = 1:nrow(params_data), .packages = required_libraries) %dopar% {
+  # If no parallel cluster is set up before running this function, the foreach
+  # loop will run one by one instead of in parallel.
+  foreach(R = 1:nrow(params_data), .packages = required_libraries) %dopar% {
     # This needs to be sourced inside the loop for parallel processing
     source(file.path("functions", "FileIO_HelperFunctions.R"))
 
@@ -30,8 +29,7 @@ FindMarkers_DtangleHSPE <- function(datasets, granularities, input_types) {
 
     if (input_type == "singlecell") {
       input_obj <- Load_SingleCell(dataset, granularity, output_type = "log_cpm")
-    }
-    else { # pseudobulk pure samples
+    } else { # pseudobulk pure samples
       input_obj <- Load_PseudobulkPureSamples(dataset, granularity,
                                               output_type = "log_cpm")
     }
@@ -59,13 +57,13 @@ FindMarkers_DtangleHSPE <- function(datasets, granularities, input_types) {
     }
 
     # Create marker lists and save them.
-    for (marker_meth in marker_methods) {
-      print(str_glue(paste0("Finding markers for {dataset} {input_type} ",
-                            "({granularity}), method = {marker_meth} ...")))
+    for (method in marker_methods) {
+      message(str_glue(paste0("Finding markers for {dataset} {input_type} ",
+                              "({granularity}), method = {method} ...")))
 
-      markers <- find_markers(Y = t(input_mat),
-                              pure_samples = pure_samples,
-                              marker_method = marker_meth)
+      markers <- hspe::find_markers(Y = t(input_mat),
+                                    pure_samples = pure_samples,
+                                    marker_method = method)
 
       # Filter the marker list to genes that meet certain criteria:
       #   ratio: all Vs higher than the mean (there isn't an intuitive criteria for this one)
@@ -73,7 +71,7 @@ FindMarkers_DtangleHSPE <- function(datasets, granularities, input_types) {
       #   p.value: all Vs >= 0.95 (signifying p <= 0.05)
       #   regression: all Vs with >= 1 log-fold change
       markers[["filtered"]] <- lapply(markers$V, function(vals) {
-        new_vals <- switch(marker_meth,
+        new_vals <- switch(method,
                            "ratio" = vals[vals >= mean(vals)],
                            "diff" = vals[vals >= 1],
                            "p.value" = vals[vals >= 0.95],
@@ -81,7 +79,15 @@ FindMarkers_DtangleHSPE <- function(datasets, granularities, input_types) {
         return(names(new_vals))
       })
 
-      Save_DtangleMarkers(markers, dataset, granularity, input_type, marker_meth)
+      # Format like the other marker finding algorithms
+      markers$L <- lapply(markers$L, names)
+      markers_final <- list("all" = markers$L,
+                            "filtered" = markers$filtered)
+
+      Save_Markers(markers_final, dataset, granularity,
+                   marker_type = "dtangle",
+                   input_type = input_type,
+                   marker_subtype = method)
 
       rm(markers)
       gc()
