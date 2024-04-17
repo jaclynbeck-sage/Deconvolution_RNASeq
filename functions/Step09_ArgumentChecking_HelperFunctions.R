@@ -1,5 +1,29 @@
+# Helper functions for checking arguments during step 9. These exist to avoid
+# copy/pasting the same checks and error messages across all the algorithm files.
+
+# For readability
+Is_SignatureMatrix <- function(markers_obj) {
+  return(is(markers_obj, "matrix") || is(markers_obj, "data.frame"))
+}
+
+
+# For readability
+Is_MarkerList <- function(markers_obj) {
+  return(is(markers_obj, "list"))
+}
+
+
 # If any cell type has 0 markers, the FilterMarkers and FilterSignature functions
-# return NULL, so this function checks for a NULL markers_obj.
+# return NULL, so this function checks for a NULL markers_obj and prints out an
+# message.
+#
+# Arguments:
+#   markers_obj = either a signature matrix (or dataframe) or a list of cell type markers
+#   params = a named vector or one-row data frame with the parameters being used
+#            for this call of the algorithm
+#
+# Returns:
+#   TRUE if a cell type has no markers with this parameter set, FALSE otherwise
 Check_MissingMarkers <- function(markers_obj, params) {
   if (is.null(markers_obj)) {
     param_set <- paste(params, collapse = "  ")
@@ -16,13 +40,18 @@ Check_MissingMarkers <- function(markers_obj, params) {
 # information. Checking total markers (signature) or mean markers (marker list)
 # instead of markers per cell type allows some leeway for rarer cell types to
 # have less than 3 markers as long as the other cell types have enough.
+#
+# Arguments:
+#   same as Check_MissingMarkers
+#   low_threshold = the lowest acceptable number of markers per cell type
+#
+# Returns:
+#   TRUE if there are fewer than low_threshold markers per cell type, FALSE otherwise
 Check_TooFewMarkers <- function(markers_obj, params, low_threshold = 3) {
-  # Input is a signature matrix
-  if (is(markers_obj, "matrix") || is(markers_obj, "data.frame")) {
+  if (Is_SignatureMatrix(markers_obj)) {
     not_enough <- (nrow(markers_obj) < low_threshold * ncol(markers_obj))
   }
-  # Input is a list of cell type markers
-  else if (is(markers_obj, "list")) {
+  else if (Is_MarkerList(markers_obj)) {
     not_enough <- (mean(lengths(markers_obj)) < low_threshold)
   }
   else {
@@ -45,12 +74,17 @@ Check_TooFewMarkers <- function(markers_obj, params, low_threshold = 3) {
 # pretty generous, and allows for 500 markers for 10 cell types. Algorithms
 # that are designed to use all/most genes (DeconRNASeq, MuSiC) do not call this
 # function.
+# Arguments:
+#   same as Check_MissingMarkers
+#   high_threshold = the highest acceptable number of total markers
+#
+# Returns:
+#   TRUE if there are more than high_threshold total markers, FALSE otherwise
 Check_TooManyMarkers <- function(markers_obj, params, high_threshold = 5000) {
-  if (is(markers_obj, "matrix") || is(markers_obj, "data.frame")) {
+  if (Is_SignatureMatrix(markers_obj)) {
     too_many <- (nrow(markers_obj) > high_threshold)
   }
-  # Input is a list of cell type markers
-  else if (is(markers_obj, "list")) {
+  else if (Is_MarkerList(markers_obj)) {
     too_many <- (sum(lengths(markers_obj)) > high_threshold)
   }
   else {
@@ -71,6 +105,11 @@ Check_TooManyMarkers <- function(markers_obj, params, high_threshold = 5000) {
 # For whole-number n_markers parameters, the n_markers argument (mostly)
 # doubles each time. If there aren't enough markers in each cell type to do
 # anything new with this n_markers value, skip testing.
+# Arguments:
+#   same as Check_MissingMarkers
+#
+# Returns:
+#   TRUE if there are not enough new markers to be useful, FALSE otherwise
 Check_NotEnoughNewMarkers <- function(markers_obj, params) {
   # Not applicable for fractional n_marker values
   if (params$n_markers <= 1) {
@@ -79,12 +118,10 @@ Check_NotEnoughNewMarkers <- function(markers_obj, params) {
 
   low_threshold <- params$n_markers / 2
 
-  # Input is a signature matrix
-  if (is(markers_obj, "matrix") || is(markers_obj, "data.frame")) {
+  if (Is_SignatureMatrix(markers_obj)) {
     not_enough <- nrow(markers_obj) <= (low_threshold * ncol(markers_obj))
   }
-  # Input is a list of cell type markers
-  else if (is(markers_obj, "list")) {
+  else if (Is_MarkerList(markers_obj)) {
     not_enough <- all(lengths(markers_obj) <= low_threshold)
   }
   else {

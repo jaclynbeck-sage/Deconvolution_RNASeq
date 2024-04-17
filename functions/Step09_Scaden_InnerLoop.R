@@ -18,7 +18,7 @@
 #   "params", which is the parameter set used for this run, and "markers", which
 #   is the list of genes shared by the single cell and bulk data sets (since
 #   Scaden doesn't actually use markers).
-Scaden_InnerLoop <- function(sce, bulk_mat, params, algorithm) {
+Scaden_InnerLoop <- function(sce, bulk_mat, params, algorithm = NULL) {
   # directory names need to be passed in as full paths
   full_filepath <- file.path(getwd(), dir_scaden_models)
   folder_name <- paste(params, collapse = "_")
@@ -29,21 +29,25 @@ Scaden_InnerLoop <- function(sce, bulk_mat, params, algorithm) {
   dir.create(temp_path, recursive = TRUE, showWarnings = FALSE)
 
   # Training step requires a dense matrix of single cell counts
-  model_path <- build_model_scaden(single_cell_object = as.matrix(counts(sce)),
-                                   cell_type_annotations = as.character(sce$celltype),
-                                   bulk_gene_expression = bulk_mat,
-                                   model_path = mod_path,
-                                   temp_dir = temp_path,
-                                   verbose = TRUE)
+  model_path <- omnideconv::build_model_scaden(
+    single_cell_object = as.matrix(counts(sce)),
+    cell_type_annotations = as.character(sce$celltype),
+    bulk_gene_expression = bulk_mat,
+    model_path = mod_path,
+    temp_dir = temp_path,
+    verbose = TRUE
+  )
 
   # Clear memory
   gc()
 
   # Predict step
-  res_pcts <- deconvolute_scaden(signature = model_path,
-                                 bulk_gene_expression = bulk_mat,
-                                 temp_dir = temp_path,
-                                 verbose = TRUE)
+  res_pcts <- omnideconv::deconvolute_scaden(
+    signature = model_path,
+    bulk_gene_expression = bulk_mat,
+    temp_dir = temp_path,
+    verbose = TRUE
+  )
 
   res <- list("estimates" = res_pcts,
               "params" = params,

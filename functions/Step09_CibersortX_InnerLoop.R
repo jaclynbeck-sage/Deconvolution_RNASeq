@@ -21,46 +21,42 @@
 #   "params", which is the parameter set used for this run, and "markers", which
 #   is the list of genes from the CibersortX signature matrix
 CibersortX_InnerLoop <- function(reference_filename, bulk_mat, signature, params) {
-  set_cibersortx_credentials(email = Sys.getenv("CIBERSORT_EMAIL"),
-                             token = Sys.getenv("CIBERSORT_TOKEN"))
+  omnideconv::set_cibersortx_credentials(email = Sys.getenv("CIBERSORT_EMAIL"),
+                                         token = Sys.getenv("CIBERSORT_TOKEN"))
 
-  # Ensure signature is a matrix. For CibersortX signatures, we do not need to
-  # filter the signature down or worry about markers so we ignore those settings
-  # from 'params'
+  # Ensure signature is a matrix. For CibersortX signatures only, we do not need
+  # to filter the signature down or worry about markers so we ignore those
+  # settings from 'params'
   signature <- as.matrix(signature)
 
+  # Non-CibersortX signature matrix needs to be filtered
   if (params$reference_input_type != "cibersortx") {
-    filter_level <- as.numeric( params$filter_level )
-    n_markers <- as.numeric( params$n_markers )
-
-    # Filter signature matrix according to parameters
-    signature <- FilterSignature(signature, filter_level,
-                                 params$reference_data_name, params$granularity,
-                                 n_markers, params$marker_type,
-                                 params$marker_subtype, params$marker_input_type,
-                                 params$marker_order, bulk_mat)
+    signature <- FilterSignature_FromParams(signature, params, bulk_mat)
 
     if (Check_MissingMarkers(signature, params) ||
-        Check_TooFewMarkers(signature, params, 3) ||
-        Check_NotEnoughNewMarkers(signature, params)) {
+      Check_TooFewMarkers(signature, params, 3) ||
+      Check_NotEnoughNewMarkers(signature, params)) {
       return(NULL)
     }
   }
 
   file_label <- paste(params$reference_data_name, params$test_data_name,
                       params$granularity, params$reference_input_type,
-                      params$normalization, sep = "_")
+                      params$normalization,
+                      sep = "_")
 
-  res_pcts <- deconvolute_cibersortx(bulk_mat, signature,
-                                     single_cell_object = basename(reference_filename),
-                                     cell_type_annotations = colnames(signature), # dummy variable, not used if a filename is provided but has to have a non-null value
-                                     rmbatch_S_mode = TRUE,
-                                     verbose = TRUE, container = "docker",
-                                     input_dir = dir_cibersort,
-                                     output_dir = dir_cibersort,
-                                     qn = FALSE,
-                                     absolute = FALSE,
-                                     label = file_label)
+  res_pcts <- omnideconv::deconvolute_cibersortx(bulk_mat, signature,
+    single_cell_object = basename(reference_filename),
+    cell_type_annotations = colnames(signature), # dummy variable, not used if a filename is provided but has to have a non-null value
+    rmbatch_S_mode = TRUE,
+    verbose = TRUE,
+    container = "docker",
+    input_dir = dir_cibersort,
+    output_dir = dir_cibersort,
+    qn = FALSE,
+    absolute = FALSE,
+    label = file_label
+  )
 
   # Cleanup finished docker container
   system("docker rm $(docker ps -a -q --filter ancestor=cibersortx/fractions)")

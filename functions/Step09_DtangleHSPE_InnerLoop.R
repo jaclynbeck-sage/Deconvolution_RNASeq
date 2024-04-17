@@ -20,32 +20,23 @@
 #   between algorithms), "params", which is the parameter set used for this run,
 #   and "markers", which is the list of genes used as markers for this run
 DtangleHSPE_InnerLoop <- function(Y, pure_samples, params, algorithm) {
-  # Unpack parameters for readability and ensure correct types
-  reference_data_name <- params$reference_data_name
-  granularity <- params$granularity
-  marker_input_type <- params$marker_input_type
-
-  marker_type <- params$marker_type
-  marker_subtype <- params$marker_subtype
-  n_markers <- as.numeric( params$n_markers )
-  marker_order <- params$marker_order
-
-  markers <- FilterMarkers(reference_data_name, granularity, n_markers,
-                           marker_type, marker_subtype, marker_input_type,
-                           marker_order,
+  markers <- FilterMarkers(params$reference_data_name, params$granularity,
+                           params$n_markers, params$marker_type,
+                           params$marker_subtype, params$marker_input_type,
+                           params$marker_order,
                            available_genes = colnames(Y),
-                           test_data = t(Y[-unlist(pure_samples),]))
+                           test_data = t(Y[-unlist(pure_samples), ]))
 
   if (Check_MissingMarkers(markers, params) ||
-      Check_TooFewMarkers(markers, params, 3) ||
-      Check_TooManyMarkers(markers, params, 5000) ||
-      Check_NotEnoughNewMarkers(markers, params)) {
+    Check_TooFewMarkers(markers, params, 3) ||
+    Check_TooManyMarkers(markers, params, 5000) ||
+    Check_NotEnoughNewMarkers(markers, params)) {
     return(NULL)
   }
 
-  ##### Dtangle-specific function call #####
+  # Dtangle-specific function call ---------------------------------------------
   if (algorithm == "Dtangle") {
-    result <- dtangle(Y = Y[,unlist(markers)],
+    result <- dtangle(Y = Y[, unlist(markers)],
                       pure_samples = pure_samples,
                       data_type = "rna-seq",
                       n_markers = lengths(markers), # pass the actual number of markers we have after filtering
@@ -55,13 +46,13 @@ DtangleHSPE_InnerLoop <- function(Y, pure_samples, params, algorithm) {
     test_samples <- setdiff(1:nrow(Y), unlist(pure_samples))
     result$estimates <- result$estimates[test_samples, ]
   }
-  ##### HSPE-specific function call #####
+  # HSPE-specific function call ------------------------------------------------
   else if (algorithm == "HSPE") {
-    result <- hspe(Y = Y[,unlist(markers)],
+    result <- hspe(Y = Y[, unlist(markers)],
                    pure_samples = pure_samples,
                    n_markers = lengths(markers), # pass the actual number of markers we have after filtering
                    markers = markers,
-                   loss_fn = "L2", # 'L2' converges faster than 'var' with nearly identical results
+                   loss_fn = "L2", # 'L2' usually converges faster than 'var' with nearly identical results
                    seed = 12345,
                    verbose = TRUE)
 

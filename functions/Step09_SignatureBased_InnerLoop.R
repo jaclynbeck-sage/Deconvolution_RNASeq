@@ -1,5 +1,6 @@
 # Runs a signature-based deconvolution algorithm on the given bulk data, using a
-# signature matrix and a set of parameters.
+# signature matrix and a set of parameters. Current algorithms that use this
+# method are DeconRNASeq and DWLS.
 #
 # Arguments:
 #   signature = a data.frame describing the average expression of each gene (in
@@ -22,91 +23,80 @@ SignatureBased_InnerLoop <- function(signature, bulk_mat, params, algorithm) {
   # Ensure signature is a matrix
   signature <- as.matrix(signature)
 
-  # Unpack variables for readability, enforce they are the correct types
-  reference_data_name <- params$reference_data_name
-  granularity <- params$granularity
-
-  filter_level <- as.numeric( params$filter_level )
-  n_markers <- as.numeric( params$n_markers )
-  marker_type <- params$marker_type
-  marker_subtype <- params$marker_subtype
-  marker_input_type <- params$marker_input_type
-  marker_order <- params$marker_order
-
   # Filter signature matrix according to parameters
-  signature_filt <- FilterSignature(signature, filter_level, reference_data_name,
-                                    granularity, n_markers, marker_type,
-                                    marker_subtype, marker_input_type, marker_order,
-                                    bulk_mat)
+  signature_filt <- FilterSignature_FromParams(signature, params, bulk_mat)
 
   if (Check_MissingMarkers(signature, params) ||
-      Check_TooFewMarkers(signature, params, 3) ||
-      Check_NotEnoughNewMarkers(signature, params)) {
+    Check_TooFewMarkers(signature, params, 3) ||
+    Check_NotEnoughNewMarkers(signature, params)) {
     return(NULL)
   }
 
   # Signature and bulk data should have the same rows post-filtering.
   keepgene <- intersect(rownames(signature_filt), rownames(bulk_mat))
-  bulk_mat_filt <- bulk_mat[keepgene,]
-  signature_filt <- signature_filt[keepgene,]
+  bulk_mat_filt <- bulk_mat[keepgene, ]
+  signature_filt <- signature_filt[keepgene, ]
 
-  tryCatch({
-    ##### Run DeconRNASeq #####
-    if (algorithm == "DeconRNASeq") {
-      # DeconRNASeq-specific argument
-      use_scale <- as.logical( params$use_scale )
+  tryCatch(
+    {
+      # Run DeconRNASeq --------------------------------------------------------
+      if (algorithm == "DeconRNASeq") {
+        # DeconRNASeq-specific argument
+        use_scale <- as.logical(params$use_scale)
 
-      # These matrices need to be data.frames for this algorithm
-      bulk_mat_filt <- as.data.frame(bulk_mat_filt)
-      signature_filt <- as.data.frame(signature_filt)
+        # These matrices need to be data.frames for this algorithm
+        bulk_mat_filt <- as.data.frame(bulk_mat_filt)
+        signature_filt <- as.data.frame(signature_filt)
 
-      res <- DeconRNASeq(bulk_mat_filt, signature_filt, proportions = NULL,
-                         known.prop = FALSE, use.scale = use_scale, fig = FALSE)
+        res <- DeconRNASeq(bulk_mat_filt, signature_filt,
+                           proportions = NULL,
+                           known.prop = FALSE,
+                           use.scale = use_scale,
+                           fig = FALSE)
 
-      rownames(res$out.all) <- colnames(bulk_mat_filt)
-    } # end DeconRNASeq
+        rownames(res$out.all) <- colnames(bulk_mat_filt)
+      } # end DeconRNASeq
 
-    ##### Run DWLS #####
-    else if (algorithm == "DWLS") {
-      # DWLS-specific argument
-      solver_type <- params$solver_type
+      # Run DWLS ---------------------------------------------------------------
+      else if (algorithm == "DWLS") {
+        # DWLS-specific argument
+        solver_type <- params$solver_type
 
-      # There is a lot more setup for this algorithm so for readability, it's
-      # moved to a function defined below
-      res <- RunDWLS(signature_filt, bulk_mat_filt, solver_type, params)
-    } # End DWLS
-    else {
-      stop(str_glue("Unsupported algorithm name '{algorithm}'."))
+        # There is a lot more setup for this algorithm so for readability, it's
+        # moved to a function defined below
+        res <- RunDWLS(signature_filt, bulk_mat_filt, solver_type, params)
+      } # End DWLS
+      else {
+        stop(str_glue("Unsupported algorithm name '{algorithm}'."))
+      }
+
+      res$params <- params
+      res$markers <- rownames(signature_filt)
+
+      # End of loop
+      print(paste(res$params, collapse = "  "))
+      return(res)
+    },
+    ##### Error handling #####
+    error = function(err) {
+      param_set <- paste(params, collapse = "  ")
+      msg <- paste("*** Error running param set: ", param_set,
+                   "/  *** skipping ***")
+      print(msg)
+      print(err)
+
+      return(NULL)
     }
-
-    res$params <- params
-    res$markers <- rownames(signature_filt)
-
-    ##### End of loop #####
-    print(paste(res$params, collapse = "  "))
-    return(res)
-  },
-  ##### Error handling #####
-  error = function(err) {
-    param_set <- paste(params, collapse = "  ")
-    msg <- paste("*** Error running param set: ", param_set,
-                 "/  *** skipping ***")
-    print(msg)
-    print(err)
-
-    return(NULL)
-  })
+  )
 }
 
 # Helper function for above
 RunDWLS <- function(signature_filt, bulk_mat_filt, solver_type, params) {
   if (solver_type == "DWLS") {
     solve_fn <- solveDampenedWLS
-  }
-  else if (solver_type == "SVR") {
+  } else if (solver_type == "SVR") {
     solve_fn <- solveSVR
-  }
-  else {
+  } else {
     stop(str_glue("Unsupported solver_type '{solver_type}'"))
   }
 
@@ -114,7 +104,7 @@ RunDWLS <- function(signature_filt, bulk_mat_filt, solver_type, params) {
   # one sample at a time so this loops over all samples. DWLS prints the output
   # of every call so we redirect this to a file to remove it from the main
   # status file from threading
-  sink(file.path(dir_params_lists_tmp,
+  sink(file.path(dir_estimates_tmp,
                  paste0("DWLS_tmp_", paste(params, collapse = "_"), ".txt")))
   res_pcts <- apply(bulk_mat_filt, 2, function(B) {
     return(solve_fn(signature_filt, B))

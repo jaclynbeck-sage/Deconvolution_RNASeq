@@ -6,7 +6,7 @@ library(stringr)
 
 source(file.path("functions", "General_HelperFunctions.R"))
 
-#### Parameter setup #####
+# Parameter setup --------------------------------------------------------------
 
 # options: "CibersortX", "DWLS", "DeconRNASeq", "Dtangle", "HSPE", "Music", "Scaden"
 algorithm <- "Scaden"
@@ -22,7 +22,7 @@ params_loop1 <- expand_grid(reference_data_name = datasets,
                             reference_input_type = alg_config$reference_input_types,
                             normalization = alg_config$normalizations,
                             regression_method = c("none")) %>% #, "edger", "deseq2", "dream")) %>%
-                    arrange(normalization)
+  arrange(normalization)
 
 # Algorithm-specific parameters -- marker types, number of markers, plus any
 # additional arguments to the algorithm itself
@@ -30,7 +30,7 @@ params_loop2 <- expand_grid(alg_config$params_markers,
                             alg_config$additional_args) # this value can be NULL if no other additional args
 
 
-##### Parallel execution setup #####
+# Parallel execution setup -----------------------------------------------------
 
 # NOTE: Recommendations for number of cores, per algorithm:
 #   DWLS: 1/2 the available cores, as this doesn't need much RAM but multi-threads a little
@@ -47,7 +47,7 @@ registerDoParallel(cl)
 required_libraries <- alg_config$required_libraries
 
 
-#### Iterate through parameters ####
+# Iterate through parameters ---------------------------------------------------
 
 # Outer loop - each row of params_loop1 represents a single/unique call to
 # Load_AlgorithmInputData. The inner loop then runs through all parameter sets
@@ -56,7 +56,7 @@ required_libraries <- alg_config$required_libraries
 #       so they exist in each newly-created parallel environment
 
 for (P in 1:nrow(params_loop1)) {
-  data <- Load_AlgorithmInputData_FromParams(params_loop1[P,])
+  data <- Load_AlgorithmInputData_FromParams(params_loop1[P, ])
 
   data$test <- as.matrix(assay(data$test, "counts"))
 
@@ -65,7 +65,8 @@ for (P in 1:nrow(params_loop1)) {
     data$reference <- as(data$reference, "SingleCellExperiment")
 
     # Pre-compute sc.basis to save time
-    sc_basis <- MuSiC::music_basis(data$reference, non.zero = TRUE,
+    sc_basis <- MuSiC::music_basis(data$reference,
+                                   non.zero = TRUE,
                                    markers = rownames(data$reference),
                                    clusters = "celltype", samples = "sample",
                                    select.ct = NULL,
@@ -115,39 +116,33 @@ for (P in 1:nrow(params_loop1)) {
     # filter_level = 0 because CibersortX already filtered its signature. If
     # reference_input_type = signature, only use filter_level = 3 because
     # CibersortX expects a filtered signature.
+    # TODO this won't work if running both "cibersortx" and "signature" because
+    # it globally modifies params_loop2
     if (params_loop1$reference_input_type[P] == "cibersortx") {
       params_loop2 <- subset(params_loop2, filter_level == 0)
-    }
-    else {
+    } else {
       params_loop2 <- subset(params_loop2, filter_level > 0)
     }
   }
 
-  ##### Loop through algorithm-specific arguments #####
+  ## Loop through algorithm-specific arguments ---------------------------------
   # Inner loop - each row of params_loop2 represents a single/unique call to
   # the algorithm with specific parameters like which markers to use, how many
   # from each cell type, and any changes to arguments in the function call.
 
-  results_list <- foreach(R = 1:nrow(params_loop2), .packages = required_libraries) %dopar% { #lapply(1:nrow(params_loop2), function(R) {
+  results_list <- foreach(R = 1:nrow(params_loop2), .packages = required_libraries) %dopar% {
     source(file.path("functions", "General_HelperFunctions.R"))
     source(file.path("functions", "Step09_ArgumentChecking_HelperFunctions.R"))
     source(alg_config$inner_loop_file) # defined in the config
 
-    params <- cbind(params_loop1[P,], params_loop2[R,])
-
-    # For backward compatibility -- for algorithms that only input one kind of
-    # data (DeconRNASeq and DWLS are signature-only), remove the
-    # reference_input_type variable since it wasn't there originally for these
-    # algorithms
-    #if ("signature" %in% params_loop1$reference_input_type) {
-    #  params <- params %>% select(-reference_input_type)
-    #}
+    params <- cbind(params_loop1[P, ], params_loop2[R, ])
 
     # If we are picking up from a failed/crashed run, and we've already run
     # this parameter set, load the result instead of re-running the algorithm
     prev_res <- Load_AlgorithmIntermediate(algorithm, params)
     if (!is.null(prev_res)) {
-      message(paste0("Using previously-run result for ", paste(params, collapse = " ")))
+      message(paste0("Using previously-run result for ",
+                     paste(params, collapse = " ")))
       return(prev_res)
     }
 
@@ -158,8 +153,8 @@ for (P in 1:nrow(params_loop1)) {
 
     # Music needs sc_basis passed in
     if (algorithm == "Music") {
-      res <- inner_loop_func(data$reference, data$test, sc_basis, params,
-                             verbose = FALSE)
+      res <- inner_loop_func(data$reference, data$test,
+                             sc_basis, params, verbose = FALSE)
     }
     # Dtangle/HSPE need "Y" and "pure_samples" passed in
     else if (algorithm %in% c("Dtangle", "HSPE")) {
@@ -169,8 +164,7 @@ for (P in 1:nrow(params_loop1)) {
     else if (algorithm == "CibersortX") {
       res <- inner_loop_func(data$singlecell_filename, data$test,
                              data$reference, params)
-    }
-    else {
+    } else {
       res <- inner_loop_func(data$reference, data$test, params, algorithm)
     }
 
@@ -184,9 +178,9 @@ for (P in 1:nrow(params_loop1)) {
   results_list <- results_list[lengths(results_list) > 0]
 
   # Give every result in the list a unique name
-  name_base <- paste(params_loop1[P,], collapse = "_")
-  names(results_list) <- paste(algorithm, name_base,
-                               1:length(results_list), sep = "_")
+  name_base <- paste(params_loop1[P, ], collapse = "_")
+  names(results_list) <- paste(algorithm, name_base, 1:length(results_list),
+                               sep = "_")
 
   # Save the completed list
   print(str_glue("Saving final list for {name_base}..."))
