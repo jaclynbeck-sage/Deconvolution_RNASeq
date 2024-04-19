@@ -28,7 +28,7 @@ is_singlecell <- function(dataset) {
 # Download files and process data ----------------------------------------------
 
 for (dataset in datasets) {
-  print(str_glue("Creating data set for {dataset}..."))
+  message(str_glue("Creating data set for {dataset}..."))
   files <- DownloadData(dataset)
 
   ## Read in metadata file -----------------------------------------------------
@@ -64,8 +64,8 @@ for (dataset in datasets) {
                                       do_plot = FALSE, sd_threshold = 4)
 
     print(str_glue("{length(outliers)} outlier samples will be removed from {dataset}."))
-    metadata <- subset(metadata, !(sample %in% outliers))
-    counts <- counts[, metadata$sample]
+    counts <- counts[, setdiff(colnames(counts), outliers)]
+    metadata <- metadata[colnames(counts),]
   }
 
 
@@ -145,9 +145,9 @@ for (dataset in datasets) {
 
   # TMM normalization factors -- unfortunately will convert to dense matrix
   if (is_singlecell(dataset)) {
-    tmm <- calcNormFactors(counts[!genes$exclude, ], method = "TMMwsp")
+    tmm <- edgeR::calcNormFactors(counts[!genes$exclude, ], method = "TMMwsp")
   } else { # bulk
-    tmm <- calcNormFactors(counts[!genes$exclude, ], method = "TMM")
+    tmm <- edgeR::calcNormFactors(counts[!genes$exclude, ], method = "TMM")
   }
 
   metadata$tmm_factors <- tmm

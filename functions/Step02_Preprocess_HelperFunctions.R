@@ -59,9 +59,9 @@ EnsemblIdToGeneSymbol <- function(gene_list) {
   gene_conversions <- gene_conversions[overlap, ]
 
   genes <- gene_conversions %>%
-    select(ensembl_gene_id, canonical_symbol, exon_length) %>%
+    dplyr::select(ensembl_gene_id, canonical_symbol, exon_length) %>%
     dplyr::rename(hgnc_symbol = canonical_symbol) %>%
-    arrange(ensembl_gene_id)
+    dplyr::arrange(ensembl_gene_id)
   return(genes)
 }
 
@@ -85,7 +85,7 @@ UpdateGeneSymbols <- function(dataset, gene_list) {
   genes <- genes[rownames(genes) %in% gene_list, ] %>%
     dplyr::select(ensembl_gene_id, canonical_symbol, original_symbol) %>%
     dplyr::rename(hgnc_symbol = canonical_symbol) %>%
-    arrange(ensembl_gene_id)
+    dplyr::arrange(ensembl_gene_id)
 
   return(genes)
 }
@@ -302,7 +302,7 @@ ReadMetadata_Lau <- function(files) {
 }
 
 ReadCovariates_Lau <- function(files) {
-  clinical <- read_excel(files$clinical_metadata$path, sheet = "Patient_info")
+  clinical <- readxl::read_excel(files$clinical_metadata$path, sheet = "Patient_info")
   clinical <- as.data.frame(clinical) %>% dplyr::rename(sample = ID)
   return(clinical)
 }
@@ -538,7 +538,7 @@ ReadCounts_SEARef <- function(files) {
 # Biomart gene conversion: https://www.synapse.org/#!Synapse:syn27024953
 
 DownloadData_Mayo <- function(metadata_only = FALSE) {
-  synIDs <- list("metadata" = list(id = "syn29855549", version = 1),
+  synIDs <- list("metadata" = list(id = "syn29855549", version = 2),
                  "counts" = list(id = "syn27024951", version = 1))
 
   if (metadata_only) {
@@ -559,7 +559,7 @@ DownloadData_Mayo <- function(metadata_only = FALSE) {
 # Biomart gene conversion: https://www.synapse.org/#!Synapse:syn27068755
 
 DownloadData_MSBB <- function(metadata_only = FALSE) {
-  synIDs <- list("metadata" = list(id = "syn29855570", version = 1),
+  synIDs <- list("metadata" = list(id = "syn29855570", version = 2),
                  "counts" = list(id = "syn27068754", version = 1))
 
   if (metadata_only) {
@@ -580,7 +580,7 @@ DownloadData_MSBB <- function(metadata_only = FALSE) {
 # Biomart gene conversion: https://www.synapse.org/#!Synapse:syn26967452
 
 DownloadData_ROSMAP <- function(metadata_only = FALSE) {
-  synIDs <- list("metadata" = list(id = "syn29855598", version = 1),
+  synIDs <- list("metadata" = list(id = "syn29855598", version = 2),
                  "clinical_metadata" = list(id = "syn3191087", version = 11),
                  "counts" = list(id = "syn26967451", version = 1))
 
@@ -655,6 +655,7 @@ FindOutliers_BulkData <- function(dataset, covariates, counts, sd_threshold = 4,
                              "ROSMAP" = covariates$final_batch)
 
   # Two ROSMAP batches need to also be split by tissue
+
   if (dataset == "ROSMAP") {
     split_batches <- grepl("2_[3|9]", covariates$batch)
     covariates$batch[split_batches] <- paste0(covariates$tissue[split_batches],
@@ -671,11 +672,11 @@ FindOutliers_BulkData <- function(dataset, covariates, counts, sd_threshold = 4,
 
     if (sum(batch_samples) > 20) {
       # Use sagesqr's function
-      res <- identify_outliers(counts[, batch_samples],
-                               covariates[batch_samples, ],
-                               color = "diagnosis",
-                               shape = "tissue", size = "tissue",
-                               z = sd_threshold)
+      res <- sageseqr::identify_outliers(counts[, batch_samples],
+                                         covariates[batch_samples, ],
+                                         color = "diagnosis",
+                                         shape = "tissue", size = "batch",
+                                         z = sd_threshold)
 
       if (do_plot) {
         print(res$plot)

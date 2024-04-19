@@ -34,6 +34,7 @@
 library(stringr)
 library(biomaRt)
 library(GenomicFeatures)
+library(GenomicRanges)
 library(synapser)
 library(dplyr)
 library(purrr)
@@ -53,7 +54,8 @@ gtf_v84 <- "https://ftp.ensembl.org/pub/release-84/gtf/homo_sapiens/Homo_sapiens
 # Gene symbol / Ensembl ID conversions -----------------------------------------
 
 # Biomart query to get all genes in the database
-mart <- useEnsembl(biomart = "genes", dataset = "hsapiens_gene_ensembl", version = "110")
+mart <- useEnsembl(biomart = "genes", dataset = "hsapiens_gene_ensembl",
+                   version = "110")
 biomart_genes <- getBM(attributes = c("external_gene_name", "ensembl_gene_id"),
                        mart = mart)
 
@@ -69,15 +71,16 @@ dir.create(dir_gene_files, showWarnings = FALSE)
 filename <- synGet("syn26967452", downloadLocation = dir_gene_files)
 
 ros_genes <- read.table(filename$path, header = TRUE) %>%
-  select(ensembl_gene_id, hgnc_symbol) %>%
-  rename(symbol_RNASeq = hgnc_symbol)
+  dplyr::select(ensembl_gene_id, hgnc_symbol) %>%
+  dplyr::rename(symbol_RNASeq = hgnc_symbol)
 
 # Mathys genes -- this is the only single cell data set that provides their own
 # mapping from gene symbol to Ensembl ID
-filename <- synGet("syn18687959", downloadLocation = dir_gene_files)
+filename <- synGet("syn18687959", version = 1,
+                   downloadLocation = dir_gene_files)
 
 mathys_genes <- read.table(filename$path, header = FALSE) %>%
-  rename(ensembl_gene_id = V1, symbol_Mathys = V2)
+  dplyr::rename(ensembl_gene_id = V1, symbol_Mathys = V2)
 
 # GRCh38 Ensembl releases 84, 93, and 98, plus the seaRef GTF file
 files <- list("symbol_seaRef" = c(filename = file.path(dir_gene_files, "seaRef_genes.gtf.gz"),
@@ -99,8 +102,8 @@ gtf_genes <- lapply(names(files), function(version) {
 
   df <- rtracklayer::import(gzfile(file_info[["filename"]]), format = "gtf") %>%
     as.data.frame() %>%
-    select(gene_id, gene_name) %>%
-    distinct()
+    dplyr::select(gene_id, gene_name) %>%
+    dplyr::distinct()
 
   colnames(df) <- c("ensembl_gene_id", version)
   return(df)
@@ -129,14 +132,15 @@ first_symbol <- function(...) {
 
 all_genes <- all_genes %>%
   rowwise() %>%
-  mutate(canonical_symbol = first_symbol()) %>%
-  arrange(ensembl_gene_id) %>%
+  dplyr::mutate(canonical_symbol = first_symbol()) %>%
+  dplyr::arrange(ensembl_gene_id) %>%
   as.data.frame()
 
 # Get exon lengths for each gene, for the purpose of calculating TPM on the
 # bulk datasets. The bulk datasets were aligned to Ensembl release 97.
-tx <- makeTxDbFromEnsembl(organism = "Homo sapiens", release = 97)
-ex <- exonsBy(tx, by = "gene")
+tx <- GenomicFeatures::makeTxDbFromEnsembl(organism = "Homo sapiens",
+                                           release = 97)
+ex <- GenomicFeatures::exonsBy(tx, by = "gene")
 ex <- GenomicRanges::reduce(ex)
 exlen <- relist(width(unlist(ex)), ex)
 exlens <- sapply(exlen, sum)
@@ -175,7 +179,7 @@ for (i in 2:length(props)) {
 }
 
 rownames(props_df) <- str_replace(props_df$donor, "X", "")
-props_df <- select(props_df, -donor)
+props_df <- dplyr::select(props_df, -donor)
 
 colnames(props_df) <- c("Astro", "Endo", "Micro", "Neuro", "Oligo")
 
