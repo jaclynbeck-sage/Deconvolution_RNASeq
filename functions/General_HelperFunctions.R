@@ -661,7 +661,8 @@ OrderMarkers_ByCorrelation <- function(marker_list, data) {
 #
 # Returns:
 #   a dataframe with merged metadata and cleaned covariates
-Clean_BulkCovariates <- function(bulk_dataset_name, metadata, covariates, scale = TRUE) {
+Clean_BulkCovariates <- function(bulk_dataset_name, metadata, covariates,
+                                 scale_numerical = TRUE) {
   covariates <- subset(covariates, specimenID %in% rownames(metadata))
 
   for (col in c("sex", "race", "spanish", "ethnicity", "individualID", "apoe4_allele",
@@ -676,15 +677,6 @@ Clean_BulkCovariates <- function(bulk_dataset_name, metadata, covariates, scale 
   covariates$age_death[covariates$age_death == "90+"] <- 90
   covariates$age_death <- as.numeric(covariates$age_death)
 
-  # Scale numerical covariates
-  if (scale) {
-    for (colname in colnames(covariates)) {
-      if (is.numeric(covariates[, colname])) {
-        covariates[, colname] <- scale(covariates[, colname])
-      }
-    }
-  }
-
   # Remove duplicate columns that already exist in colData
   covariates <- covariates %>% select(-diagnosis, -tissue)
 
@@ -697,5 +689,15 @@ Clean_BulkCovariates <- function(bulk_dataset_name, metadata, covariates, scale 
 
   # Put the data frame back in the original order, as merge might change it
   metadata <- data.frame(metadata[sample_order, ])
+
+  # Scale numerical covariates if scale == TRUE
+  if (scale_numerical) {
+    for (colname in colnames(metadata)) {
+      if (is.numeric(metadata[, colname])) {
+        metadata[, colname] <- scale(metadata[, colname])
+      }
+    }
+  }
+
   return(metadata)
 }

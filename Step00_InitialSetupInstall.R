@@ -22,7 +22,7 @@ remotes::install_version("Seurat", "4.4.0",
 BiocManager::install("preprocessCore", configure.args="--disable-threading")
 
 # These packages require several BiocManager packages to be installed first
-install.packages(c("DWLS", "GenomicTools.fileHandler"))
+install.packages(c("GenomicTools.fileHandler"))
 
 # install the MuSiC package from my fork, which has a few fixes and speedups
 devtools::install_github("jaclynbeck-sage/MuSiC")
@@ -42,5 +42,6 @@ reticulate::virtualenv_create("autogenes_env",
                               packages = c("scanpy", "anndata", "autogenes",
                                            "scikit-misc"))
 
-# Install omnideconv
+# Install omnideconv and its DWLS add-on
 pak::pkg_install("omnideconv/omnideconv")
+pak::pkg_install("omnideconv/DWLS")

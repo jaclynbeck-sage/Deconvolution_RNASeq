@@ -53,8 +53,11 @@ for (dataset in datasets) {
 
   ## Read in matrix of counts --------------------------------------------------
 
-  counts <- ReadCounts(dataset, files, metadata)
-  metadata <- metadata[colnames(counts), ]
+  counts <- ReadCounts(dataset, files)
+
+  samples <- intersect(metadata$sample, colnames(counts))
+  metadata <- metadata[samples, ]
+  counts <- counts[, samples]
 
 
   ## Remove sample outliers (bulk only) ----------------------------------------
@@ -98,8 +101,12 @@ for (dataset in datasets) {
 
   ## Adjust for and remove mitochondrial/non-coding genes ----------------------
 
-  # Remove samples with > 50% mito genes by count. (single cell will mostly have
-  # <10% mito genes, but bulk has higher percentages)
+  # Remove samples with > 10% (single cell) or > 35% (bulk) mito genes by count.
+  # All single cell datasets have most cells under 10% already, but the
+  # percentages are much higher in Mayo and ROSMAP. The 35% threshold for bulk
+  # data was chosen by looking at the value of median(pct_mt) + 3*mad(pct_mt),
+  # which is near 0.35 for both Mayo and ROSMAP (MSBB is much lower), and visual
+  # inspection of the distribution of pct_mt for each data set.
   mt_genes <- grepl("^MT-", rownames(counts))
   pct_mt <- colSums(counts[mt_genes, ]) / colSums(counts)
   metadata$percent_mito <- pct_mt
@@ -111,11 +118,13 @@ for (dataset in datasets) {
 
   genes$exclude <- mt_genes | nc_genes
 
-  if (any(pct_mt > 0.5)) {
-    print(str_glue(paste("Removing {sum(pct_mt > 0.5)} samples from {dataset}",
-                         "due to high mitochondrial gene expression.")))
+  mt_threshold <- if (is_singlecell(dataset)) 0.1 else 0.35
+
+  if (any(pct_mt > mt_threshold)) {
+    print(str_glue(paste("Removing {sum(pct_mt > mt_threshold)} samples from",
+                         "{dataset} due to high mitochondrial gene expression.")))
   }
-  counts <- counts[, pct_mt <= 0.5] # Exclude samples with high mitochondrial genes
+  counts <- counts[, pct_mt <= mt_threshold] # Exclude samples with high mitochondrial genes
 
   # Remove genes that are expressed in less than 3 cells (or samples) after
   # filtering for outliers and high mitochondrial percentages
