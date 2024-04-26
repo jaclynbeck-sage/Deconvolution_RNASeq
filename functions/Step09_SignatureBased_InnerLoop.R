@@ -48,13 +48,14 @@ SignatureBased_InnerLoop <- function(signature, bulk_mat, params, algorithm) {
         bulk_mat_filt <- as.data.frame(bulk_mat_filt)
         signature_filt <- as.data.frame(signature_filt)
 
-        res <- DeconRNASeq(bulk_mat_filt, signature_filt,
-                           proportions = NULL,
-                           known.prop = FALSE,
-                           use.scale = use_scale,
-                           fig = FALSE)
+        res_orig <- DeconRNASeq(bulk_mat_filt, signature_filt,
+                                proportions = NULL,
+                                known.prop = FALSE,
+                                use.scale = use_scale,
+                                fig = FALSE)
 
         rownames(res$out.all) <- colnames(bulk_mat_filt)
+        res <- list("estimates" = res$out.all)
       } # end DeconRNASeq
 
       # Run DWLS ---------------------------------------------------------------
@@ -62,9 +63,18 @@ SignatureBased_InnerLoop <- function(signature, bulk_mat, params, algorithm) {
         # DWLS-specific argument
         solver_type <- params$solver_type
 
-        # There is a lot more setup for this algorithm so for readability, it's
-        # moved to a function defined below
-        res <- RunDWLS(signature_filt, bulk_mat_filt, solver_type, params)
+        res_pcts <- omnideconv::deconvolute_dwls(bulk_mat_filt,
+                                                 signature_filt,
+                                                 dwls_submethod = solver_type,
+                                                 verbose = FALSE)
+
+        if (any(is.na(res_pcts)) || any(res_pcts < 0)) {
+          message(paste("NA or negative numbers in", paste(params, collapse = "_")))
+        }
+        res_pcts[res_pcts < 0] <- 0
+        res_pcts <- sweep(res_pcts, 1, rowSums(res_pcts), "/")
+
+        res <- list("estimates" = res_pcts)
       } # End DWLS
       else {
         stop(str_glue("Unsupported algorithm name '{algorithm}'."))
@@ -88,46 +98,4 @@ SignatureBased_InnerLoop <- function(signature, bulk_mat, params, algorithm) {
       return(NULL)
     }
   )
-}
-
-# Helper function for above
-RunDWLS <- function(signature_filt, bulk_mat_filt, solver_type, params) {
-  if (solver_type == "DWLS") {
-    solve_fn <- solveDampenedWLS
-  } else if (solver_type == "SVR") {
-    solve_fn <- solveSVR
-  } else {
-    stop(str_glue("Unsupported solver_type '{solver_type}'"))
-  }
-
-  # Calls solveDampenedWLS or solveSVR. These functions can only be called on
-  # one sample at a time so this loops over all samples. DWLS prints the output
-  # of every call so we redirect this to a file to remove it from the main
-  # status file from threading
-  sink(file.path(dir_estimates_tmp,
-                 paste0("DWLS_tmp_", paste(params, collapse = "_"), ".txt")))
-  res_pcts <- apply(bulk_mat_filt, 2, function(B) {
-    return(solve_fn(signature_filt, B))
-  })
-  sink()
-
-  res_pcts <- t(res_pcts) # puts cell types as columns, samples as rows
-
-  # DWLS can produce negative numbers but these are usually really close to
-  # zero. Include a check for larger negative numbers just in case. DWLS can
-  # also produce NAs, and these should get thrown out as well.
-  if (any(is.na(res_pcts)) | any(res_pcts < -1e-3)) {
-    param_set <- paste(params, collapse = "  ")
-    msg <- paste("*** Negative numbers or NA in result for for param set:",
-                 param_set, "/  *** skipping ***")
-    return(NULL)
-  }
-
-  # Fix any numbers really close to 0 that are negative
-  res_pcts[res_pcts < 0] <- 0
-  res_pcts <- sweep(res_pcts, 1, rowSums(res_pcts), "/")
-
-  res <- list("estimates" = res_pcts)
-
-  return(res)
 }

@@ -36,12 +36,12 @@ alg_config <- list(
 
   # For params_loop2 (algorithm-specific arguments) in main function
   params_markers = CreateParams_FilterableSignature(filter_levels = 3), # all other args are default
-  additional_args = expand_grid(solver_type = c("DWLS", "SVR")),
+  additional_args = expand_grid(solver_type = c("DampenedWLS", "SVR")),
 
   # Define the function that runs each param set
   inner_loop_file = file.path("functions", "Step09_SignatureBased_InnerLoop.R"),
   inner_loop_func = "SignatureBased_InnerLoop", # must be a string
-  required_libraries = c("DWLS"),
+  required_libraries = c("omnideconv"),
 
   # How many cores to use in parallel
   cores = 12 # Machine this was run on has 16 cores
