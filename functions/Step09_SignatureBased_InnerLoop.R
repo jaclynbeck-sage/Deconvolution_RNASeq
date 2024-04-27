@@ -54,8 +54,8 @@ SignatureBased_InnerLoop <- function(signature, bulk_mat, params, algorithm) {
                                 use.scale = use_scale,
                                 fig = FALSE)
 
-        rownames(res$out.all) <- colnames(bulk_mat_filt)
-        res <- list("estimates" = res$out.all)
+        rownames(res_orig$out.all) <- colnames(bulk_mat_filt)
+        res <- list("estimates" = res_orig$out.all)
       } # end DeconRNASeq
 
       # Run DWLS ---------------------------------------------------------------

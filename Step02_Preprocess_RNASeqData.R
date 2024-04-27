@@ -55,7 +55,7 @@ for (dataset in datasets) {
 
   counts <- ReadCounts(dataset, files)
 
-  samples <- intersect(metadata$sample, colnames(counts))
+  samples <- intersect(rownames(metadata), colnames(counts))
   metadata <- metadata[samples, ]
   counts <- counts[, samples]
 
