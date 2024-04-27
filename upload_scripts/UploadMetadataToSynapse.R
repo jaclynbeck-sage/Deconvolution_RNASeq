@@ -4,7 +4,7 @@ source("Filenames.R")
 synLogin()
 
 # Deconvolution WG Synapse space
-meta_folder <- Folder("external_metadata", parent = "syn49332774")
+meta_folder <- Folder("metadata", parent = "syn49332774")
 meta_folder <- synStore(meta_folder, forceVersion = FALSE)
 
 provenance <- list("genes" = c("syn26967452", # ROSMAP, Mayo, MSBB gene conversions

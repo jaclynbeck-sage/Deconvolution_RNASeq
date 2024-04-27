@@ -32,7 +32,7 @@
 alg_config <- list(
   # Used to create params_loop1 (data-specific arguments) in main function
   normalizations = c("log_cpm", "log_tmm", "log_tpm"), # HSPE works on log-scale data
-  reference_input_types = c("singlecell", "pseudobulk"),
+  reference_input_types = c("pseudobulk"),
 
   # For params_loop2 (algorithm-specific arguments) in main function
   params_markers = CreateParams_MarkerTypes(), # all args are default
