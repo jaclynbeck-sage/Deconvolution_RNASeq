@@ -14,11 +14,9 @@ BiocManager::install(c("Biobase", "SingleCellExperiment", "TOAST", "scuttle",
                        "DESeq2", "edgeR", "GenomicFeatures", "snpStats",
                        "HDF5Array", "glmGamPoi"))
 
-# Install version 4 of Seurat instead of version 5. SeuratObject v4 needs to be
-# installed after Seurat, otherwise Seurat will install SeuratObject v5.
+# Install version 4 of Seurat instead of version 5. SeuratObject v5 will be installed
+# but it will work with Seurat v4. Installing SeuratObject v4 caused install issues.
 remotes::install_version("Seurat", "4.4.0",
-                         repos = c("https://satijalab.r-universe.dev", getOption("repos")))
-remotes::install_version("SeuratObject", "4.1.4",
                          repos = c("https://satijalab.r-universe.dev", getOption("repos")))
 
 BiocManager::install("preprocessCore", configure.args="--disable-threading")
