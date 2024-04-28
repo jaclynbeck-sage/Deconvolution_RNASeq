@@ -657,7 +657,7 @@ OrderMarkers_ByCorrelation <- function(marker_list, data) {
 #   metadata - the metadata dataframe (colData()) from a SummarizedExperiment
 #   covariates - a dataframe of covariates, where rows are samples and columns
 #                are the covariates
-#   scale - TRUE or FALSE, whether to scale numeric columns
+#   scale_numerical - TRUE or FALSE, whether to scale numeric columns
 #
 # Returns:
 #   a dataframe with merged metadata and cleaned covariates
@@ -694,7 +694,7 @@ Clean_BulkCovariates <- function(bulk_dataset_name, metadata, covariates,
   if (scale_numerical) {
     for (colname in colnames(metadata)) {
       if (is.numeric(metadata[, colname])) {
-        metadata[, colname] <- scale(metadata[, colname])
+        metadata[, colname] <- as.numeric(scale(metadata[, colname]))
       }
     }
   }

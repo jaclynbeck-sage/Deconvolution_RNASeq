@@ -149,7 +149,7 @@ for (dataset in datasets) {
     coefs_lme <- t(coef(fits_lme))
     mod_lme <- model.matrix(formula_mixed, data = covariates)
 
-    resid_lme <- residuals(fits_lme)
+    resid_lme <- t(residuals(fits_lme))
   } else {
     formula_lme <- paste("row", formulas$formula_mixed)
 
@@ -233,13 +233,20 @@ for (dataset in datasets) {
 
   # There is no offset in the formula and the voom counts are on the log2-cpm
   # scale, so we don't need to adjust for library size before taking the mean.
-  new_intercept <- rowMeans(voom_counts$E)
+  new_intercept <- rowMeans(voom_counts$E[rownames(resid_dream), ])
   new_intercept <- matrix(rep(new_intercept, ncol(voom_counts$E)),
                           nrow = length(new_intercept))
 
   # Residuals are on the log2-cpm scale, so after converting to linear scale
   # we need to reverse the CPM operation to get counts.
   corrected_dream <- 2^(resid_dream + adjust + new_intercept)
+
+  if (nrow(corrected_dream) != nrow(bulk)) {
+    failed_genes <- setdiff(rownames(bulk), rownames(corrected_dream))
+    print(paste0("WARNING: Dream failed on genes ",
+                 paste(failed_genes, collapse = ", "),
+                 ". They will be removed from the final data set."))
+  }
 
   # Voom uses edgeR's cpm() function. This reverses how edgeR calculates cpm,
   # which involves scaling the prior count by mean library size.
@@ -272,6 +279,14 @@ for (dataset in datasets) {
   # Create final bulk data object ----------------------------------------------
 
   bulk <- Load_PreprocessedData(dataset, remove_excluded = TRUE)
+
+  # Dream can fail on specific genes and not return them in the matrix, so we
+  # need to cut any failed genes out of the other matrices too
+  genes_keep <- rownames(corrected_dream)
+  corrected_edger <- corrected_edger[genes_keep, ]
+  corrected_lme <- corrected_lme[genes_keep, ]
+
+  bulk <- bulk[genes_keep, ] # Adjusts the counts array if necessary
 
   assay(bulk, "corrected_edger") <- round(corrected_edger)
   assay(bulk, "corrected_lme") <- round(corrected_lme)
