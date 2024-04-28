@@ -10,14 +10,9 @@ install.packages(c("BiocManager", "devtools", "stringr", "Metrics",
 install.packages("synapser", repos = c("http://ran.synapse.org", "http://cran.fhcrc.org"))
 
 BiocManager::install(c("Biobase", "SingleCellExperiment", "TOAST", "scuttle",
-                       "DeconRNASeq", "MAST", "GEOquery", "biomaRt",
+                       "DeconRNASeq", "Seurat", "MAST", "GEOquery", "biomaRt",
                        "DESeq2", "edgeR", "GenomicFeatures", "snpStats",
                        "HDF5Array", "glmGamPoi"))
-
-# Install version 4 of Seurat instead of version 5. SeuratObject v5 will be installed
-# but it will work with Seurat v4. Installing SeuratObject v4 caused install issues.
-remotes::install_version("Seurat", "4.4.0",
-                         repos = c("https://satijalab.r-universe.dev", getOption("repos")))
 
 BiocManager::install("preprocessCore", configure.args="--disable-threading")
 
