@@ -1,7 +1,8 @@
 install.packages(c("BiocManager", "devtools", "stringr", "Metrics",
                    "dplyr", "ggplot2", "DEoptimR", "nloptr", "anndata",
                    "readxl", "Hmisc", "RMariaDB", "lme4", "corrplot",
-                   "circlize", "gMWT", "pak", "uuid"))
+                   "circlize", "gMWT", "pak", "uuid"),
+                 clean = TRUE)
 
 # If synapser fails to install because it can't find "synapseclient", go to
 # RStudio options (Tools->Global Options) -> Python, uncheck "Automatically
@@ -15,9 +16,11 @@ BiocManager::install(c("Biobase", "SingleCellExperiment", "TOAST", "scuttle",
 
 # Install version 4 of Seurat instead of version 5
 remotes::install_version("SeuratObject", "4.1.4",
-                         repos = c("https://satijalab.r-universe.dev", getOption("repos")))
+                         repos = c("https://satijalab.r-universe.dev", getOption("repos")),
+                         upgrade = "never")
 remotes::install_version("Seurat", "4.4.0",
-                         repos = c("https://satijalab.r-universe.dev", getOption("repos")))
+                         repos = c("https://satijalab.r-universe.dev", getOption("repos")),
+                         upgrade = "never")
 
 BiocManager::install("preprocessCore", configure.args="--disable-threading")
 
