@@ -332,19 +332,27 @@ CalculateA <- function(dataset, granularity) {
 #   granularity = either "broad_class" or "sub_class"
 #   output_type = either "cpm" or "tmm", for whether to use pure CPM or normalize
 #                 using tmm factors
+#   geom_mean = whether to take the geometric mean instead of the arithmetic mean
 #
 # Returns:
 #   matrix of average CPMs for each gene, for each cell type (rows = genes,
 #   columns = cell types)
-CalculateSignature <- function(dataset, granularity, output_type) {
+CalculateSignature <- function(dataset, granularity, output_type, geom_mean = FALSE) {
   pb <- Load_PseudobulkPureSamples(dataset, granularity, output_type)
 
   pb_cpm <- assay(pb, "counts")
 
-  # Get the mean over all samples, for each gene and cell type
+  # Get the geometric mean over all samples, for each gene and cell type
   sig <- sapply(levels(pb$celltype), function(ct) {
     cols <- which(pb$celltype == ct)
-    rowMeans(pb_cpm[, cols], na.rm = TRUE)
+    if (geom_mean) {
+      log_means <- rowMeans(log(pb_cpm[, cols] + 0.5), na.rm = TRUE)
+      cpm_means <- exp(log_means) - 0.5
+      cpm_means[cpm_means < 0] <- 0
+    } else {
+      cpm_means <- rowMeans(pb_cpm[, cols], na.rm = TRUE)
+    }
+    return(cpm_means)
   })
 
   return(sig)
