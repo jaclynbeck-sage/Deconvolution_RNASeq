@@ -433,6 +433,9 @@ ReadMetadata_Mathys <- function(files) {
 
   metadata <- merge(metadata, diagnosis.codes, by = "cogdx")
 
+  # Remove cells from the one sample with an "Other" diagnosis
+  metadata <- subset(metadata, diagnosis != "Other")
+
   covariates <- metadata[, c(colnames(clinical), "diagnosis")] %>%
     distinct() %>%
     dplyr::rename(sample = projid)
