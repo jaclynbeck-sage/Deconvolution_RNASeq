@@ -13,8 +13,8 @@ source(file.path("functions", "General_HelperFunctions.R"))
 
 # Setup ------------------------------------------------------------------------
 
-datasets <- c("cain", "lau", "leng", "mathys", "seaRef", # Single cell
-              "Mayo", "MSBB", "ROSMAP") # Bulk
+datasets <- c("cain", "lau", "leng", "mathys", "seaRef") # Single cell
+              #"Mayo", "MSBB", "ROSMAP") # Bulk
 
 # Helper functions
 is_bulk <- function(dataset) {
@@ -101,8 +101,8 @@ for (dataset in datasets) {
 
   ## Adjust for and remove mitochondrial/non-coding genes ----------------------
 
-  # Remove samples with > 10% (single cell) or > 35% (bulk) mito genes by count.
-  # All single cell datasets have most cells under 10% already, but the
+  # Remove samples with > 20% (single cell) or > 35% (bulk) mito genes by count.
+  # All single cell datasets have most cells under 20% already, but the
   # percentages are much higher in Mayo and ROSMAP. The 35% threshold for bulk
   # data was chosen by looking at the value of median(pct_mt) + 3*mad(pct_mt),
   # which is near 0.35 for both Mayo and ROSMAP (MSBB is much lower), and visual
@@ -118,7 +118,7 @@ for (dataset in datasets) {
 
   genes$exclude <- mt_genes | nc_genes
 
-  mt_threshold <- if (is_singlecell(dataset)) 0.1 else 0.35
+  mt_threshold <- if (is_singlecell(dataset)) 0.2 else 0.35
 
   if (any(pct_mt > mt_threshold)) {
     print(str_glue(paste("Removing {sum(pct_mt > mt_threshold)} samples from",

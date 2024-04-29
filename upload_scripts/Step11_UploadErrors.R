@@ -6,10 +6,10 @@ source("Filenames.R")
 synLogin()
 
 # Deconvolution WG Synapse space
-errors_folder <- Folder("error_calculations", parent = "syn49332774")
+errors_folder <- Folder("error_calculations", parent = "syn58802522")
 errors_folder <- synStore(errors_folder, forceVersion = FALSE)
 
-# Get provenance IDs from algorithm output folder
+# Get provenance IDs from algorithm output folder TODO
 bulk_folders <- as.list(synGetChildren("syn52245555"))
 
 # Folder structure on Synapse is <bulk_dataset>/<algorithm>/<params_file>

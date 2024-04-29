@@ -6,10 +6,10 @@ source("Filenames.R")
 synLogin()
 
 # Deconvolution WG Synapse space
-scaden_folder <- Folder("scaden_models", parent = "syn49332774")
+scaden_folder <- Folder("scaden_models", parent = "syn58802522")
 scaden_folder <- synStore(scaden_folder, forceVersion = FALSE)
 
-# Get provenance IDs from input data sets
+# Get provenance IDs from input data sets TODO
 input_data <- as.list(synGetChildren("syn52569484"))
 provenance_df <- do.call(rbind, lapply(input_data, as.data.frame))
 provenance_df <- provenance_df[grepl("_sc?e.rds", provenance_df$name),] %>%

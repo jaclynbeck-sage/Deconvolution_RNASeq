@@ -16,7 +16,7 @@ for (dataset in datasets) {
   A_sub <- CalculateA(dataset, "sub_class")
 
   saveRDS(list("A_broad_class" = A_broad, "A_sub_class" = A_sub),
-          file = file.path(dir_input, str_glue("{dataset}_A_matrix.rds")))
+          file = file.path(dir_signatures, str_glue("{dataset}_A_matrix.rds")))
 
   # Calculate a signature for each cell type. This matrix includes all genes in
   # the data set and isn't filtered at this point.
@@ -68,5 +68,5 @@ for (dataset in datasets) {
   signatures[["cibersortx"]] <- cx_signatures
 
   saveRDS(signatures,
-          file = file.path(dir_input, str_glue("{dataset}_signature.rds")))
+          file = file.path(dir_signatures, str_glue("{dataset}_signature.rds")))
 }

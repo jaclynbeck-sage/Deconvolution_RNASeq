@@ -68,7 +68,8 @@ dir.create(dir_gene_files, showWarnings = FALSE)
 # Gene conversions used for ROSMAP, Mayo, and MSBB. The files from all three
 # studies (syn27024953, syn27068755, syn26967452) are identical so we just use
 # the one from ROSMAP.
-filename <- synGet("syn26967452", downloadLocation = dir_gene_files)
+filename <- synGet("syn26967452", version = 1,
+                   downloadLocation = dir_gene_files)
 
 ros_genes <- read.table(filename$path, header = TRUE) %>%
   dplyr::select(ensembl_gene_id, hgnc_symbol) %>%

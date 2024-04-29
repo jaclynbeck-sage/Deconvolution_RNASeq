@@ -8,12 +8,12 @@ synLogin()
 # TODO add markers to provenance?
 
 # Deconvolution WG Synapse space
-output_folder <- Folder("algorithm_output", parent = "syn49332774")
+output_folder <- Folder("algorithm_output", parent = "syn58802522")
 output_folder <- synStore(output_folder, forceVersion = FALSE)
 
 # Get provenance IDs
-sce_list <- as.list(synGetChildren("syn52569484")) # sce files
-pseudo_list <- as.list(synGetChildren("syn52570274")) # pseudobulk files
+sce_list <- as.list(synGetChildren("syn52569484")) # sce files TODO
+pseudo_list <- as.list(synGetChildren("syn52570274")) # pseudobulk files TODO
 
 input_df <- data.frame(do.call(rbind, sce_list))
 pseudo_df <- data.frame(do.call(rbind, pseudo_list))

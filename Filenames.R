@@ -9,6 +9,7 @@ dir_output <- file.path(dir_data, "output")
 dir_metadata <- file.path(dir_data, "metadata")
 dir_tmp <- file.path(dir_data, "tmp")
 dir_markers <- file.path(dir_data, "markers")
+dir_signatures <- file.path(dir_data, "signatures")
 dir_cibersort <- "/data" # outside this working directory, gets shared with cibersort docker
 
 dir_estimates <- file.path(dir_output, "estimates")

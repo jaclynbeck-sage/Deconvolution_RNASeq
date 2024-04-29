@@ -1,17 +1,15 @@
-library(synapser)
 library(stringr)
 library(dplyr)
 source("Filenames.R")
-
-synLogin()
+source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
 # Deconvolution WG Synapse space
-markers.folder <- Folder("markers", parent = "syn49332774")
-markers.folder <- synStore(markers.folder, forceVersion = FALSE)
+markers_folder <- Folder("06_markers", parent = "syn58802522")
+markers_folder <- synStore(markers_folder, forceVersion = FALSE)
 
 # Get provenance IDs
-sce_list <- as.list(synGetChildren("syn52569484")) # sce files
-pseudo_list <- as.list(synGetChildren("syn52570274")) # pseudobulk files
+sce_list <- as.list(synGetChildren("syn52569484")) # sce files TODO
+pseudo_list <- as.list(synGetChildren("syn52570274")) # pseudobulk files TODO
 
 sce_df <- data.frame(do.call(rbind, sce_list))
 pseudo_df <- data.frame(do.call(rbind, pseudo_list))
@@ -32,6 +30,8 @@ provenance_df <- merge(sce_df, pseudo_df, by = "dataset")
 
 datasets <- unique(provenance_df$dataset)
 
+github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step06_FindMarkers.R"
+
 # Markers
 for (dset in datasets) {
   files <- list.files(dir_markers, pattern = dset, full.names = TRUE)
@@ -49,9 +49,9 @@ for (dset in datasets) {
       provenance <- unique(provenance$pseudobulk_id[[1]])
     }
 
-    file <- File(path = filename, parent = markers.folder)
-    file <- synStore(file, used = provenance, forceVersion = FALSE)
-    print(paste0(file$properties$id, ": ", file$properties$name))
+    UploadFile(filename, markers_folder,
+               list("used" = provenance,
+                    "executed" = github))
   }
 }
 
