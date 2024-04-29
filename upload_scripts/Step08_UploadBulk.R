@@ -9,7 +9,7 @@ provenance <- list("Mayo" = c("syn58803962.1", "syn29855549.2", "syn23277389.6")
                    "MSBB" = c("syn58803964.1", "syn29855570.2", "syn6101474.9"),
                    "ROSMAP" = c("syn58803965.1", "syn29855598.2", "syn3191087.11"))
 
-github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step08_NormalizeBulkData.R"
+github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step08_RegressBulkData.R"
 
 # Processed bulk datasets
 for (dataset in datasets) {
