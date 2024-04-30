@@ -8,8 +8,8 @@ pseudo_folder <- synStore(pseudo_folder, forceVersion = FALSE)
 provenance <- list("cain" = "syn58807553.1",
                    "lau" = "syn58807566.1",
                    "leng" = "syn58807572.1",
-                   "mathys" = "",
-                   "seaRef" = "")
+                   "mathys" = "syn58808591.1",
+                   "seaRef" = "syn58808855.1")
 
 github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step05_GeneratePseudobulk.R"
 
