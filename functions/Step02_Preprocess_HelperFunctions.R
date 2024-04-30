@@ -126,9 +126,9 @@ ReadCovariates <- function(dataset, files) {
                        "leng" = ReadMetadata_Leng(files)$covariates,
                        "mathys" = ReadMetadata_Mathys(files)$covariates,
                        "seaRef" = ReadMetadata_SEARef(files)$covariates,
-                       "Mayo" = ReadMetadata_BulkData(files)$covariates,
-                       "MSBB" = ReadMetadata_BulkData(files)$covariates,
-                       "ROSMAP" = ReadMetadata_BulkData(files)$covariates)
+                       "Mayo" = ReadMetadata_BulkData(dataset, files)$covariates,
+                       "MSBB" = ReadMetadata_BulkData(dataset, files)$covariates,
+                       "ROSMAP" = ReadMetadata_BulkData(dataset, files)$covariates)
   return(covariates)
 }
 
