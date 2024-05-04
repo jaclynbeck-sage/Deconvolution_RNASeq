@@ -13,6 +13,8 @@ algorithm <- "Scaden"
 
 datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
 
+ct_ad_only <- TRUE
+
 source(file.path("algorithm_configs", str_glue("{algorithm}_Config.R")))
 
 # datasets and normalization parameters
@@ -21,7 +23,7 @@ params_loop1 <- expand_grid(reference_data_name = datasets,
                             granularity = c("broad_class"),
                             reference_input_type = alg_config$reference_input_types,
                             normalization = alg_config$normalizations,
-                            regression_method = c("none")) %>% #, "edger", "deseq2", "dream")) %>%
+                            regression_method = c("none", "edger", "lme", "dream")) %>%
   arrange(normalization)
 
 # Algorithm-specific parameters -- marker types, number of markers, plus any
@@ -57,6 +59,10 @@ required_libraries <- alg_config$required_libraries
 
 for (P in 1:nrow(params_loop1)) {
   data <- Load_AlgorithmInputData_FromParams(params_loop1[P, ])
+
+  if (ct_ad_only) {
+    data$test <- data$test[, data$test$diagnosis %in% c("CT", "AD")]
+  }
 
   data$test <- as.matrix(assay(data$test, "counts"))
 
