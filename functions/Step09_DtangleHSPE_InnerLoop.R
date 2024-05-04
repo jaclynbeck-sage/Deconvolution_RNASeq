@@ -29,7 +29,7 @@ DtangleHSPE_InnerLoop <- function(Y, pure_samples, params, algorithm) {
 
   if (Check_MissingMarkers(markers, params) ||
     Check_TooFewMarkers(markers, params, 3) ||
-    Check_TooManyMarkers(markers, params, 5000) ||
+    #Check_TooManyMarkers(markers, params, 5000) ||
     Check_NotEnoughNewMarkers(markers, params)) {
     return(NULL)
   }

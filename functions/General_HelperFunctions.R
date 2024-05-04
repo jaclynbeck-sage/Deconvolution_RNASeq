@@ -118,8 +118,8 @@ Load_AlgorithmInputData_FromParams <- function(params) {
 #   n_markers = a vector containing one or more percentages (range 0-1.0) and/or
 #               one or more integers (range 2-Inf) specifying how many markers
 #               per cell type to use. If NULL, default values of c(0.01, 0.02,
-#               0.05, 0.1, 0.2, 0.5, 0.75, 1.0, 3, 5, 10, 20, 50, 100, 200) will
-#               be used.
+#               0.05, 0.1, 0.2, 0.5, 0.75, 1.0, 3, 5, 10, 20, 50, 100, 200, 500)
+#               will be used.
 #   marker_types = a list where the names of the entries are one of "autogenes",
 #                  "dtangle", "seurat", or "deseq2" and the items in each entry
 #                  are a list of marker subtypes to use for that algorithm. See
@@ -142,7 +142,7 @@ CreateParams_MarkerTypes <- function(n_markers = NULL, marker_types = NULL,
   # Default values for n_markers and marker_types if they are not defined
   if (is.null(n_markers)) {
     n_markers <- c(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
-                   3, 5, 10, 20, 50, 100, 200)
+                   3, 5, 10, 20, 50, 100, 200, 500)
   }
   if (is.null(marker_types)) {
     marker_types <- list("dtangle" = c("ratio", "diff", "p.value", "regression"),
