@@ -21,8 +21,8 @@ for (dataset in datasets) {
   # Calculate a signature for each cell type. This matrix includes all genes in
   # the data set and isn't filtered at this point.
   signatures <- lapply(c("cpm", "tmm"), function(output_type) {
-    sig_broad <- CalculateSignature(dataset, "broad_class", output_type)
-    sig_sub <- CalculateSignature(dataset, "sub_class", output_type)
+    sig_broad <- CalculateSignature(dataset, "broad_class", output_type, geom_mean = TRUE)
+    sig_sub <- CalculateSignature(dataset, "sub_class", output_type, geom_mean = TRUE)
     return(list("broad_class" = sig_broad, "sub_class" = sig_sub))
   })
 
