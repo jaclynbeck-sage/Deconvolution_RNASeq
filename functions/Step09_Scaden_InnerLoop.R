@@ -35,6 +35,7 @@ Scaden_InnerLoop <- function(sce, bulk_mat, params, algorithm = NULL) {
     bulk_gene_expression = bulk_mat,
     model_path = mod_path,
     temp_dir = temp_path,
+    cells = params$n_cells,
     verbose = TRUE
   )
 

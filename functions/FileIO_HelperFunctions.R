@@ -911,3 +911,42 @@ Save_SingleCellToCibersort <- function(sce, dataset_name, granularity) {
 
   return(f_name)
 }
+
+
+# Music save/load functions ----------------------------------------------------
+
+# Save_MusicBasis: Saves the sc_basis object computed by MuSiC::music_basis so
+# it doesn't need to be repeatedly calculated.
+#
+# Arguments:
+#   sc_basis = the object returned by MuSiC::music_basis
+#   reference_data_name = the name of the single cell data set
+#   granularity = either "broad_class" or "sub_class"
+#
+# Returns:
+#   nothing
+Save_MusicBasis <- function(sc_basis, reference_data_name, granularity) {
+  basis_file <- file.path(dir_music_basis,
+                          str_glue("music_basis_{reference_data_name}_{granularity}.rds"))
+
+  saveRDS(sc_basis, basis_file)
+}
+
+
+# Load_MusicBasis: loads the sc_basis object computed by MuSiC::music_basis
+#
+# Arguments: see descriptions for Save_MusicBasis arguments
+#
+# Returns:
+#   the sc_basis object computed by MuSiC::music_basis. This is a named list of
+#   matrices and vectors needed by MuSiC.
+Load_MusicBasis <- function(reference_data_name, granularity) {
+  basis_file <- file.path(dir_music_basis,
+                          str_glue("music_basis_{reference_data_name}_{granularity}.rds"))
+
+  if (!file.exists(basis_file)) {
+    return(NULL)
+  }
+
+  return(readRDS(basis_file))
+}

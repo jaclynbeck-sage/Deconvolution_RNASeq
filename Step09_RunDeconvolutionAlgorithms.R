@@ -70,14 +70,25 @@ for (P in 1:nrow(params_loop1)) {
   if (algorithm == "Music") {
     data$reference <- as(data$reference, "SingleCellExperiment")
 
-    # Pre-compute sc.basis to save time
-    sc_basis <- MuSiC::music_basis(data$reference,
-                                   non.zero = TRUE,
-                                   markers = rownames(data$reference),
-                                   clusters = "celltype", samples = "sample",
-                                   select.ct = NULL,
-                                   ct.cov = FALSE,
-                                   verbose = TRUE)
+    sc_basis <- Load_MusicBasis(params_loop1$reference_data_name[P],
+                                params_loop1$granularity[P])
+
+    if (is.null(sc_basis)) {
+      # Pre-compute sc.basis to save time
+      sc_basis <- MuSiC::music_basis(data$reference,
+                                     non.zero = TRUE,
+                                     markers = rownames(data$reference),
+                                     clusters = "celltype", samples = "sample",
+                                     select.ct = NULL,
+                                     ct.cov = FALSE,
+                                     verbose = TRUE)
+      # Save for later use
+      Save_MusicBasis(sc_basis,
+                      params_loop1$reference_data_name[P],
+                      params_loop1$granularity[P])
+    } else {
+      message("Using pre-computed sc_basis")
+    }
   }
 
   # Some extra pre-processing needed for Dtangle/HSPE -- reformat the input

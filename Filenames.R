@@ -20,6 +20,7 @@ dir_estimates_tmp <- file.path(dir_estimates, "tmp")
 dir_errors_tmp <- file.path(dir_errors, "tmp")
 
 dir_scaden_models <- file.path(dir_output, "scaden_models")
+dir_music_basis <- file.path(dir_output, "music_basis")
 
 dir_raw_data <- file.path(dir_input, "raw_data")
 dir_preprocessed <- file.path(dir_input, "preprocessed")
