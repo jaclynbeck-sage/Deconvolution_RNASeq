@@ -355,6 +355,7 @@ CalculateSignature <- function(dataset, granularity, output_type, geom_mean = FA
     return(cpm_means)
   })
 
+  #sig <- scuttle::calculateCPM(sig) # TODO
   return(sig)
 }
 
@@ -500,6 +501,11 @@ FilterMarkers <- function(reference_data_name, granularity, n_markers,
     intersect(X, available_genes)
   })
 
+  # We can't use these markers if any cell type has 1 or 0 markers after filtering
+  if (any(lengths(markers) < 2)) {
+    return(NULL)
+  }
+
   if (marker_order == "correlation") {
     if (is.null(test_data)) {
       message(paste("Error! No data provided for calculating marker",
@@ -623,8 +629,15 @@ OrderMarkers_ByCorrelation <- function(marker_list, data) {
   new_list <- sapply(names(marker_list), function(N) {
     markers <- marker_list[[N]]
     markers <- markers[markers %in% rownames(data)]
+
+    # Markers don't need to be ordered if there are 2 or less after filtering
+    if (length(markers) <= 2) {
+      return(markers)
+    }
+
     markers <- markers[rowSums(data[markers, ] > 0) >= 3]
 
+    # Check again for 2 or less markers after filtering by gene expression
     if (length(markers) <= 2) {
       return(markers)
     }
