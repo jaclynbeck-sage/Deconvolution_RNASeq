@@ -61,6 +61,7 @@ for (P in 1:nrow(params_loop1)) {
   data <- Load_AlgorithmInputData_FromParams(params_loop1[P, ])
 
   if (ct_ad_only) {
+    message("Running CT and AD cases only.")
     data$test <- data$test[, data$test$diagnosis %in% c("CT", "AD")]
   }
 
@@ -74,8 +75,13 @@ for (P in 1:nrow(params_loop1)) {
                                 params_loop1$granularity[P])
 
     if (is.null(sc_basis)) {
-      # Pre-compute sc.basis to save time
-      sc_basis <- MuSiC::music_basis(data$reference,
+      # Pre-compute sc.basis to save time. Use all genes in the single cell
+      # data, not just the ones that exist in both bulk and sc data sets
+      sce_unfiltered <- Load_SingleCell(dataset = params_loop1$reference_data_name[P],
+                                        granularity = params_loop1$granularity[P],
+                                        output_type = params_loop1$normalization[P])
+
+      sc_basis <- MuSiC::music_basis(sce_unfiltered,
                                      non.zero = TRUE,
                                      markers = rownames(data$reference),
                                      clusters = "celltype", samples = "sample",
@@ -86,6 +92,9 @@ for (P in 1:nrow(params_loop1)) {
       Save_MusicBasis(sc_basis,
                       params_loop1$reference_data_name[P],
                       params_loop1$granularity[P])
+
+      rm(sce_unfiltered)
+      gc()
     } else {
       message("Using pre-computed sc_basis")
     }
