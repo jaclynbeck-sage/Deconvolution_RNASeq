@@ -83,7 +83,7 @@ for (P in 1:nrow(params_loop1)) {
 
       sc_basis <- MuSiC::music_basis(sce_unfiltered,
                                      non.zero = TRUE,
-                                     markers = rownames(data$reference),
+                                     markers = rownames(sce_unfiltered),
                                      clusters = "celltype", samples = "sample",
                                      select.ct = NULL,
                                      ct.cov = FALSE,
