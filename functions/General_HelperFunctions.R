@@ -349,13 +349,13 @@ CalculateSignature <- function(dataset, granularity, output_type, geom_mean = FA
       log_means <- rowMeans(log(pb_cpm[, cols] + 0.5), na.rm = TRUE)
       cpm_means <- exp(log_means) - 0.5
       cpm_means[cpm_means < 0] <- 0
+      #sig <- scuttle::calculateCPM(sig) # TODO is this necessary?
     } else {
       cpm_means <- rowMeans(pb_cpm[, cols], na.rm = TRUE)
     }
     return(cpm_means)
   })
 
-  #sig <- scuttle::calculateCPM(sig) # TODO
   return(sig)
 }
 
