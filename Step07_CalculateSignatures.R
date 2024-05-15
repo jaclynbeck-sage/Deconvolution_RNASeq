@@ -59,7 +59,16 @@ for (dataset in datasets) {
     # Cell types are out of order and some genes have had "-" replaced by ".",
     # this undoes that
     sig <- sig[, levels(celltypes)]
-    rownames(sig) <- str_replace(rownames(sig), "\\.", "-")
+
+    # CibersortX changes "-" characters to ".". This undoes that without
+    # modifying gene names that already had "." in them.
+    orig_names <- rownames(signatures$cpm$broad_class)
+    mismatches <- !(rownames(sig) %in% orig_names)
+
+    if (any(mismatches)) {
+      new_names <- str_replace_all(rownames(sig)[mismatches],  "\\.", "-")
+      rownames(sig)[mismatches] <- new_names
+    }
 
     # Cleanup finished docker container
     system("docker rm $(docker ps -a -q --filter ancestor=cibersortx/fractions)")

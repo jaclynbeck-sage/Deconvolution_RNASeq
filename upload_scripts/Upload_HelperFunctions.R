@@ -1,3 +1,5 @@
+library(dplyr)
+library(stringr)
 library(synapser)
 synLogin()
 
