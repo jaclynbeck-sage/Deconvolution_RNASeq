@@ -32,12 +32,8 @@ source(file.path("functions", "FileIO_HelperFunctions.R"))
 #                                         CibersortX PLUS the full single cell
 #                                         data set as a SingleCellExperiment
 #                                         object
-#   output_type = if reference_input_type is "singlecell" or "pseudobulk",
-#                 specifies how the counts are transformed:
-#                   "counts" will return raw, unaltered counts
-#                   "cpm" will normalize the counts to counts per million
-#                   "logcpm" will take the log2(cpm) of non-zero cpm entries
-#                   "log1p_cpm" will take the log2(cpm+1) of cpms
+#   output_type = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm", or
+#                 "log_tpm". See Load_CountsFile for description.
 #   regression_method = "none", if raw uncorrected counts should be used for
 #                       bulk data, or one of "edger", "deseq2", or "dream", to
 #                       use batch-corrected counts from one of those methods.
@@ -622,7 +618,7 @@ OrderMarkers_ByCorrelation <- function(marker_list, data) {
   # Assumption that if the values in data aren't very large, this is log-scale
   # data that needs to be put into linear scale
   if (max(data) < 100) {
-    data <- 2^data - 1
+    data <- 2^data - 0.5
   }
 
   # For each cell type, update the marker list

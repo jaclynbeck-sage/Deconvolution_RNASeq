@@ -8,14 +8,16 @@ source("Filenames.R")
 
 synLogin()
 
-folders <- list("singlecell" = list("synID" = "syn52569484", "downloadLocation" = dir_input),
-                "pseudobulk" = list("synID" = "syn52570274", "downloadLocation" = dir_pseudobulk),
-                "markers" = list("synID" = "syn52570296", "downloadLocation" = dir_markers),
-                "errors" = list("synID" = "syn52245653", "downloadLocation" = dir_errors),
-                "external_metadata" = list("synID" = "syn52539337", "downloadLocation" = dir_metadata),
-                "Mayo" = list("synID" = "syn52587834", "downloadLocation" = dir_mayo_output),
-                "MSBB" = list("synID" = "syn52587544", "downloadLocation" = dir_msbb_output),
-                "ROSMAP" = list("synID" = "syn52587984", "downloadLocation" = dir_rosmap_output))
+folders <- list("singlecell" = list("synID" = "syn58807549", "downloadLocation" = dir_input),
+                "pseudobulk" = list("synID" = "syn58808874", "downloadLocation" = dir_pseudobulk),
+                "bulk" = list("synID" = "syn58841972", "downloadLocation" = dir_input),
+                "markers" = list("synID" = "syn58842534", "downloadLocation" = dir_markers),
+                "signatures" = list("synID" = "syn59480278", "downloadLocation" = dir_signatures),
+                #"errors" = list("synID" = "syn52245653", "downloadLocation" = dir_errors),
+                "external_metadata" = list("synID" = "syn58803307", "downloadLocation" = dir_metadata))
+                #"Mayo" = list("synID" = "syn52587834", "downloadLocation" = dir_mayo_output),
+                #"MSBB" = list("synID" = "syn52587544", "downloadLocation" = dir_msbb_output),
+                #"ROSMAP" = list("synID" = "syn52587984", "downloadLocation" = dir_rosmap_output))
 
 
 # Helper function for recursive download
