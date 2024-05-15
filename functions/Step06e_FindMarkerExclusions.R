@@ -37,6 +37,7 @@ FindMarkerExclusions <- function(datasets, granularities) {
       s_obj <- SplitObject(seurat, split.by = "celltype")
       markers_all <- lapply(s_obj, FindAllMarkers,
                             logfc.threshold = 0.5,
+                            min.pct = 0.1,
                             test.use = "MAST",
                             latent.vars = c("nCount_originalexp"))
 

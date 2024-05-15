@@ -343,7 +343,7 @@ Load_AvgLibSize <- function(dataset, granularity) {
 #   in counts per million (or TMM-normalized), describing the expected value of
 #   each gene for eachcell type.
 Load_SignatureMatrix <- function(dataset, granularity, output_type) {
-  sig_matrix <- readRDS(file.path(dir_input, str_glue("{dataset}_signature.rds")))
+  sig_matrix <- readRDS(file.path(dir_signatures, str_glue("{dataset}_signature.rds")))
 
   if (grepl("tmm", output_type)) {
     sig <- sig_matrix$tmm[[granularity]]

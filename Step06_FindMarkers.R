@@ -73,3 +73,9 @@ if ("deseq2" %in% marker_types_run) {
   source(file.path("functions", "Step06d_FindMarkers_DESeq2.R"))
   FindMarkers_DESeq2(datasets, granularities)
 }
+
+
+# Find marker genes that change with diagnosis ---------------------------------
+
+source(file.path("functions", "Step06e_FindMarkerExclusions.R"))
+FindMarkerExclusions(datasets, granularities)
