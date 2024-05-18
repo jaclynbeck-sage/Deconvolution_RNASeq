@@ -9,7 +9,7 @@ library(stringr)
 # Settings ---------------------------------------------------------------------
 
 # Which algorithms to run for marker finding
-marker_types_run <- c("dtangle", "seurat", "autogenes", "deseq2")
+marker_types_run <- c("dtangle", "seurat", "autogenes", "deseq2", "excluded_genes")
 
 # Run multiple parameter sets in parallel for dtangle/HSPE marker finding if
 # dtangle_do_parallel is TRUE. Other algorithms can't be run in parallel.
@@ -77,5 +77,7 @@ if ("deseq2" %in% marker_types_run) {
 
 # Find marker genes that change with diagnosis ---------------------------------
 
-source(file.path("functions", "Step06e_FindMarkerExclusions.R"))
-FindMarkerExclusions(datasets, granularities)
+if ("excluded_genes" %in% marker_types_run) {
+  source(file.path("functions", "Step06e_FindMarkerExclusions.R"))
+  FindMarkerExclusions(datasets, granularities)
+}
