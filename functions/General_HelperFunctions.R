@@ -342,8 +342,8 @@ CalculateSignature <- function(dataset, granularity, output_type, geom_mean = FA
   sig <- sapply(levels(pb$celltype), function(ct) {
     cols <- which(pb$celltype == ct)
     if (geom_mean) {
-      log_means <- rowMeans(log(pb_cpm[, cols] + 0.5), na.rm = TRUE)
-      cpm_means <- exp(log_means) - 0.5
+      log_means <- rowMeans(log(pb_cpm[, cols] + 1), na.rm = TRUE)
+      cpm_means <- exp(log_means) - 1
       cpm_means[cpm_means < 0] <- 0
       #sig <- scuttle::calculateCPM(sig) # TODO is this necessary?
     } else {
@@ -618,7 +618,7 @@ OrderMarkers_ByCorrelation <- function(marker_list, data) {
   # Assumption that if the values in data aren't very large, this is log-scale
   # data that needs to be put into linear scale
   if (max(data) < 100) {
-    data <- 2^data - 0.5
+    data <- 2^data - 1
   }
 
   # For each cell type, update the marker list

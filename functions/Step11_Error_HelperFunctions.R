@@ -10,7 +10,7 @@ CalcGOF_BySample <- function(meas_expr_cpm, est_expr, param_id) {
 
   # Using log2 transformation for correlation so distributions are more gaussian
   cor_sample <- sapply(colnames(meas_expr_cpm), function(sample) {
-    cor(log2(meas_expr_cpm[,sample]+0.5), log2(est_expr[,sample]+0.5),
+    cor(log2(meas_expr_cpm[,sample]+1), log2(est_expr[,sample]+1),
         use = "na.or.complete")
   })
 
@@ -67,10 +67,10 @@ CalcGOF_BySample_LM <- function(bulk_dataset_name, covariates, meas_expr_log,
     lm_est <- fitted(lm_est)
   }
 
-  # Reverse the log2(cpm+0.5) transform
-  lm_est <- t(2^lm_est-0.5)
+  # Reverse the log2(cpm+1) transform
+  lm_est <- t(2^lm_est-1)
 
-  return(CalcGOF_BySample(2^meas_expr_log-0.5, lm_est, param_id))
+  return(CalcGOF_BySample(2^meas_expr_log-1, lm_est, param_id))
 }
 
 
