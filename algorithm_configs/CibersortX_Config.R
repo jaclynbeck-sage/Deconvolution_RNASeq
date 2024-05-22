@@ -42,7 +42,7 @@ alg_config <- list(
                                                     marker_input_types = "pseudobulk",
                                                     marker_order = "correlation"),
 
-  additional_args = NULL, # No additional args. Most non-default CibersortX config variables are incompatible with single cell data
+  additional_args = expand_grid(batch_correct = c(TRUE, FALSE)), # Use rmbatchSmode to correct signature or not
 
   # Define the function that runs each param set
   inner_loop_file = file.path("functions", "Step09_CibersortX_InnerLoop.R"),

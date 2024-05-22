@@ -42,13 +42,38 @@ CibersortX_InnerLoop <- function(reference_filename, bulk_mat, signature, params
 
   file_label <- paste(params$reference_data_name, params$test_data_name,
                       params$granularity, params$reference_input_type,
-                      params$normalization,
+                      params$normalization, params$regression_method,
                       sep = "_")
 
-  res_pcts <- omnideconv::deconvolute_cibersortx(bulk_mat, signature,
-    single_cell_object = basename(reference_filename),
+  sc_obj <- NULL
+  sig_obj <- signature
+
+  if (params$batch_correct) {
+    sc_obj <- basename(reference_filename)
+
+    adjusted_sig <- list.files(path = dir_cibersort,
+                               pattern = paste0(file_label, ".*sigmatrix_Adjusted.txt"))
+
+    # If an adjusted signature is found, there is no need to re-calculate batch
+    # correction, so the adjusted signature is passed in instead of the single
+    # cell object.
+    if (length(adjusted_sig) > 0) {
+      sc_obj <- NULL
+      params$batch_correct <- FALSE
+
+      if (length(adjusted_sig) > 1) {
+        message("Multiple signature matrices found. Using the first one.")
+      }
+
+      sig_obj <- adjusted_sig[1]
+    }
+  }
+
+  res_pcts <- omnideconv::deconvolute_cibersortx(
+    bulk_mat, sig_obj, # sig_obj will be a matrix or a filename
+    single_cell_object = sc_obj, # filename or NULL
     cell_type_annotations = colnames(signature), # dummy variable, not used if a filename is provided but has to have a non-null value
-    rmbatch_S_mode = TRUE,
+    rmbatch_S_mode = params$batch_correct,
     verbose = TRUE,
     container = "docker",
     input_dir = dir_cibersort,
@@ -62,7 +87,10 @@ CibersortX_InnerLoop <- function(reference_filename, bulk_mat, signature, params
   system("docker rm $(docker ps -a -q --filter ancestor=cibersortx/fractions)")
   gc()
 
-  # Undo replacement of "." in the cell type names that was needed for CibersortX
+  # Undo replacement of "." in the cell type names that was needed for CibersortX.
+  # res_pcts may or may not have column names already, depending on whether batch
+  # correct is true or false.
+  colnames(res_pcts) <- colnames(signature)
   colnames(res_pcts) <- str_replace(colnames(res_pcts), "_", ".")
 
   res <- list("estimates" = res_pcts,
