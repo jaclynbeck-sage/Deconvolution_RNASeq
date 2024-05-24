@@ -7,6 +7,9 @@ source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 markers_folder <- Folder("06_markers", parent = "syn58802522")
 markers_folder <- synStore(markers_folder, forceVersion = FALSE)
 
+meta_folder <- Folder("01_metadata", parent = "syn58802522")
+meta_folder <- synStore(meta_folder, forceVersion = FALSE)
+
 # Get provenance IDs
 sce_df <- GetChildrenAsDf("syn58807549")
 pseudo_df <- GetChildrenAsDf("syn58808874")
@@ -37,6 +40,18 @@ for (dset in datasets) {
     }
 
     UploadFile(filename, markers_folder,
+               list("used" = provenance,
+                    "executed" = github))
+  }
+}
+
+# Excluded genes go in the metadata folder
+for (dset in datasets) {
+  filename <- file.path(dir_metadata, str_glue("{dset}_excluded_genes.rds"))
+  if (file.exists(filename)) {
+    provenance <- sce_df$id[sce_df$dataset == dset]
+
+    UploadFile(filename, meta_folder,
                list("used" = provenance,
                     "executed" = github))
   }
