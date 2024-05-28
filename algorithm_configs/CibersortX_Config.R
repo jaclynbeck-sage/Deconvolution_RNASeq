@@ -36,11 +36,7 @@ alg_config <- list(
 
   # For params_loop2 (algorithm-specific arguments) in main function
   # Note: If the input type is "cibersortx", only filter_level = 0 will be used.
-  params_markers = CreateParams_FilterableSignature(filter_levels = c(0, 3),
-                                                    n_markers = 500,
-                                                    marker_types = list("dtangle" = "p.value"),
-                                                    marker_input_types = "pseudobulk",
-                                                    marker_order = "correlation"),
+  params_markers = CreateParams_FilterableSignature(filter_levels = c(0, 3)), # All other args are default
 
   additional_args = expand_grid(batch_correct = c(TRUE, FALSE)), # Use rmbatchSmode to correct signature or not
 

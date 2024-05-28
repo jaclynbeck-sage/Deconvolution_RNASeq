@@ -20,16 +20,13 @@
 #   a list containing entries for the celltype percentage estimates ("estimates"),
 #   "params", which is the parameter set used for this run, and "markers", which
 #   is the list of genes from the CibersortX signature matrix
-CibersortX_InnerLoop <- function(reference_filename, bulk_mat, signature, params) {
+CibersortX_InnerLoop <- function(signature, bulk_mat, reference_filename, params) {
   omnideconv::set_cibersortx_credentials(email = Sys.getenv("CIBERSORT_EMAIL"),
                                          token = Sys.getenv("CIBERSORT_TOKEN"))
 
-  # Ensure signature is a matrix. For CibersortX signatures only, we do not need
-  # to filter the signature down or worry about markers so we ignore those
-  # settings from 'params'
-  signature <- as.matrix(signature)
-
-  # Non-CibersortX signature matrix needs to be filtered
+  # For CibersortX signatures only, we do not need to filter the signature down
+  # or worry about markers so we ignore those settings from 'params'.
+  # Non-CibersortX signature matrix needs to be filtered.
   if (params$reference_input_type != "cibersortx") {
     signature <- FilterSignature_FromParams(signature, params, bulk_mat)
 
@@ -47,12 +44,21 @@ CibersortX_InnerLoop <- function(reference_filename, bulk_mat, signature, params
 
   sc_obj <- NULL
   sig_obj <- signature
+  params_orig <- params # Save original state because params might get edited below
 
+  # If batch_correct = TRUE, check if there's already a batch-corrected
+  # signature. If so, we can skip having CibersortX calculate it and just use
+  # the pre-calculated one.
   if (params$batch_correct) {
     sc_obj <- basename(reference_filename)
 
+    sig_file <- str_replace(file_label,
+                            paste0("_", params$reference_input_type),
+                            "")
+
     adjusted_sig <- list.files(path = dir_cibersort,
-                               pattern = paste0(file_label, ".*sigmatrix_Adjusted.txt"))
+                               pattern = paste0(sig_file, ".*sigmatrix_Adjusted.txt"),
+                               full.names = TRUE)
 
     # If an adjusted signature is found, there is no need to re-calculate batch
     # correction, so the adjusted signature is passed in instead of the single
@@ -62,17 +68,29 @@ CibersortX_InnerLoop <- function(reference_filename, bulk_mat, signature, params
       params$batch_correct <- FALSE
 
       if (length(adjusted_sig) > 1) {
-        message("Multiple signature matrices found. Using the first one.")
+        message("Multiple signature matrices found. Using the first one alphabetically.")
       }
 
-      sig_obj <- adjusted_sig[1]
+      sig_obj <- read.table(adjusted_sig[1], header = TRUE,
+                            sep = "\t", row.names = 1)
+
+      # Use the filtered gene list
+      sig_obj <- sig_obj[rownames(signature), ]
+      sig_obj <- sig_obj[sort(rownames(sig_obj)), ]
     }
   }
 
+  # Convert cell types to lower case to avoid string sorting issues
+  orig_cell_names <- colnames(signature)
+  colnames(sig_obj) <- str_to_lower(colnames(signature))
+
+  # Ensure signature is a matrix.
+  sig_obj <- as.matrix(sig_obj)
+
   res_pcts <- omnideconv::deconvolute_cibersortx(
-    bulk_mat, sig_obj, # sig_obj will be a matrix or a filename
+    bulk_mat, sig_obj,
     single_cell_object = sc_obj, # filename or NULL
-    cell_type_annotations = colnames(signature), # dummy variable, not used if a filename is provided but has to have a non-null value
+    cell_type_annotations = colnames(sig_obj), # dummy variable, not used but has to have a non-null value
     rmbatch_S_mode = params$batch_correct,
     verbose = TRUE,
     container = "docker",
@@ -90,11 +108,11 @@ CibersortX_InnerLoop <- function(reference_filename, bulk_mat, signature, params
   # Undo replacement of "." in the cell type names that was needed for CibersortX.
   # res_pcts may or may not have column names already, depending on whether batch
   # correct is true or false.
-  colnames(res_pcts) <- colnames(signature)
+  colnames(res_pcts) <- orig_cell_names
   colnames(res_pcts) <- str_replace(colnames(res_pcts), "_", ".")
 
   res <- list("estimates" = res_pcts,
-              "params" = params,
+              "params" = params_orig,
               "markers" = rownames(signature))
 
   return(res)

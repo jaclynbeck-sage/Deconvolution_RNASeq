@@ -39,6 +39,12 @@ for (dataset in datasets) {
     # after casting to a dense matrix and doesn't expose their write function,
     # so this is a re-implementation.
     sce <- Load_SingleCell(dataset, granularity, "counts")
+
+    # CibersortX can't have cell types with '.' in them, and cell types are
+    # converted to lowercase to avoid string sorting issues between R and C.
+    sce$celltype <- str_replace(as.character(sce$celltype), "\\.", "_")
+    sce$celltype <- str_to_lower(sce$celltype)
+
     f_name <- Save_SingleCellToCibersort(sce, dataset, granularity)
     celltypes <- sce$celltype
     rm(sce)
@@ -56,13 +62,15 @@ for (dataset in datasets) {
                                   output_dir = dir_cibersort,
                                   verbose = TRUE)
 
-    # Cell types are out of order and some genes have had "-" replaced by ".",
-    # this undoes that
-    sig <- sig[, levels(celltypes)]
+    # Cell types are out of order and lower-case. Putting them in sorted
+    # alphabetical order puts them in the same order as the original cell type
+    # names so they can be directly replaced.
+    sig <- sig[, sort(colnames(sig))]
+    colnames(sig) <- colnames(signatures$cpm[[granularity]])
 
     # CibersortX changes "-" characters to ".". This undoes that without
     # modifying gene names that already had "." in them.
-    orig_names <- rownames(signatures$cpm$broad_class)
+    orig_names <- rownames(signatures$cpm[[granularity]])
     mismatches <- !(rownames(sig) %in% orig_names)
 
     if (any(mismatches)) {

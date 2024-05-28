@@ -9,7 +9,7 @@ source(file.path("functions", "General_HelperFunctions.R"))
 # Parameter setup --------------------------------------------------------------
 
 # options: "CibersortX", "DWLS", "DeconRNASeq", "Dtangle", "HSPE", "Music", "Scaden"
-algorithm <- "Scaden"
+algorithm <- "CibersortX"
 
 datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
 
@@ -20,7 +20,7 @@ source(file.path("algorithm_configs", str_glue("{algorithm}_Config.R")))
 # datasets and normalization parameters
 params_loop1 <- expand_grid(reference_data_name = datasets,
                             test_data_name = c("Mayo", "MSBB", "ROSMAP"),
-                            granularity = c("broad_class"),
+                            granularity = c("broad_class", "sub_class"),
                             reference_input_type = alg_config$reference_input_types,
                             normalization = alg_config$normalizations,
                             regression_method = c("none", "edger", "lme", "dream")) %>%
@@ -120,35 +120,49 @@ for (P in 1:nrow(params_loop1)) {
     gc()
   }
 
-  # Extra processing for CibersortX: create CibersortX-formatted data file for
-  # single cell reference input, then replace the reference object with the
-  # filename. Cell type names also can't have any "." in them, so this does a
-  # string replace to change them to "_".
+  # Extra processing for CibersortX: If there is a pre-computed corrected
+  # signature, copy it to the directory that the Cibersort docker container can
+  # read. If not, create a CibersortX-formatted data file for single cell
+  # reference input so it can compute the adjusted signature, then replace the
+  # reference object with the filename. Cell type names also can't have any "."
+  # in them, so this does a string replace to change them to "_". To avoid
+  # differences in how R and C sort strings with multiple capital letters (i.e.
+  # "Oligodendrocyte" vs "OPC" get sorted differently between the two
+  # languages), we also change all cell type names to lower case.
   if (algorithm == "CibersortX") {
-    sce <- Load_SingleCell(dataset = params_loop1$reference_data_name[P],
-                           granularity = params_loop1$granularity[P],
-                           output_type = params_loop1$normalization[P])
-    sce$celltype <- str_replace(sce$celltype, "\\.", "_")
-    colnames(data$reference) <- str_replace(colnames(data$reference), "\\.", "_")
+    # Copy adjusted signature file to cibersort directory if the file exists
+    sig_params <- params_loop1[P,] %>% select(-reference_input_type)
+    sig_filename <- list.files(dir_cibersort_corrected_signatures,
+                               pattern = paste(sig_params, collapse = "_"),
+                               full.names = TRUE)
 
-    f_name <- Save_SingleCellToCibersort(sce = sce,
-                                         dataset_name = params_loop1$reference_data_name[P],
-                                         granularity = params_loop1$granularity[P])
-    data$singlecell_filename <- f_name
-    rm(sce)
-    gc()
+    if (length(sig_filename) == 1) {
+      file.copy(from = sig_filename,
+                to = file.path(dir_cibersort, basename(sig_filename)),
+                overwrite = TRUE)
+      data$singlecell_filename <- ""
 
-    # Filter params_loop2: if the reference_input_type = cibersortx, only use
-    # filter_level = 0 because CibersortX already filtered its signature. If
-    # reference_input_type = signature, only use filter_level = 3 because
-    # CibersortX expects a filtered signature.
-    # TODO this won't work if running both "cibersortx" and "signature" because
-    # it globally modifies params_loop2
-    if (params_loop1$reference_input_type[P] == "cibersortx") {
-      params_loop2 <- subset(params_loop2, filter_level == 0)
     } else {
-      params_loop2 <- subset(params_loop2, filter_level > 0)
+      # Otherwise CibersortX needs the original single cell data to compute an
+      # adjusted signature
+      message("Copying single cell data to CibersortX directory...")
+      sce <- Load_SingleCell(dataset = params_loop1$reference_data_name[P],
+                             granularity = params_loop1$granularity[P],
+                             output_type = params_loop1$normalization[P])
+      sce$celltype <- str_replace(as.character(sce$celltype), "\\.", "_")
+      sce$celltype <- str_to_lower(sce$celltype)
+
+      f_name <- Save_SingleCellToCibersort(sce = sce,
+                                           dataset_name = params_loop1$reference_data_name[P],
+                                           granularity = params_loop1$granularity[P])
+      data$singlecell_filename <- f_name
+      rm(sce)
+      gc()
     }
+
+    # Lower-casing the reference signature has to be handled in the inner loop
+    # so the inner loop can convert back to the original names
+    colnames(data$reference) <- str_replace(colnames(data$reference), "\\.", "_")
   }
 
   ## Loop through algorithm-specific arguments ---------------------------------
@@ -162,6 +176,19 @@ for (P in 1:nrow(params_loop1)) {
     source(alg_config$inner_loop_file) # defined in the config
 
     params <- cbind(params_loop1[P, ], params_loop2[R, ])
+
+    # There are some invalid parameter combinations for CibersortX: if the
+    # reference_input_type = cibersortx, only use filter_level = 0 because
+    # CibersortX already filtered its signature. If reference_input_type =
+    # signature, only use filter_level = 3 because CibersortX expects a filtered
+    # signature.
+    if (algorithm == "CibersortX") {
+      if ((params$reference_input_type == "cibersortx") & (params$filter_level != 0)) {
+        return(NULL)
+      } else if ((params$reference_input_type == "signature") & (params$filter_level != 3)) {
+        return(NULL)
+      }
+    }
 
     # If we are picking up from a failed/crashed run, and we've already run
     # this parameter set, load the result instead of re-running the algorithm
@@ -188,8 +215,8 @@ for (P in 1:nrow(params_loop1)) {
     }
     # CibersortX needs the signature and single cell filename passed in
     else if (algorithm == "CibersortX") {
-      res <- inner_loop_func(data$singlecell_filename, data$test,
-                             data$reference, params)
+      res <- inner_loop_func(data$reference, data$test,
+                             data$singlecell_filename, params)
     } else {
       res <- inner_loop_func(data$reference, data$test, params, algorithm)
     }
