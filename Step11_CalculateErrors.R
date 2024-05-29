@@ -15,7 +15,7 @@ cl <- makeCluster(cores, type = "FORK", outfile = "errors_output.txt")
 registerDoParallel(cl)
 
 est_fields = list("CibersortX" = "estimates",
-                  "DeconRNASeq" = "out.all",
+                  "DeconRNASeq" = "estimates",
                   "Dtangle" = "estimates",
                   "DWLS" = "estimates",
                   "HSPE" = "estimates",
@@ -33,11 +33,6 @@ all_signatures_tmm <- sapply(c("cain", "lau", "leng", "mathys", "seaRef"), funct
 })
 
 for (bulk_dataset in bulk_datasets) {
-  dir_out <- switch(bulk_dataset,
-                    "Mayo" = dir_mayo_output,
-                    "MSBB" = dir_msbb_output,
-                    "ROSMAP" = dir_rosmap_output)
-
   # The data that will be used in the LM (needs unadjusted log2(cpm))
   bulk_se <- Load_BulkData(bulk_dataset, output_type = "log_cpm",
                            regression_method = "none")
@@ -48,10 +43,14 @@ for (bulk_dataset in bulk_datasets) {
   var_genes <- rowVars(meas_expr_log, useNames = TRUE)
   var_genes <- sort(var_genes, decreasing = TRUE)
 
+  #TODO temp
+  meas_expr_log <- meas_expr_log[,bulk_se$diagnosis %in% c("CT", "AD")]
+
   bulk_metadata <- colData(bulk_se)
 
   covariates <- Load_Covariates(bulk_dataset)
-  covariates <- Clean_BulkCovariates(bulk_dataset, bulk_metadata, covariates)
+  covariates <- Clean_BulkCovariates(bulk_dataset, bulk_metadata,
+                                     covariates, scale_numeric = TRUE)
 
   rm(bulk_se)
   gc()
@@ -78,12 +77,15 @@ for (bulk_dataset in bulk_datasets) {
     print(str_glue("Calculating errors for {bulk_dataset}: {algorithm}"))
     est_field <- est_fields[[algorithm]]
 
-    dir_alg <- file.path(dir_out, algorithm)
+    dir_alg <- file.path(dir_estimates, bulk_dataset, algorithm)
     res_files <- list.files(dir_alg, pattern = granularity, full.names = TRUE)
     if (length(res_files) == 0) {
       message(str_glue("No data for {algorithm} found. Skipping..."))
       next
     }
+
+    all_possible <- 0
+    all_valid <- 0
 
     # Process files in parallel
     for (file in res_files) {
@@ -145,6 +147,8 @@ for (bulk_dataset in bulk_datasets) {
         filtered_signatures <- filtered_signatures_cpm
       }
 
+      # TODO temp
+      data <- data[,data$diagnosis %in% c("CT","AD")]
       bulk_cpm <- assay(data, "counts")
 
       rm(data)
@@ -152,6 +156,7 @@ for (bulk_dataset in bulk_datasets) {
 
       # Needed for print output at the end
       total_length <- length(deconv_list)
+      all_possible <- all_possible + total_length
 
       ##### Calculate error for each param set #####
 
@@ -170,6 +175,7 @@ for (bulk_dataset in bulk_datasets) {
         }
 
         est_pct <- deconv_list[[param_id]][[est_field]]
+
         # CibersortX produced cell types with underscores instead of periods
         colnames(est_pct) <- str_replace(colnames(est_pct), "_", ".")
         est_pct <- est_pct[colnames(bulk_cpm), colnames(filtered_signatures[[1]])]
@@ -188,10 +194,14 @@ for (bulk_dataset in bulk_datasets) {
             major_celltypes <- c("Astrocyte", "Excitatory", "Inhibitory", "Oligodendrocyte")
           }
           # sub_class uses cell types >5% of the population, plus the most abundant
-          # inhibitory subclass (due to the difficulty predicting inhibitory percentages
-          # in the broad_class case)
+          # excitatory and inhibitory subclasses
           else {
-            major_celltypes <- c("Astrocyte", "Exc.1", "Exc.4", "Inh.1", "Oligodendrocyte")
+            major_celltypes <- c("Astrocyte", "Exc.1", "Inh.1", "Oligodendrocyte")
+            excitatory_cols <- grepl("Exc", colnames(est_pct))
+            inhibitory_cols <- grepl("Inh", colnames(est_pct))
+            summed_estimates <- data.frame(Excitatory = rowSums(est_pct[,excitatory_cols]),
+                                           Inhibitory = rowSums(est_pct[,inhibitory_cols]))
+            summed_zeros <- colSums(summed_estimates == 0)
           }
 
           zeros <- colSums(est_pct == 0)[major_celltypes]
@@ -201,7 +211,14 @@ for (bulk_dataset in bulk_datasets) {
             cts <- paste(names(which(zeros > zero_thresh)), collapse = ", ")
             msg <- str_glue(paste("Param set '{param_id}' has too many 0 estimates",
                                   "for cell type(s) [{cts}]. Skipping..."))
-            message(msg)
+            #message(msg)
+            return(NULL)
+          }
+          if (granularity == "sub_class" && any(summed_zeros > zero_thresh)) {
+            msg <- str_glue(paste("Param set '{param_id}' has all 0 estimates",
+                                  "for excitatory or inhibitory subtypes.",
+                                  "Skipping..."))
+            #message(msg)
             return(NULL)
           }
         }
@@ -242,17 +259,17 @@ for (bulk_dataset in bulk_datasets) {
         gof_means <- do.call(rbind, gof_means)
 
         # Calculate error using signature-less lm
-        gof_by_sample_lm <- CalcGOF_BySample_LM(bulk_dataset, covariates,
-                                                meas_expr_log, est_pct, param_id)
-        gof_by_sample_lm$signature <- "none"
-        gof_by_sample_lm$solve_type <- "lm"
+        #gof_by_sample_lm <- CalcGOF_BySample_LM(bulk_dataset, covariates,
+        #                                        meas_expr_log, est_pct, param_id)
+        #gof_by_sample_lm$signature <- "none"
+        #gof_by_sample_lm$solve_type <- "lm"
 
-        gof_means_lm <- CalcGOF_Means(gof_by_sample_lm, bulk_metadata, param_id)
+        #gof_means_lm <- CalcGOF_Means(gof_by_sample_lm, bulk_metadata, param_id)
 
         decon_new <- list("gof_by_sample" = do.call(rbind, gof_by_sample),
                           "gof_means" = gof_means,
-                          "gof_by_sample_lm" = gof_by_sample_lm,
-                          "gof_means_lm" = gof_means_lm,
+                          #"gof_by_sample_lm" = gof_by_sample_lm,
+                          #"gof_means_lm" = gof_means_lm,
                           "params" = deconv_list[[param_id]]$params,
                           "pct_bad_inhibitory_ratio" = pct_bad_inhibitory_ratio,
                           "estimates" = as.data.frame(est_pct))
@@ -270,6 +287,8 @@ for (bulk_dataset in bulk_datasets) {
 
       # Remove NULL (skipped) entries
       deconv_list <- deconv_list[lengths(deconv_list) > 0]
+      #print(str_glue("{length(deconv_list)} of {total_length}"))
+      all_valid <- all_valid + length(deconv_list)
 
       if (length(deconv_list) == 0) {
         print(paste("No valid parameter sets for", algorithm,
@@ -307,5 +326,6 @@ for (bulk_dataset in bulk_datasets) {
       print(paste("Errors calculated for", nrow(err_list$params), "of",
                   total_length, "parameter sets."))
     }
+    print(str_glue("{all_valid} of {all_possible}"))
   }
 }

@@ -32,8 +32,7 @@ bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
 # do this without duplicating error calculation code or other downstream
 # processing is to make copies of each of the estimates, one file for each
 # combination, even though the files are all the same.
-params_permute <- expand.grid(reference_data_name = c("none"),
-                              normalization = c("cpm", "tmm", "tpm"),
+params_permute <- expand.grid(normalization = c("cpm", "tmm", "tpm"),
                               regression_method = c("none", "edger", "deseq2", "dream"),
                               reference_input_type = c("signature"),
                               stringsAsFactors = FALSE)
@@ -59,9 +58,9 @@ for (granularity in c("broad_class", "sub_class")) {
     # Generate 100 'parameter sets' of random estimates to mimic the structure
     # of algorithm output
 
-    params <- data.frame("test_data_name" = bulk_dataset,
-                         "granularity" = granularity,
-                         "random_method" = "random_uniform")
+    params <- data.frame("reference_data_name" = "random_uniform",
+                         "test_data_name" = bulk_dataset,
+                         "granularity" = granularity)
     name_base <- paste(params, collapse = "_")
 
     dataset_uniform <- lapply(1:100, function(N) {
@@ -84,9 +83,9 @@ for (granularity in c("broad_class", "sub_class")) {
     ##### Educated guesses #####
     # 20 per reference data set = 100 total
 
-    params <- data.frame("test_data_name" = bulk_dataset,
-                         "granularity" = granularity,
-                         "random_method" = "random_educated")
+    params <- data.frame("reference_data_name" = "random_educated",
+                         "test_data_name" = bulk_dataset,
+                         "granularity" = granularity)
     name_base <- paste(params, collapse = "_")
 
     dataset_educated <- list()
@@ -110,7 +109,8 @@ for (granularity in c("broad_class", "sub_class")) {
         ests <- sweep(ests, 1, rowSums(ests), "/")
 
         # Needed so error calculations have unique params for each item
-        params_tmp <- cbind(params, "trial" = paste(reference_dataset, N, sep = "_"))
+        params_tmp <- cbind(params,
+                            "trial" = paste(reference_dataset, N, sep = "_"))
 
         return(list("estimates" = ests, "params" = params_tmp))
       })
@@ -122,9 +122,9 @@ for (granularity in c("broad_class", "sub_class")) {
 
     ##### Bias toward one cell type #####
     # 10 per cell type = 70 total for broad cell types, 240 for fine cell types
-    params <- data.frame("test_data_name" = bulk_dataset,
-                         "granularity" = granularity,
-                         "random_method" = "random_biased")
+    params <- data.frame("reference_data_name" = "random_biased",
+                         "test_data_name" = bulk_dataset,
+                         "granularity" = granularity)
     name_base <- paste(params, collapse = "_")
 
     dataset_bias <- list()
@@ -146,7 +146,8 @@ for (granularity in c("broad_class", "sub_class")) {
         ests <- sweep(ests, 1, rowSums(ests), "/")
 
         # Needed so error calculations have unique params for each item
-        params_tmp <- cbind(params, "trial" = paste(celltypes[ct], N, sep = "_"))
+        params_tmp <- cbind(params,
+                            "trial" = paste(celltypes[ct], N, sep = "_"))
 
         return(list("estimates" = ests, "params" = params_tmp))
       })
@@ -158,9 +159,9 @@ for (granularity in c("broad_class", "sub_class")) {
 
     ##### Data set of all 0 estimates #####
 
-    params <- data.frame("test_data_name" = bulk_dataset,
+    params <- data.frame("reference_data_name" = "zeros",
+                         "test_data_name" = bulk_dataset,
                          "granularity" = granularity,
-                         "random_method" = "zeros",
                          "trial" = 1)
     name_base <- paste(params, collapse = "_")
 
@@ -172,8 +173,8 @@ for (granularity in c("broad_class", "sub_class")) {
 
     names(dataset_zeros) <- name_base
 
-    full_dataset <- c(dataset_uniform, dataset_educated,
-                      dataset_bias, dataset_zeros)
+    full_dataset <- list(dataset_uniform, dataset_educated,
+                         dataset_bias, dataset_zeros)
 
 
     ##### Write copies of the estimate list #####
@@ -181,28 +182,32 @@ for (granularity in c("broad_class", "sub_class")) {
 
     for (R in 1:nrow(params_permute)) {
       # Add one row of params_permute to all the params in the list
-      err_list_copy <- full_dataset
-      err_list_copy <- lapply(err_list_copy, function(err_item) {
-        err_item$params <- cbind(err_item$params, params_permute[R,])
-        cols_keep <- c("test_data_name", "granularity", "normalization",
-                       "regression_method", "random_method", "trial")
-        rownames(err_item$params) <- paste(err_item$params[cols_keep],
-                                           collapse = "_")
-        return(err_item)
-      })
+      for (err_set in full_dataset) {
+        err_list_copy <- err_set
 
-      names(err_list_copy) <- sapply(err_list_copy, function(err_item) {
-        rownames(err_item$params)
-      })
+        err_list_copy <- lapply(err_list_copy, function(err_item) {
+          err_item$params <- cbind(err_item$params, params_permute[R,])
+          cols_keep <- c("reference_data_name", "test_data_name", "granularity",
+                         "normalization", "regression_method", "trial")
+          rownames(err_item$params) <- paste(err_item$params[cols_keep],
+                                             collapse = "_")
+          return(err_item)
+        })
 
-      # Create the same naming scheme as other algorithm output
-      params_base <- err_list_copy[[1]]$params %>%
-        select(reference_data_name, test_data_name, granularity,
-               reference_input_type, normalization, regression_method)
-      name_base <- paste(params_base, collapse = "_")
+        names(err_list_copy) <- sapply(err_list_copy, function(err_item) {
+          rownames(err_item$params)
+        })
 
-      Save_AlgorithmOutputList(err_list_copy, algorithm = "Baseline",
-                               test_dataset = bulk_dataset, name_base = name_base)
+        # Create the same naming scheme as other algorithm output
+        params_base <- err_list_copy[[1]]$params %>%
+                          select(reference_data_name, test_data_name, granularity,
+                                 reference_input_type, normalization,
+                                 regression_method)
+        name_base <- paste(params_base, collapse = "_")
+
+        Save_AlgorithmOutputList(err_list_copy, algorithm = "Baseline",
+                                 test_dataset = bulk_dataset, name_base = name_base)
+      }
     }
   }
 }

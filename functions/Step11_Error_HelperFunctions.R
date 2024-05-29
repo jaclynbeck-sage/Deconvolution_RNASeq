@@ -250,10 +250,15 @@ Get_AllBestErrorsAsDf <- function(bulk_datasets, granularity) {
                                      reference_input_type, normalization,
                                      regression_method),
                      by.x = "param_id", by.y = "row.names")
-    return(errs_df)
+
+    qual_stats <- Get_QualityStatsAsDf(data)
+
+    return(list("errors" = errs_df,
+                "quality_stats" = qual_stats))
   })
 
-  return(do.call(rbind, best_err_list))
+  return(list("errors" = do.call(rbind, lapply(best_err_list, "[[", "errors")),
+              "quality_stats" = do.call(rbind, lapply(best_err_list, "[[", "quality_stats"))))
 }
 
 Get_AllBestParamsAsDf <- function(reference_datasets, granularity) {
@@ -264,6 +269,36 @@ Get_AllBestParamsAsDf <- function(reference_datasets, granularity) {
   })
   best_params_all <- do.call(rbind, best_params_all)
   return(best_params_all)
+}
+
+
+Get_QualityStatsAsDf <- function(data) {
+  pct_bad_inh <- merge(data$params,
+                       data.frame(pct_bad_inhibitory_ratio = data$pct_bad_inhibitory_ratio,
+                                  row.names = names(data$pct_bad_inhibitory_ratio)),
+                       by = "row.names")
+
+  grouping_cols <- c("reference_data_name", "test_data_name", "granularity",
+                     "normalization", "regression_method", "algorithm")
+
+  pct_bad_inh <- pct_bad_inh %>%
+    group_by_at(grouping_cols) %>%
+    summarize(mean_pct_bad_inhibitory_ratio = mean(pct_bad_inhibitory_ratio),
+              .groups = "drop")
+
+  pct_valid <- data$n_valid_results / data$n_possible_results
+  params_mod <- data$params %>%
+    select(reference_data_name, test_data_name, granularity,
+           normalization, regression_method, algorithm) %>%
+    distinct()
+  rownames(params_mod) <- str_replace(rownames(params_mod), "_[0-9].*", "")
+
+  pct_valid <- merge(params_mod, as.data.frame(pct_valid), by = "row.names")
+
+  quality_stats <- merge(pct_bad_inh, pct_valid, by = grouping_cols) %>%
+                      dplyr::rename(file_id = Row.names)
+
+  return(quality_stats)
 }
 
 
@@ -356,7 +391,7 @@ Get_AllEstimatesAsDf <- function(ref_dataset, bulk_dataset, algorithms,
 
     if (nrow(file_params) == 0) {
       print(str_glue(paste0("No valid data found for {algorithm} / {bulk_dataset}",
-                            "/ {ref_dataset} / {granularity}. Skipping...")))
+                            " / {ref_dataset} / {granularity}. Skipping...")))
       next
     }
 
@@ -418,7 +453,7 @@ Flatten_ErrorList <- function(err_list) {
       return(do.call(rbind, lapply(err_list, "[[", field)))
     }
     else {
-      return(unlist(sapply(err_list, "[[", field)))
+      return(unlist(lapply(err_list, "[[", field)))
     }
   })
   names(err_list_new) <- fields
