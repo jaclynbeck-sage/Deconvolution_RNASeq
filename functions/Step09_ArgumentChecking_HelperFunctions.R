@@ -49,13 +49,17 @@ Check_MissingMarkers <- function(markers_obj, params) {
 #   TRUE if there are fewer than low_threshold markers per cell type, FALSE otherwise
 Check_TooFewMarkers <- function(markers_obj, params, low_threshold = 3) {
   if (Is_SignatureMatrix(markers_obj)) {
-    markers <- Load_Markers(params$reference_data_name, params$granularity,
-                            params$marker_type, params$marker_subtype,
-                            input_type = params$marker_input_type)
-    totals <- sapply(markers, function(X) {
-      sum(X %in% rownames(markers_obj))
-    })
-    not_enough <- (mean(totals) < low_threshold)
+    if (params$marker_type != "None") {
+      markers <- Load_Markers(params$reference_data_name, params$granularity,
+                              params$marker_type, params$marker_subtype,
+                              input_type = params$marker_input_type)
+      totals <- sapply(markers, function(X) {
+        sum(X %in% rownames(markers_obj))
+      })
+      not_enough <- (mean(totals) < low_threshold)
+    } else {
+      not_enough <- (nrow(markers_obj) < (low_threshold * ncol(markers_obj)))
+    }
   }
   else if (Is_MarkerList(markers_obj)) {
     not_enough <- (mean(lengths(markers_obj)) < low_threshold)
