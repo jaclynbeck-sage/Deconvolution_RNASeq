@@ -852,10 +852,7 @@ Load_Markers <- function(dataset, granularity, marker_type,
   markers <- readRDS(file = marker_file)
 
   if (any(lengths(markers$filtered) < 3)) {
-    message(paste0("WARNING: not enough markers in the filtered marker list for ",
-                   str_glue(marker_file_format),
-                   ". Using unfiltered marker set."))
-    markers <- markers$all
+    return(NULL)
   } else {
     markers <- markers$filtered
   }

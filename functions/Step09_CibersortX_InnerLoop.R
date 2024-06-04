@@ -87,6 +87,10 @@ CibersortX_InnerLoop <- function(signature, bulk_mat, reference_filename, params
   # Ensure signature is a matrix.
   sig_obj <- as.matrix(sig_obj)
 
+  # Input/output goes in its own directory
+  out_dir <- file.path(dir_cibersort, paste(params_orig, collapse="_"))
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
   res_pcts <- omnideconv::deconvolute_cibersortx(
     bulk_mat, sig_obj,
     single_cell_object = sc_obj, # filename or NULL
@@ -94,15 +98,17 @@ CibersortX_InnerLoop <- function(signature, bulk_mat, reference_filename, params
     rmbatch_S_mode = params$batch_correct,
     verbose = TRUE,
     container = "docker",
-    input_dir = dir_cibersort,
-    output_dir = dir_cibersort,
+    input_dir = out_dir,
+    output_dir = out_dir,
     qn = FALSE,
     absolute = FALSE,
     label = file_label
   )
 
-  # Cleanup finished docker container
+  # Cleanup finished docker container and unneeded files
   system("docker rm $(docker ps -a -q --filter ancestor=cibersortx/fractions)")
+  file.remove(file.path(out_dir, "mixture_file_for_cibersort.txt"))
+  file.remove(file.path(out_dir, "signature_matrix.txt"))
   gc()
 
   # Undo replacement of "." in the cell type names that was needed for CibersortX.
