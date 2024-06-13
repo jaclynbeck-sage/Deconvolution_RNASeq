@@ -97,12 +97,65 @@ CalcGOF_Means <- function(gof_by_sample, bulk_metadata, param_id) {
 }
 
 
-CalcEstimateStats <- function(all_ests, bulk_metadata) {
+CalcEstimateStats <- function(all_ests, bulk_metadata, gof_means_all) {
   estimate_stats_sample <- all_ests %>% group_by(celltype, sample) %>%
                               summarize(mean_pct = mean(percent),
                                         sd_pct = sd(percent),
                                         rel_sd_pct = sd_pct / mean_pct,
                                         .groups = "drop_last")
+
+  estimate_stats_sample$tissue <- bulk_metadata[estimate_stats_sample$sample, "tissue"]
+
+  # Stats for only the top 10-scoring param sets, but we only want to calculate
+  # this if there are 10 or more params. Less than that and the mean/sd don't
+  # mean a lot.
+  if (length(unique(gof_means_all$param_id)) >= 10) {
+    errs_tmp <- gof_means_all %>% group_by(param_id, tissue) %>%
+      summarize(cor = max(cor),
+                rMSE = min(rMSE),
+                mAPE = min(mAPE),
+                .groups = "drop")
+    top_cor <- errs_tmp %>% group_by(tissue) %>% top_n(10, wt = cor)
+    top_rMSE <- errs_tmp %>% group_by(tissue) %>% top_n(10, wt = -rMSE)
+    top_mAPE <- errs_tmp %>% group_by(tissue) %>% top_n(10, wt = -mAPE)
+
+    top_10 <- list(cor = top_cor,
+                   rMSE = top_rMSE,
+                   mAPE = top_mAPE)
+
+    ests_tmp <- all_ests
+    ests_tmp$tissue <- bulk_metadata[ests_tmp$sample, "tissue"]
+
+    top_10_stats <- lapply(top_10, function(top_errs) {
+      ests_top_10 <- lapply(unique(top_errs$tissue), function(tiss) {
+        top_tmp <- subset(top_errs, tissue == tiss)
+        ests_filt <- subset(ests_tmp, param_id %in% top_tmp$param_id)
+
+        if (tiss != "All") {
+          ests_filt <- subset(ests_filt, tissue == tiss)
+        }
+
+        ests_stats <- ests_filt %>% group_by(celltype, sample) %>%
+          summarize(mean_pct = mean(percent),
+                    sd_pct = sd(percent),
+                    rel_sd_pct = sd_pct / mean_pct,
+                    .groups = "drop_last")
+
+        ests_stats$tissue <- tiss
+        return(ests_stats)
+      })
+      ests_top_10 <- do.call(rbind, ests_top_10)
+    })
+  } else {
+    # If there aren't at least 10 items to compare, just copy estimate_stats_sample
+    # and mimic the structure of top_10_stats
+    top_10_stats <- lapply(c("cor", "rMSE", "mAPE"), function(X) {
+      tmp <- estimate_stats_sample
+      tmp$tissue <- "All"
+      return(rbind(tmp, estimate_stats_sample))
+    })
+    names(top_10_stats) <- c("cor", "rMSE", "mAPE")
+  }
 
   # average and sd of the *mean* values for each sample
   estimate_stats_all <- estimate_stats_sample %>% group_by(celltype) %>%
@@ -110,8 +163,6 @@ CalcEstimateStats <- function(all_ests, bulk_metadata) {
                                     mean_sd_pct = mean(sd_pct),
                                     mean_rel_sd_pct = mean(rel_sd_pct),
                                     .groups = "drop_last")
-
-  estimate_stats_sample$tissue <- bulk_metadata[estimate_stats_sample$sample, "tissue"]
 
   estimate_stats_tissue <- estimate_stats_sample %>% group_by(tissue, celltype) %>%
                               summarize(mean_pct = mean(mean_pct),
@@ -121,7 +172,8 @@ CalcEstimateStats <- function(all_ests, bulk_metadata) {
 
   return(list("by_sample" = estimate_stats_sample,
               "all_tissue" = estimate_stats_all,
-              "by_tissue" = estimate_stats_tissue))
+              "by_tissue" = estimate_stats_tissue,
+              "top_10_stats" = top_10_stats))
 }
 
 

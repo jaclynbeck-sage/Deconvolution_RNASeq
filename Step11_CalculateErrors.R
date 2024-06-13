@@ -1,6 +1,7 @@
 library(Matrix)
 library(dplyr)
 library(stringr)
+library(purrr)
 library(foreach)
 library(doParallel)
 
@@ -32,19 +33,25 @@ all_signatures_tmm <- sapply(c("cain", "lau", "leng", "mathys", "seaRef"), funct
   Load_SignatureMatrix(X, granularity, "tmm")
 })
 
+# Get all genes shared by all data sets so everything is judged on the same criteria
+common_genes <- lapply(bulk_datasets, function(X) {
+  bulk_se <- Load_BulkData(X, output_type = "log_cpm", regression_method = "none")
+  rownames(bulk_se)
+})
+common_genes <- append(common_genes, lapply(all_signatures_cpm, rownames))
+common_genes <- purrr::reduce(common_genes, intersect)
+
+
 for (bulk_dataset in bulk_datasets) {
   # The data that will be used in the LM (needs unadjusted log2(cpm))
   bulk_se <- Load_BulkData(bulk_dataset, output_type = "log_cpm",
                            regression_method = "none")
 
-  meas_expr_log <- as.matrix(assay(bulk_se, "counts"))
+  meas_expr_log <- as.matrix(assay(bulk_se, "counts"))[common_genes, ]
 
   # Get highly variable genes
   var_genes <- rowVars(meas_expr_log, useNames = TRUE)
   var_genes <- sort(var_genes, decreasing = TRUE)
-
-  #TODO temp
-  meas_expr_log <- meas_expr_log[,bulk_se$diagnosis %in% c("CT", "AD")]
 
   bulk_metadata <- colData(bulk_se)
 
@@ -57,11 +64,7 @@ for (bulk_dataset in bulk_datasets) {
 
   # Get the top 5000 most variable genes that exist in all signatures and in
   # the bulk dataset
-  genes_use <- names(var_genes)
-  for (name in names(all_signatures_cpm)) {
-    genes_use <- intersect(genes_use, rownames(all_signatures_cpm[[name]]))
-  }
-  genes_use <- genes_use[1:5000]
+  genes_use <- names(var_genes)[1:5000]
 
   filtered_signatures_cpm <- lapply(all_signatures_cpm, function(X) {
     X[genes_use,]
@@ -97,13 +100,6 @@ for (bulk_dataset in bulk_datasets) {
       }
 
       params <- do.call(rbind, lapply(deconv_list, "[[", "params"))
-
-      # For backwards compatibility -- algorithms that input a signature didn't
-      # originally have a 'reference_input_type' field so this puts it back if
-      # it's missing.
-      if (!("reference_input_type" %in% colnames(params))) {
-        params$reference_input_type <- "signature"
-      }
 
       # All entries in this file should have the same values for these parameters,
       # so we end up with a 1-row data frame
@@ -142,13 +138,10 @@ for (bulk_dataset in bulk_datasets) {
 
       if (params_mod$normalization == "tmm") {
         filtered_signatures <- filtered_signatures_tmm
-      }
-      else {
+      } else {
         filtered_signatures <- filtered_signatures_cpm
       }
 
-      # TODO temp
-      data <- data[,data$diagnosis %in% c("CT","AD")]
       bulk_cpm <- assay(data, "counts")
 
       rm(data)
@@ -178,7 +171,7 @@ for (bulk_dataset in bulk_datasets) {
 
         # CibersortX produced cell types with underscores instead of periods
         colnames(est_pct) <- str_replace(colnames(est_pct), "_", ".")
-        est_pct <- est_pct[colnames(bulk_cpm), colnames(filtered_signatures[[1]])]
+        est_pct <- est_pct[, colnames(filtered_signatures[[1]])]
 
         if (any(is.na(est_pct))) {
           message(str_glue("Param set {param_id} has NA values. Skipping..."))
@@ -241,7 +234,7 @@ for (bulk_dataset in bulk_datasets) {
 
         params <- deconv_list[[param_id]]$params
 
-        bulk_cpm_filt <- bulk_cpm[genes_use,]
+        bulk_cpm_filt <- bulk_cpm[genes_use, rownames(est_pct)]
 
         # Calculate error using all signatures
         gof_by_sample <- lapply(names(filtered_signatures), function(N) {
@@ -305,7 +298,7 @@ for (bulk_dataset in bulk_datasets) {
       all_ests <- melt(all_ests, variable.name = "celltype",
                        value.name = "percent", id.vars = c("param_id", "sample"))
 
-      est_stats <- CalcEstimateStats(all_ests, bulk_metadata)
+      est_stats <- CalcEstimateStats(all_ests, bulk_metadata, gof_means_all)
 
       err_list <- list("means" = list("all_signature" = gof_means_all,
                                       "all_lm" = gof_means_all_lm),
@@ -329,3 +322,5 @@ for (bulk_dataset in bulk_datasets) {
     print(str_glue("{all_valid} of {all_possible}"))
   }
 }
+
+stopCluster(cl)

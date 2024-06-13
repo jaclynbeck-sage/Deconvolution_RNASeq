@@ -33,7 +33,7 @@ bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
 # processing is to make copies of each of the estimates, one file for each
 # combination, even though the files are all the same.
 params_permute <- expand.grid(normalization = c("cpm", "tmm", "tpm"),
-                              regression_method = c("none", "edger", "deseq2", "dream"),
+                              regression_method = c("none", "edger", "lme", "dream"),
                               reference_input_type = c("signature"),
                               stringsAsFactors = FALSE)
 

@@ -31,7 +31,9 @@ for (bulk_dataset in bulk_datasets) {
         next
       }
 
-      errs_all <- rbind(err_list$means$all_signature, err_list$means$all_lm)
+      #errs_all <- rbind(err_list$means$all_signature, err_list$means$all_lm)
+      errs_all <- err_list$means$all_signature
+      #errs_all <- subset(errs_all, signature == unique(err_list$params$reference_data_name))
 
       cols_test <- colnames(select_if(errs_all, is.numeric))
 
@@ -68,6 +70,8 @@ for (bulk_dataset in bulk_datasets) {
 
       best_param_ids <- unique(errs_sub_all$param_id)
 
+      file_id <- str_replace(best_param_ids[1], "_[0-9].*", "")
+
       err_stats <- melt(errs_sub_all, variable.name = "metric",
                         id.vars = c("param_id", "tissue", "solve_type",
                                     "signature", "metrics")) %>%
@@ -76,6 +80,7 @@ for (bulk_dataset in bulk_datasets) {
                               sd_err = sd(value),
                               rel_sd_err = sd_err / mean_err,
                               .groups = "drop")
+      err_stats$file_id <- file_id
 
       err_list_new <- list(means = errs_sub_all,
                            params = err_list$params[best_param_ids,],
@@ -85,6 +90,9 @@ for (bulk_dataset in bulk_datasets) {
                            n_valid_results = err_list$n_valid_results,
                            n_possible_results = err_list$n_possible_results,
                            error_stats = err_stats)
+
+      names(err_list_new$n_valid_results) <- file_id
+      names(err_list_new$n_possible_results) <- file_id
 
       print(basename(EF))
       return(err_list_new)

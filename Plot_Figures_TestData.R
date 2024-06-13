@@ -8,34 +8,33 @@ library(patchwork)
 
 source(file.path("functions", "Plotting_HelperFunctions.R"))
 source(file.path("functions", "General_HelperFunctions.R"))
-source(file.path("functions", "Error_HelperFunctions.R"))
+source(file.path("functions", "Step11_Error_HelperFunctions.R"))
 source(file.path("functions", "FileIO_HelperFunctions.R"))
 
 options(scipen = 999)
 
-datasets <- c("cain", "lau", "leng", "mathys", "seaRef") #, "seaAD")
+datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
 
-est_fields = list("Dtangle" = "estimates",
-                  "Music" = "Est.pctRNA.weighted",
+est_fields = list("CibersortX" = "estimates",
+                  "DeconRNASeq" = "estimates",
+                  "Dtangle" = "estimates",
+                  "DWLS" = "estimates",
                   "HSPE" = "estimates",
-                  "DeconRNASeq" = "out.all",
-                  "DWLS" = "estimates")
+                  "Music" = "Est.pctRNA.weighted",
+                  "Scaden" = "estimates",
+                  "Baseline" = "estimates")
 
-algorithms <- c(names(est_fields), "Random")
+algorithms <- names(est_fields)
 
-granularity <- c("broad_class")
+granularity <- c("sub_class")
 
 bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
 
 best_errors <- Get_AllBestErrorsAsDf(bulk_datasets, granularity)
 
-
 #best_params_all <- Get_AllBestParamsAsDf(reference_datasets, granularity)
 
-#errs_all <- Get_AllErrorsAsDf(bulk_datasets, reference_datasets, algorithms,
-#                              granularity, best_params_all$params)
-
-errs_melt <- melt(best_errors) %>% dplyr::rename(error_type = "variable")
+errs_melt <- melt(best_errors$errors, variable.name = "error_type")
 
 errs_total <- subset(errs_melt, tissue == "All")
 
@@ -47,7 +46,8 @@ errs_tissue$tissue <- paste(errs_tissue$test_data_name, errs_tissue$tissue)
 
 refs <- unique(errs_melt$reference_data_name)
 algs <- unique(errs_melt$algorithm)
-tiss <- colSums(table(errs_tissue$tissue, errs_tissue$test_data_name) > 1)
+norms <- unique(str_replace(errs_melt$normalization, "log_", ""))
+regs <- unique(errs_melt$regression_method)
 
 # Reference data sets
 reference_colors <- RColorBrewer::brewer.pal(length(refs), "Set3")
@@ -56,6 +56,12 @@ names(reference_colors) <- sort(refs)
 # Algorithms
 algorithm_colors <- RColorBrewer::brewer.pal(length(algs), "Set2")
 names(algorithm_colors) <- sort(algs)
+
+# Normalizations
+normalization_colors <- RColorBrewer::brewer.pal(length(regs), "Set1")
+
+# Regression methods
+regression_colors <- RColorBrewer::brewer.pal(length(regs), "Accent")
 
 # Tissues (modified viridis turbo color scheme)
 tiss <- colSums(table(errs_tissue$tissue, errs_tissue$test_data_name) > 1)
@@ -77,6 +83,7 @@ names(tissue_fill_colors) <- names(tissue_colors)
 bulk_colors <- tissue_fill_colors[c(1, 4, 9)]
 names(bulk_colors) <- sort(bulk_datasets)
 
+
 ##### Comparison across data sets
 
 # TODO run an ANOVA to check if errors are significantly different between
@@ -88,83 +95,157 @@ cor_names <- setdiff(unique(grep("cor", errs_total$error_type, value = TRUE)),
                      ros_names)
 other_errs <- setdiff(errs_total$error_type, c(cor_names, ros_names))
 
-pdf(file.path(dir_figures, "error_plots_summary_broad_class.pdf"), width=10, height = 12)
+pdf(file.path(dir_figures, str_glue("error_plots_summary_{granularity}.pdf")), width=12, height = 12)
 
-plt1 <- Plot_ErrsByAlgorithm(errs_total, cor_names, fill = "test_data_name", fill_colors = bulk_colors)
-plt2 <- Plot_ErrsByDataset(errs_total, cor_names, fill = "test_data_name", fill_colors = bulk_colors)
-plt3 <- Plot_ErrsByAlgorithm(errs_total, cor_names, x_axis = "test_data_name",
-                          fill = "reference_data_name", fill_colors = reference_colors)
-plt4 <- Plot_ErrsByDataset(errs_total, cor_names, x_axis = "test_data_name",
+params <- list(solve_type = "signature",
+               normalization = c("counts", "cpm", "log_cpm"),
+               regression_method = "none")
+plt1 <- Plot_ErrsByAlgorithm(errs_total, params, cor_names, fill = "test_data_name", fill_colors = bulk_colors)
+plt2 <- Plot_ErrsByDataset(errs_total, params, cor_names, fill = "test_data_name", fill_colors = bulk_colors)
+plt3 <- Plot_ErrsByAlgorithm(errs_total, params, cor_names, x_axis = "test_data_name",
+                             fill = "reference_data_name", fill_colors = reference_colors)
+plt4 <- Plot_ErrsByDataset(errs_total, params, cor_names, x_axis = "test_data_name",
                            fill = "algorithm", fill_colors = algorithm_colors)
 
-print(plt1 / plt2 / plt3 / plt4 + plot_annotation(title = "Correlation by algorithm and dataset"))
+print(plt1 / plt2 / plt3 / plt4 + plot_annotation(title = "Correlation by algorithm and dataset (counts/cpm)"))
 
 # By tissue
 
-plt5 <- Plot_ErrsByAlgorithm(errs_tissue, cor_names, color = "tissue",
-                          fill = "tissue", fill_colors = tissue_fill_colors) +
+plt5 <- Plot_ErrsByAlgorithm(errs_tissue, params, cor_names, color = "tissue",
+                             fill = "tissue", fill_colors = tissue_fill_colors) +
           scale_color_manual(values = tissue_colors)
-plt6 <- Plot_ErrsByDataset(errs_tissue, cor_names, color = "tissue",
+plt6 <- Plot_ErrsByDataset(errs_tissue, params, cor_names, color = "tissue",
                            fill = "tissue", fill_colors = tissue_fill_colors) +
           scale_color_manual(values = tissue_colors)
 
-print(plt5 / plt6 + plot_annotation(title = "Correlation by algorithm and dataset (by tissue, combined view)"))
+print(plt5 / plt6 + plot_annotation(title = "Correlation by algorithm and dataset (counts/cpm, by tissue, combined view)"))
 
-plt7 <- Plot_ErrsByAlgorithm(errs_tissue, cor_names,
-                          facet_var = c("algorithm", "test_data_name"),
-                          color = "tissue", fill = "reference_data_name",
-                          fill_colors = reference_colors) +
+plt7 <- Plot_ErrsByAlgorithm(errs_tissue, params, cor_names,
+                             facet_var = c("algorithm", "test_data_name"),
+                             color = "tissue", fill = "reference_data_name",
+                             fill_colors = reference_colors) +
           scale_color_manual(values = tissue_fill_colors)
 
-print(plt7 + plot_annotation(title = "Correlation by algorithm (by tissue, split view)"))
+print(plt7 + plot_annotation(title = "Correlation by algorithm (counts/cpm, by tissue, split view)"))
 
-plt8 <- Plot_ErrsByDataset(errs_tissue, cor_names,
+plt8 <- Plot_ErrsByDataset(errs_tissue, params, cor_names,
                            facet_var = c("reference_data_name", "test_data_name"),
                            color = "tissue", fill = "algorithm",
                            fill_colors = algorithm_colors) +
           scale_color_manual(values = tissue_fill_colors)
 
-print(plt8 + plot_annotation(title = "Correlation by dataset (by tissue, split view)"))
+print(plt8 + plot_annotation(title = "Correlation by dataset (counts/cpm, by tissue, split view)"))
+
+# Compare different normalization / regression schemes
+
+params2 <- list(solve_type = "signature",
+                normalization = norms,
+                regression_method = regs)
+errs_total_mod <- errs_total
+errs_total_mod$normalization <- str_replace(errs_total_mod$normalization, "log_", "")
+plt9 <- Plot_ErrsByDataset(errs_total_mod, params2, cor_names,
+                           color = "normalization", fill = "regression_method",
+                           fill_colors = regression_colors,
+                           facet_var = c("test_data_name", "reference_data_name")) +
+          scale_color_manual(values = normalization_colors)
+
+print(plt9 + plot_annotation(title = "Correlation by dataset and normalization scheme"))
+
+plt10 <- Plot_ErrsByAlgorithm(errs_total_mod, params2, cor_names,
+                              color = "normalization", fill = "regression_method",
+                              fill_colors = regression_colors,
+                              facet_var = c("test_data_name", "algorithm")) +
+          scale_color_manual(values = normalization_colors)
+
+print(plt10 + plot_annotation(title = "Correlation by algorithm and normalization scheme"))
 
 
 # Each error type needs a different fixed axis, but we plot all on the same
 # page as separate rows
 plts <- list()
 for (B in other_errs) {
-  plt <- Plot_ErrsByAlgorithm(errs_total, B, facet_var = c("error_type", "algorithm"),
-                           fill = "test_data_name", fill_colors = bulk_colors)
+  plt <- Plot_ErrsByAlgorithm(errs_total, params, B, facet_var = c("error_type", "algorithm"),
+                              fill = "test_data_name", fill_colors = bulk_colors)
   plts[[B]] <- plt
 }
 
-print(wrap_plots(plts, nrow = length(other_errs)) + plot_annotation(title = 'Errors by algorithm'))
+print(wrap_plots(plts, nrow = length(other_errs)) + plot_annotation(title = 'Errors by algorithm (counts/cpm)'))
 
 plts <- list()
 for (B in other_errs) {
-  plt <- Plot_ErrsByDataset(errs_total, B, facet_var = c("error_type", "reference_data_name"),
+  plt <- Plot_ErrsByDataset(errs_total, params, B, facet_var = c("error_type", "reference_data_name"),
                             fill = "test_data_name", fill_colors = bulk_colors)
   plts[[B]] <- plt
 }
 
-print(wrap_plots(plts, nrow = length(other_errs)) + plot_annotation(title = 'Errors by dataset'))
+print(wrap_plots(plts, nrow = length(other_errs)) + plot_annotation(title = 'Errors by dataset (counts/cpm)'))
+
+# Different normalization strategies
+plts <- list()
+for (B in other_errs) {
+  plt <- Plot_ErrsByAlgorithm(errs_total_mod, params2, B,
+                              color = "normalization", fill = "regression_method",
+                              fill_colors = regression_colors,
+                              facet_var = c("test_data_name", "algorithm")) +
+          scale_color_manual(values = normalization_colors)
+  plts[[B]] <- plt
+}
+
+print(wrap_plots(plts, nrow = length(other_errs)) + plot_annotation(title = 'Errors by algorithm and normalization type'))
+
+plts <- list()
+for (B in other_errs) {
+  plt <- Plot_ErrsByDataset(errs_total_mod, params2, B,
+                            color = "normalization", fill = "regression_method",
+                            fill_colors = regression_colors,
+                            facet_var = c("test_data_name", "reference_data_name")) +
+          scale_color_manual(values = normalization_colors)
+  plts[[B]] <- plt
+}
+
+print(wrap_plots(plts, nrow = length(other_errs)) + plot_annotation(title = 'Errors by dataset and normalization type'))
+
 
 # By tissue
 
 for (B in other_errs) {
-  plt <- Plot_ErrsByAlgorithm(errs_tissue, B,
-                           facet_var = c("algorithm", "test_data_name"),
-                           color = "tissue", fill = "reference_data_name",
-                           fill_colors = reference_colors) +
+  plt <- Plot_ErrsByAlgorithm(errs_tissue, params, B,
+                              facet_var = c("algorithm", "test_data_name"),
+                              color = "tissue", fill = "reference_data_name",
+                              fill_colors = reference_colors) +
             scale_color_manual(values = tissue_fill_colors)
   print(plt + plot_annotation(title = paste0(B, ' by algorithm (by tissue)')))
 }
 
 for (B in other_errs) {
-  plt <- Plot_ErrsByDataset(errs_tissue, B,
+  plt <- Plot_ErrsByDataset(errs_tissue, params, B,
                             facet_var = c("reference_data_name", "test_data_name"),
                             color = "tissue", fill = "algorithm",
                             fill_colors = algorithm_colors) +
             scale_color_manual(values = tissue_fill_colors)
   print(plt + plot_annotation(title = paste0(B, ' by dataset (by tissue)')))
+}
+
+# Different normalization types
+errs_tissue_mod <- errs_tissue
+errs_tissue_mod$normalization <- str_replace(errs_tissue_mod$normalization, "log_", "")
+
+for (B in other_errs) {
+  plt <- Plot_ErrsByAlgorithm(errs_tissue_mod, params2, B,
+                              color = "normalization", fill = "regression_method",
+                              fill_colors = regression_colors,
+                              facet_var = c("tissue", "algorithm")) +
+    scale_color_manual(values = normalization_colors)
+  print(plt + plot_annotation(title = paste0(B, ' by algorithm vs normalization type (by tissue)')))
+}
+
+for (B in other_errs) {
+  plt <- Plot_ErrsByDataset(errs_tissue_mod, params2, B,
+                            color = "normalization", fill = "regression_method",
+                            fill_colors = regression_colors,
+                            facet_var = c("tissue", "reference_data_name")) +
+    scale_color_manual(values = normalization_colors)
+  print(plt + plot_annotation(title = paste0(B, ' by dataset vs normalization type (by tissue)')))
 }
 
 # ROSMAP errors -- NOT UPDATED YET
@@ -202,7 +283,7 @@ dev.off()
 
 #### Individual dataset examination #####
 
-file_params <- best_errors %>%
+file_params <- best_errors$errors %>%
   select(reference_data_name, test_data_name, algorithm,
          reference_input_type, normalization,
          regression_method) %>%
@@ -210,17 +291,22 @@ file_params <- best_errors %>%
 
 # TODO hspe is wrong
 for (dataset in datasets) {
-  pdf(file.path(dir_figures, paste0("error_plots_", dataset, "_broad_detailed.pdf")), width=10, height = 12)
+  pdf(file.path(dir_figures, paste0("error_plots_", dataset, "_", granularity, "_detailed.pdf")), width=10, height = 12)
 
   for (bulk_dataset in bulk_datasets) {
     bulk_se <- Load_BulkData(bulk_dataset)
     metadata <- as.data.frame(colData(bulk_se))
 
-    ests_alg <- Get_AllEstimatesAsDf(dataset, bulk_dataset, algorithms,
-                                     granularity, file_params)
+    # TODO other tissues and lm?
+    # TODO temporary - tmm none
+    best_errors_sub <- subset(best_errors$errors, tissue == "All" & solve_type == "signature" &
+                                normalization %in% c("tmm", "log_tmm", "counts") & regression_method == "none")
+
+    best_ests <- Get_AllEstimatesAsDf(dataset, bulk_dataset, algorithms,
+                                      granularity, best_errors_sub, est_fields)
 
     # TODO fix
-    #best_params <- subset(best_errors, reference_data_name == dataset &
+    #best_params <- subset(best_errors$errors, reference_data_name == dataset &
     #                        algorithm %in% unique(ests_alg$algorithm) &
     #                        grepl(bulk_dataset, test_data_name))
     #best_params <- best_params %>% group_by(algorithm) %>%
@@ -230,7 +316,7 @@ for (dataset in datasets) {
     #best_params$param_id <- sapply(best_params$params, paste, collapse = " ")
 
     #best_ests <- ests_alg %>% merge(best_params, by = c("algorithm", "param_id"))
-    best_ests <- ests_alg %>% group_by(algorithm) %>%
+    best_ests <- best_ests %>% group_by(algorithm) %>%
                     mutate(title = paste(algorithm, "params",
                                          as.numeric(factor(param_id))),
                            title_short = title) %>%
@@ -298,8 +384,8 @@ for (dataset in datasets) {
 
     # TODO make functions to do this and move these files to a better place
     ests_ad <- merge(best_ests, metadata, by = "sample") %>%
-                subset(diagnosis %in% c("CT", "AD")) %>%
-                subset(celltype %in% levels(ests_alg$celltype)) # Gets rid of added cell types from ROSMAP IHC
+                subset(diagnosis %in% c("CT", "AD")) #%>%
+                #subset(celltype %in% levels(ests_alg$celltype)) # Gets rid of added cell types from ROSMAP IHC
     ests_ad$celltype <- factor(ests_ad$celltype)
 
     significant <- list()

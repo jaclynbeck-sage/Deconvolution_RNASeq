@@ -338,7 +338,7 @@ CalculateSignature <- function(dataset, granularity, output_type, geom_mean = FA
 
   pb_cpm <- assay(pb, "counts")
 
-  # Get the geometric mean over all samples, for each gene and cell type
+  # Get the mean over all samples, for each gene and cell type
   sig <- sapply(levels(pb$celltype), function(ct) {
     cols <- which(pb$celltype == ct)
     if (geom_mean) {
