@@ -46,6 +46,10 @@ CibersortX_InnerLoop <- function(signature, bulk_mat, reference_filename, params
   sig_obj <- signature
   params_orig <- params # Save original state because params might get edited below
 
+  # Input/output goes in its own directory
+  out_dir <- file.path(dir_cibersort, paste(params_orig, collapse="_"))
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
   # If batch_correct = TRUE, check if there's already a batch-corrected
   # signature. If so, we can skip having CibersortX calculate it and just use
   # the pre-calculated one.
@@ -77,6 +81,10 @@ CibersortX_InnerLoop <- function(signature, bulk_mat, reference_filename, params
       # Use the filtered gene list
       sig_obj <- sig_obj[rownames(signature), ]
       sig_obj <- sig_obj[sort(rownames(sig_obj)), ]
+    } else {
+      # Otherwise we need to put the single cell data file in the input/output directory
+      file.copy(reference_filename,
+                file.path(out_dir, basename(reference_filename)))
     }
   }
 
@@ -86,10 +94,6 @@ CibersortX_InnerLoop <- function(signature, bulk_mat, reference_filename, params
 
   # Ensure signature is a matrix.
   sig_obj <- as.matrix(sig_obj)
-
-  # Input/output goes in its own directory
-  out_dir <- file.path(dir_cibersort, paste(params_orig, collapse="_"))
-  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
   res_pcts <- omnideconv::deconvolute_cibersortx(
     bulk_mat, sig_obj,
@@ -106,9 +110,12 @@ CibersortX_InnerLoop <- function(signature, bulk_mat, reference_filename, params
   )
 
   # Cleanup finished docker container and unneeded files
-  system("docker rm $(docker ps -a -q --filter ancestor=cibersortx/fractions)")
+  system("docker rm $(docker ps -a -q --filter ancestor=cibersortx/fractions --filter status=exited)")
   file.remove(file.path(out_dir, "mixture_file_for_cibersort.txt"))
   file.remove(file.path(out_dir, "signature_matrix.txt"))
+  if (file.exists(file.path(out_dir, basename(reference_filename)))) {
+    file.remove(file.path(out_dir, basename(reference_filename)))
+  }
   gc()
 
   # Undo replacement of "." in the cell type names that was needed for CibersortX.
