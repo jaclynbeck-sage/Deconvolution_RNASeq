@@ -37,6 +37,7 @@ reticulate::virtualenv_create("autogenes_env",
                               packages = c("scanpy", "anndata", "autogenes",
                                            "scikit-misc"))
 
-# Install omnideconv and its DWLS add-on
-pak::pkg_install("omnideconv/omnideconv")
+# Install omnideconv and its DWLS add-on. Uses my fork of omnideconv
+pak::pkg_install("jaclynbeck-sage/omnideconv")
 pak::pkg_install("omnideconv/DWLS")
+omnideconv::install_all_python()

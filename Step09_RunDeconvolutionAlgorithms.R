@@ -15,6 +15,11 @@ datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
 
 ct_ad_only <- TRUE
 
+# Force these two algorithms to use all data
+if (algorithm %in% c("CibersortX", "Scaden")) {
+  ct_ad_only <- FALSE
+}
+
 source(file.path("algorithm_configs", str_glue("{algorithm}_Config.R")))
 
 # datasets and normalization parameters

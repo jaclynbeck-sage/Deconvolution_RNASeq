@@ -37,7 +37,7 @@ alg_config <- list(
   params_markers = CreateParams_FilterableSignature(filter_levels = 0), # all other args are default, this
                                                                         # produces one row with filter = 0
                                                                         # since this alg doesn't use markers
-  additional_args = expand_grid(n_cells = c(1000)),
+  additional_args = expand_grid(n_cells = c(100, 500, 1000)),
 
   # Define the function that runs each param set
   inner_loop_file = file.path("functions", "Step09_Scaden_InnerLoop.R"),
