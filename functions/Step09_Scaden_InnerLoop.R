@@ -38,6 +38,9 @@ Scaden_InnerLoop <- function(sce, bulk_mat, params, algorithm = NULL) {
                                            sep = "_"),
                                      ".h5ad"))
 
+  # TPM and CPM normalization are the same for single cell
+  file_simulated <- str_replace(file_simulated, "_tpm_", "_cpm_")
+
   # If it doesn't exist, make simulated data
   if (!file.exists(file_simulated)) {
     # Needs to be a dense matrix
