@@ -145,7 +145,7 @@ Check_NotEnoughNewMarkers <- function(markers_obj, params) {
       totals <- sapply(markers, function(X) {
         sum(X %in% rownames(markers_obj))
       })
-      not_enough <- all(lengths(markers_obj) <= low_threshold)
+      not_enough <- all(totals <= low_threshold)
     } else { # signature was filtered by CPM
       not_enough <- nrow(markers_obj) <= (low_threshold * ncol(markers_obj))
     }
