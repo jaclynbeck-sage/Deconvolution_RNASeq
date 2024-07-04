@@ -113,6 +113,7 @@ CibersortX_InnerLoop <- function(signature, bulk_mat, reference_filename, params
   system("docker rm $(docker ps -a -q --filter ancestor=cibersortx/fractions --filter status=exited)")
   file.remove(file.path(out_dir, "mixture_file_for_cibersort.txt"))
   file.remove(file.path(out_dir, "signature_matrix.txt"))
+
   if (file.exists(file.path(out_dir, basename(reference_filename)))) {
     file.remove(file.path(out_dir, basename(reference_filename)))
   }

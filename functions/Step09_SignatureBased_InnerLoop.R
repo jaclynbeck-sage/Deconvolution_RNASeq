@@ -27,8 +27,8 @@ SignatureBased_InnerLoop <- function(signature, bulk_mat, params, algorithm) {
   signature_filt <- FilterSignature_FromParams(signature, params, bulk_mat)
 
   if (Check_MissingMarkers(signature_filt, params) ||
-    Check_TooFewMarkers(signature_filt, params, 3) ||
-    Check_NotEnoughNewMarkers(signature_filt, params)) {
+      Check_TooFewMarkers(signature_filt, params, 3) ||
+      Check_NotEnoughNewMarkers(signature_filt, params)) {
     return(NULL)
   }
 
@@ -48,7 +48,8 @@ SignatureBased_InnerLoop <- function(signature, bulk_mat, params, algorithm) {
         bulk_mat_filt <- as.data.frame(bulk_mat_filt)
         signature_filt <- as.data.frame(signature_filt)
 
-        res_orig <- DeconRNASeq(bulk_mat_filt, signature_filt,
+        res_orig <- DeconRNASeq(bulk_mat_filt,
+                                signature_filt,
                                 proportions = NULL,
                                 known.prop = FALSE,
                                 use.scale = use_scale,
@@ -69,7 +70,8 @@ SignatureBased_InnerLoop <- function(signature, bulk_mat, params, algorithm) {
                                                  verbose = FALSE)
 
         if (any(is.na(res_pcts)) || any(res_pcts < 0)) {
-          message(paste("NA or negative numbers in", paste(params, collapse = "_")))
+          message(paste("NA or negative numbers in",
+                        paste(params, collapse = "_")))
         }
         res_pcts[res_pcts < 0] <- 0
         res_pcts <- sweep(res_pcts, 1, rowSums(res_pcts), "/")
@@ -87,7 +89,7 @@ SignatureBased_InnerLoop <- function(signature, bulk_mat, params, algorithm) {
       print(paste(res$params, collapse = "  "))
       return(res)
     },
-    ##### Error handling #####
+    ## Error handling ----------------------------------------------------------
     error = function(err) {
       param_set <- paste(params, collapse = "  ")
       msg <- paste("*** Error running param set: ", param_set,

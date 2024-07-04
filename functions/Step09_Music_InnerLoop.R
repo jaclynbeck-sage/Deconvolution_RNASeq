@@ -36,8 +36,8 @@ Music_InnerLoop <- function(sce, bulk_mtx, sc_basis, params, verbose = FALSE) {
                                     test_data = bulk_mtx)
 
   if (Check_MissingMarkers(tmp, params) ||
-    Check_TooFewMarkers(tmp, params, 3) ||
-    Check_NotEnoughNewMarkers(tmp, params)) {
+      Check_TooFewMarkers(tmp, params, 3) ||
+      Check_NotEnoughNewMarkers(tmp, params)) {
     return(NULL)
   }
 
@@ -56,13 +56,16 @@ Music_InnerLoop <- function(sce, bulk_mtx, sc_basis, params, verbose = FALSE) {
   # do is just ignore the error and continue the loop
   tryCatch(
     {
-      result <- music_prop(bulk.mtx = bulk_mtx, sc.sce = sce,
+      cs <- data.frame(cells = names(sc_basis$M.S),
+                       sizes = sc_basis$M.S)
+
+      result <- music_prop(bulk.mtx = bulk_mtx,
+                           sc.sce = sce,
                            markers = markers_use,
                            clusters = "celltype",
                            samples = "sample",
                            verbose = verbose,
-                           cell_size = data.frame(cells = names(sc_basis$M.S),
-                                                  sizes = sc_basis$M.S),
+                           cell_size = cs,
                            ct.cov = ct_cov,
                            centered = centered,
                            normalize = normalize,

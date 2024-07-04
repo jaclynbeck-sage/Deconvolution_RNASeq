@@ -89,10 +89,12 @@ for (P in 1:nrow(params_loop1)) {
       sc_basis <- MuSiC::music_basis(sce_unfiltered,
                                      non.zero = TRUE,
                                      markers = rownames(sce_unfiltered),
-                                     clusters = "celltype", samples = "sample",
+                                     clusters = "celltype",
+                                     samples = "sample",
                                      select.ct = NULL,
                                      ct.cov = FALSE,
                                      verbose = TRUE)
+
       # Save for later use
       Save_MusicBasis(sc_basis,
                       params_loop1$reference_data_name[P],
@@ -136,7 +138,7 @@ for (P in 1:nrow(params_loop1)) {
   # languages), we also change all cell type names to lower case.
   if (algorithm == "CibersortX") {
     # Copy adjusted signature file to cibersort directory if the file exists
-    sig_params <- params_loop1[P,] %>% select(-reference_input_type)
+    sig_params <- params_loop1[P, ] %>% select(-reference_input_type)
     sig_filename <- list.files(dir_cibersort_corrected_signatures,
                                pattern = paste(sig_params, collapse = "_"),
                                full.names = TRUE)
@@ -146,7 +148,6 @@ for (P in 1:nrow(params_loop1)) {
                 to = file.path(dir_cibersort, basename(sig_filename)),
                 overwrite = TRUE)
       data$singlecell_filename <- ""
-
     } else {
       # Otherwise CibersortX needs the original single cell data to compute an
       # adjusted signature

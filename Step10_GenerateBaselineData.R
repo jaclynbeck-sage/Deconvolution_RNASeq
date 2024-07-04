@@ -37,11 +37,10 @@ params_permute <- expand.grid(normalization = c("cpm", "tmm", "tpm"),
                               reference_input_type = c("signature"),
                               stringsAsFactors = FALSE)
 
-##### Main loop #####
+# Main loop --------------------------------------------------------------------
 
 set.seed(12345)
 for (granularity in c("broad_class", "sub_class")) {
-
   # Get which celltypes are present by looking at the metadata from the Cain
   # dataset, which was used to map cell type labels on to all other single cell
   # datasets
@@ -54,7 +53,7 @@ for (granularity in c("broad_class", "sub_class")) {
     samples <- colnames(se)
 
 
-    ##### Random uniform dataset #####
+    ## Random uniform dataset --------------------------------------------------
     # Generate 100 'parameter sets' of random estimates to mimic the structure
     # of algorithm output
 
@@ -65,7 +64,8 @@ for (granularity in c("broad_class", "sub_class")) {
 
     dataset_uniform <- lapply(1:100, function(N) {
       ests <- runif(length(celltypes) * length(samples), min = 0, max = 1)
-      ests <- matrix(ests, nrow = length(samples),
+      ests <- matrix(ests,
+                     nrow = length(samples),
                      dimnames = list(samples, celltypes))
 
       # Sum to 1
@@ -80,7 +80,7 @@ for (granularity in c("broad_class", "sub_class")) {
     names(dataset_uniform) <- paste(name_base, 1:100, sep = "_")
 
 
-    ##### Educated guesses #####
+    ### Educated guesses -------------------------------------------------------
     # 20 per reference data set = 100 total
 
     params <- data.frame("reference_data_name" = "random_educated",
@@ -100,8 +100,12 @@ for (granularity in c("broad_class", "sub_class")) {
       # 20 param sets with random estimates based on mean and sd of reference
       # dataset.
       list_tmp <- lapply(1:20, function(N) {
-        ests <- rnorm(length(samples) * length(celltypes), mean = means, sd = sds)
-        ests <- matrix(ests, nrow = length(samples), byrow = TRUE,
+        ests <- rnorm(length(samples) * length(celltypes),
+                      mean = means,
+                      sd = sds)
+        ests <- matrix(ests,
+                       nrow = length(samples),
+                       byrow = TRUE,
                        dimnames = list(samples, celltypes))
         ests[ests < 0] <- 0
 
@@ -120,7 +124,7 @@ for (granularity in c("broad_class", "sub_class")) {
     }
 
 
-    ##### Bias toward one cell type #####
+    ## Bias toward one cell type -----------------------------------------------
     # 10 per cell type = 70 total for broad cell types, 240 for fine cell types
     params <- data.frame("reference_data_name" = "random_biased",
                          "test_data_name" = bulk_dataset,
@@ -133,12 +137,15 @@ for (granularity in c("broad_class", "sub_class")) {
         # Generate a matrix with all low values, then replace the target cell type
         # column with high values
         mean_sd <- 0.05 / length(celltypes)
-        ests <- rnorm(length(samples) * length(celltypes), mean = mean_sd, sd = mean_sd)
-        ests <- matrix(ests, nrow = length(samples),
+        ests <- rnorm(length(samples) * length(celltypes),
+                      mean = mean_sd,
+                      sd = mean_sd)
+        ests <- matrix(ests,
+                       nrow = length(samples),
                        dimnames = list(samples, celltypes))
 
         bias_vals <- rnorm(length(samples), mean = 0.95, sd = 0.05)
-        ests[,ct] <- bias_vals
+        ests[, ct] <- bias_vals
 
         ests[ests < 0] <- 0
 
@@ -157,7 +164,7 @@ for (granularity in c("broad_class", "sub_class")) {
     }
 
 
-    ##### Data set of all 0 estimates #####
+    ## Data set of all 0 estimates ---------------------------------------------
 
     params <- data.frame("reference_data_name" = "zeros",
                          "test_data_name" = bulk_dataset,
@@ -177,7 +184,7 @@ for (granularity in c("broad_class", "sub_class")) {
                          dataset_bias, dataset_zeros)
 
 
-    ##### Write copies of the estimate list #####
+    ## Write copies of the estimate list ---------------------------------------
     # One copy per combination of test dataset / normalization / regression
 
     for (R in 1:nrow(params_permute)) {
@@ -186,7 +193,7 @@ for (granularity in c("broad_class", "sub_class")) {
         err_list_copy <- err_set
 
         err_list_copy <- lapply(err_list_copy, function(err_item) {
-          err_item$params <- cbind(err_item$params, params_permute[R,])
+          err_item$params <- cbind(err_item$params, params_permute[R, ])
           cols_keep <- c("reference_data_name", "test_data_name", "granularity",
                          "normalization", "regression_method", "trial")
           rownames(err_item$params) <- paste(err_item$params[cols_keep],
@@ -200,13 +207,14 @@ for (granularity in c("broad_class", "sub_class")) {
 
         # Create the same naming scheme as other algorithm output
         params_base <- err_list_copy[[1]]$params %>%
-                          select(reference_data_name, test_data_name, granularity,
-                                 reference_input_type, normalization,
-                                 regression_method)
+          select(reference_data_name, test_data_name, granularity,
+                 reference_input_type, normalization, regression_method)
         name_base <- paste(params_base, collapse = "_")
 
-        Save_AlgorithmOutputList(err_list_copy, algorithm = "Baseline",
-                                 test_dataset = bulk_dataset, name_base = name_base)
+        Save_AlgorithmOutputList(err_list_copy,
+                                 algorithm = "Baseline",
+                                 test_dataset = bulk_dataset,
+                                 name_base = name_base)
       }
     }
   }

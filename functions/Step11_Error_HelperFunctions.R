@@ -5,21 +5,37 @@ library(lme4)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
 
+# Goodness-of-fit error calculations -------------------------------------------
+
+# Calculate goodness of fit (GOF) for each sample across 3 metrics (correlation,
+# root mean squared error, and mean absolute percent error).
+#
+# Arguments:
+#   meas_expr_cpm - the observed bulk data matrix, on the linear scale (CPM-,
+#                   TMM-, or TPM-normalized values depending on the parameters)
+#   est_expr - the estimated expression matrix calculated from multiplying a
+#              signature matrix by the estimated cell type percentages, on the
+#              linear scale
+#   param_id - a string uniquely identifying this set of parameters
+#
+# Returns:
+#   a data frame where rows are samples and columns are the error metrics plus
+#   some metadata
 CalcGOF_BySample <- function(meas_expr_cpm, est_expr, param_id) {
   meas_expr_cpm <- as.matrix(meas_expr_cpm)
 
   # Using log2 transformation for correlation so distributions are more gaussian
   cor_sample <- sapply(colnames(meas_expr_cpm), function(sample) {
-    cor(log2(meas_expr_cpm[,sample]+1), log2(est_expr[,sample]+1),
+    cor(log2(meas_expr_cpm[, sample] + 1), log2(est_expr[, sample] + 1),
         use = "na.or.complete")
   })
 
   rmse_sample <- sapply(colnames(meas_expr_cpm), function(sample) {
-    rmse(meas_expr_cpm[,sample], est_expr[,sample])
+    rmse(meas_expr_cpm[, sample], est_expr[, sample])
   })
 
   mape_sample <- sapply(colnames(meas_expr_cpm), function(sample) {
-    ok <- meas_expr_cpm[,sample] != 0 | est_expr[,sample] != 0
+    ok <- meas_expr_cpm[, sample] != 0 | est_expr[, sample] != 0
     smape(meas_expr_cpm[ok, sample], est_expr[ok, sample]) / 2
   })
 
@@ -33,10 +49,25 @@ CalcGOF_BySample <- function(meas_expr_cpm, est_expr, param_id) {
   return(gof_by_sample)
 }
 
+
+# Calculate goodness of fit (GOF) for each sample across 3 metrics using a
+# linear model and the formula for each bulk data set.
+#
+# Arguments:
+#   bulk_dataset_name - the name of the bulk data set
+#   covariates - a data frame of covariates for this data set
+#   meas_expr_log - the observed bulk data matrix, on the log2-scale (log2 of
+#                   CPM-normalized values)
+#   est_pct - a matrix of estimated percentages where rows are samples and
+#             columns are cell types
+#   param_id - a string uniquely identifying this set of parameters
+#
+# Returns:
+#   same data frame format as CalcGOF_BySample
 CalcGOF_BySample_LM <- function(bulk_dataset_name, covariates, meas_expr_log,
                                 est_pct, param_id) {
-  covariates_ct <- cbind(covariates[colnames(meas_expr_log),],
-                         est_pct[colnames(meas_expr_log),])
+  covariates_ct <- cbind(covariates[colnames(meas_expr_log), ],
+                         est_pct[colnames(meas_expr_log), ])
 
   formulas <- Load_ModelFormulas(bulk_dataset_name)
 
@@ -48,11 +79,11 @@ CalcGOF_BySample_LM <- function(bulk_dataset_name, covariates, meas_expr_log,
   # ROSMAP benefits from a linear mixed effect model
   # For speed we're using a fixed effect model for ROSMAP, but saving this code
   # just in case.
-  if (bulk_dataset_name == "UNUSED") { #"ROSMAP") {
+  if (bulk_dataset_name == "UNUSED") { # "ROSMAP") {
     form <- paste("expr ~ 0 +", form)
 
     lm_est <- sapply(rownames(meas_expr_log), function(gene) {
-      expr <- meas_expr_log[gene,]
+      expr <- meas_expr_log[gene, ]
 
       res <- lmer(as.formula(form), data = covariates_ct)
       return(fitted(res))
@@ -74,22 +105,40 @@ CalcGOF_BySample_LM <- function(bulk_dataset_name, covariates, meas_expr_log,
 }
 
 
+# Takes the mean goodness-of-fit across all samples, for each error metric
+#
+# Arguments:
+#   gof_by_sample - a data frame where rows are samples and columns are the
+#                   error metrics plus some metadata, as returned by CalcGOF_BySample
+#   bulk_metadata - a data frame of metadata where rows are samples, and one
+#                   column is "tissue"
+#   param_id - a string uniquely identifying this set of parameters
+#
+# Returns:
+#   a data frame containing one row for the means across all samples, plus one
+#   row for each tissue containing the means across all samples in that tissue,
+#   for each signature used in the error calculation
 CalcGOF_Means <- function(gof_by_sample, bulk_metadata, param_id) {
+  # take the mean of each numerical column across all samples
   gof_means_all <- gof_by_sample %>%
-                      summarise(across(where(is.numeric), mean),
-                                param_id = unique(param_id),
-                                .groups = "drop")
+    summarise(across(where(is.numeric), mean),
+              param_id = unique(param_id),
+              .groups = "drop")
+
   gof_means_all$tissue <- "All"
 
   tissue <- bulk_metadata[rownames(gof_by_sample), "tissue"]
 
   gof_by_sample <- cbind(gof_by_sample, tissue)
-  gof_means_tissue <- gof_by_sample %>% group_by(tissue) %>%
-                          summarise(across(where(is.numeric), mean),
-                                    param_id = unique(param_id),
-                                    .groups = "drop")
 
-  gof_means <- rbind(gof_means_all, gof_means_tissue[,colnames(gof_means_all)])
+  # mean of numerical columns for samples within a given tissue
+  gof_means_tissue <- gof_by_sample %>%
+    group_by(tissue) %>%
+    summarise(across(where(is.numeric), mean),
+              param_id = unique(param_id),
+              .groups = "drop")
+
+  gof_means <- rbind(gof_means_all, gof_means_tissue[, colnames(gof_means_all)])
   gof_means$signature <- unique(gof_by_sample$signature)
   gof_means$solve_type <- unique(gof_by_sample$solve_type)
 
@@ -97,12 +146,36 @@ CalcGOF_Means <- function(gof_by_sample, bulk_metadata, param_id) {
 }
 
 
+# Calculates statistics about goodness-of-fit data:
+#   - the mean and SD of estimated percentages for each cell type for a given
+#     sample across all estimates in the file
+#   - the same mean and SD except only across the top 10-scoring estimates in
+#     the file
+#   - the mean of these means across all samples
+#
+# Arguments:
+#   all_ests - a melted data frame with columns "param_id", "sample", "celltype",
+#              and "percent", representing the estimates for each cell type for
+#              each sample
+#   bulk_metadata - a data frame of metadata, where rows are bulk samples and
+#                   one column is "tissue"
+#   gof_means_all - a data frame with N rows per parameter set (where N = [1 +
+#                   the number of tissues] * [the number of signatures]), and
+#                   columns are the mean error metrics as returned by CalcGOF_Means
+#
+# Returns:
+#   a list of statistics, containing items "by_sample", "all_tissue",
+#   "by_tissue" (all data frames), and "top_10_stats" (a list, one entry for
+#   each error metric)
 CalcEstimateStats <- function(all_ests, bulk_metadata, gof_means_all) {
-  estimate_stats_sample <- all_ests %>% group_by(celltype, sample) %>%
-                              summarize(mean_pct = mean(percent),
-                                        sd_pct = sd(percent),
-                                        rel_sd_pct = sd_pct / mean_pct,
-                                        .groups = "drop_last")
+  # Mean of each cell type percentage over all estimates in the file, per
+  # celltype per sample
+  estimate_stats_sample <- all_ests %>%
+    group_by(celltype, sample) %>%
+    summarize(mean_pct = mean(percent),
+              sd_pct = sd(percent),
+              rel_sd_pct = sd_pct / mean_pct,
+              .groups = "drop_last")
 
   estimate_stats_sample$tissue <- bulk_metadata[estimate_stats_sample$sample, "tissue"]
 
@@ -110,11 +183,19 @@ CalcEstimateStats <- function(all_ests, bulk_metadata, gof_means_all) {
   # this if there are 10 or more params. Less than that and the mean/sd don't
   # mean a lot.
   if (length(unique(gof_means_all$param_id)) >= 10) {
-    errs_tmp <- gof_means_all %>% group_by(param_id, tissue) %>%
+    # Each combination of parameter set / tissue has multiple rows for each
+    # error metric, because errors were calculated using multiple signature
+    # matrices. Get the best cor/rMSE/mAPE from each combination of parameter
+    # set / tissue. Tissue can be a specific tissue or "All".
+    errs_tmp <- gof_means_all %>%
+      group_by(param_id, tissue) %>%
       summarize(cor = max(cor),
                 rMSE = min(rMSE),
                 mAPE = min(mAPE),
                 .groups = "drop")
+
+    # Top 10 scoring parameter sets per tissue. Each error metric may have
+    # different top 10 lists.
     top_cor <- errs_tmp %>% group_by(tissue) %>% top_n(10, wt = cor)
     top_rMSE <- errs_tmp %>% group_by(tissue) %>% top_n(10, wt = -rMSE)
     top_mAPE <- errs_tmp %>% group_by(tissue) %>% top_n(10, wt = -mAPE)
@@ -126,7 +207,10 @@ CalcEstimateStats <- function(all_ests, bulk_metadata, gof_means_all) {
     ests_tmp <- all_ests
     ests_tmp$tissue <- bulk_metadata[ests_tmp$sample, "tissue"]
 
+    # Stats for each of the error metrics on the top 10 scoring parameter sets
+    # for each tissue
     top_10_stats <- lapply(top_10, function(top_errs) {
+      # Calculate stats for each tissue (which may be a specific tissue or "All")
       ests_top_10 <- lapply(unique(top_errs$tissue), function(tiss) {
         top_tmp <- subset(top_errs, tissue == tiss)
         ests_filt <- subset(ests_tmp, param_id %in% top_tmp$param_id)
@@ -135,7 +219,10 @@ CalcEstimateStats <- function(all_ests, bulk_metadata, gof_means_all) {
           ests_filt <- subset(ests_filt, tissue == tiss)
         }
 
-        ests_stats <- ests_filt %>% group_by(celltype, sample) %>%
+        # Mean cell type percent for each cell type for each sample, across the
+        # top 10 scoring parameter sets
+        ests_stats <- ests_filt %>%
+          group_by(celltype, sample) %>%
           summarize(mean_pct = mean(percent),
                     sd_pct = sd(percent),
                     rel_sd_pct = sd_pct / mean_pct,
@@ -145,6 +232,7 @@ CalcEstimateStats <- function(all_ests, bulk_metadata, gof_means_all) {
         return(ests_stats)
       })
       ests_top_10 <- do.call(rbind, ests_top_10)
+      return(ests_top_10)
     })
   } else {
     # If there aren't at least 10 items to compare, just copy estimate_stats_sample
@@ -157,18 +245,21 @@ CalcEstimateStats <- function(all_ests, bulk_metadata, gof_means_all) {
     names(top_10_stats) <- c("cor", "rMSE", "mAPE")
   }
 
-  # average and sd of the *mean* values for each sample
-  estimate_stats_all <- estimate_stats_sample %>% group_by(celltype) %>%
-                          summarize(mean_pct = mean(mean_pct),
-                                    mean_sd_pct = mean(sd_pct),
-                                    mean_rel_sd_pct = mean(rel_sd_pct),
-                                    .groups = "drop_last")
+  # average and sd of the *mean* values for each sample, per cell type
+  estimate_stats_all <- estimate_stats_sample %>%
+    group_by(celltype) %>%
+    summarize(mean_pct = mean(mean_pct),
+              mean_sd_pct = mean(sd_pct),
+              mean_rel_sd_pct = mean(rel_sd_pct),
+              .groups = "drop_last")
 
-  estimate_stats_tissue <- estimate_stats_sample %>% group_by(tissue, celltype) %>%
-                              summarize(mean_pct = mean(mean_pct),
-                                        mean_sd_pct = mean(sd_pct),
-                                        mean_rel_sd_pct = mean(rel_sd_pct),
-                                        .groups = "drop_last")
+  # Same but broken down by tissue
+  estimate_stats_tissue <- estimate_stats_sample %>%
+    group_by(tissue, celltype) %>%
+    summarize(mean_pct = mean(mean_pct),
+              mean_sd_pct = mean(sd_pct),
+              mean_rel_sd_pct = mean(rel_sd_pct),
+              .groups = "drop_last")
 
   return(list("by_sample" = estimate_stats_sample,
               "all_tissue" = estimate_stats_all,
@@ -177,6 +268,10 @@ CalcEstimateStats <- function(all_ests, bulk_metadata, gof_means_all) {
 }
 
 
+# IHC error functions ----------------------------------------------------------
+
+# NOTE: This function has not been used or tested in a long time so it probably
+# doesn't work.
 CalcError_MeanIHC_AllTissues <- function(err_list) {
   # IHC props and percent errors are per individual, get the mean for each
   # error type across all individuals
@@ -202,30 +297,41 @@ CalcError_MeanIHC_AllTissues <- function(err_list) {
 }
 
 
+# NOTE: This function has not been used or tested in a long time so it probably
+# doesn't work.
 CalcError_MeanIHC_ByTissue <- function(err_list, params, bulk_meta) {
   errs_ihc_props <- err_list[["errs_ihc_props"]][names(params)]
   errs_ihc_props <- lapply(names(errs_ihc_props), function(N) {
     err <- errs_ihc_props[[N]]
-    err <- cbind(err, tissue = bulk_meta[rownames(err),"tissue"])
-    df <- err %>% group_by(tissue) %>%
+    err <- cbind(err, tissue = bulk_meta[rownames(err), "tissue"])
+
+    df <- err %>%
+      group_by(tissue) %>%
       summarize(across(!contains("tissue"), ~ mean(.x, na.rm = TRUE)))
     df$name <- N
+
     return(df)
   })
+
   errs_ihc_props <- do.call(rbind, errs_ihc_props) %>%
     dplyr::rename(cor_props = cor,
                   rMSE_props = rMSE,
                   mAPE_props = mAPE)
 
   errs_ihc_pct <- err_list[["errs_ihc_pct"]][names(params)]
+
   errs_ihc_pct <- lapply(names(errs_ihc_pct), function(N) {
     err <- errs_ihc_pct[[N]]
-    err <- cbind(err, tissue = bulk_meta[rownames(err),"tissue"])
-    df <- err %>% group_by(tissue) %>%
+    err <- cbind(err, tissue = bulk_meta[rownames(err), "tissue"])
+
+    df <- err %>%
+      group_by(tissue) %>%
       summarize(across(!contains("tissue"), ~ mean(.x, na.rm = TRUE)))
     df$name <- N
+
     return(df)
   })
+
   errs_ihc_pct <- do.call(rbind, errs_ihc_pct) %>%
     dplyr::rename(cor_pct = cor,
                   rMSE_pct = rMSE,
@@ -236,15 +342,19 @@ CalcError_MeanIHC_ByTissue <- function(err_list, params, bulk_meta) {
 }
 
 
+# Utility functions for loading error files ------------------------------------
+
+# UNUSED -- delete if Get_AllErrorsAsDf is deleted
 CalcError_MeanByTissue <- function(bulk_dataset, err_list, params, bulk_meta) {
   # TODO add metadata to error df in calculate errors function
   errs_by_sample <- err_list[["gof_sample"]][names(params)]
   errs_by_sample <- lapply(errs_by_sample, function(df) {
-    cbind(df, tissue = bulk_meta[rownames(df),"tissue"])
+    cbind(df, tissue = bulk_meta[rownames(df), "tissue"])
   })
 
   errs_by_tissue <- lapply(names(errs_by_sample), function(E) {
-    df <- errs_by_sample[[E]] %>% group_by(tissue) %>%
+    df <- errs_by_sample[[E]] %>%
+      group_by(tissue) %>%
       summarize(across(c("cor", "rMSE", "mAPE"), ~ mean(.x, na.rm = TRUE)))
     df$name <- E
     return(df)
@@ -260,6 +370,7 @@ CalcError_MeanByTissue <- function(bulk_dataset, err_list, params, bulk_meta) {
 }
 
 
+# UNUSED -- delete if Get_AllErrorsAsDf is deleted
 Filter_Params <- function(err_list, best_params) {
   params <- lapply(err_list[["params"]], function(X) {
     as.list(X %>% select(-test_data_name))
@@ -273,8 +384,20 @@ Filter_Params <- function(err_list, best_params) {
 
 # Loads all the "best_errors" files into one big list. The errors can be
 # concatenated into one data frame but the params lists have to be coded into
-# strings because they differ between algorithms
+# strings because they differ between algorithms so they have differing numbers
+# of columns.
+#
+# Arguments:
+#   bulk_datasets - a list of bulk dataset names to load ("Mayo", "MSBB", and/or
+#                   "ROSMAP")
+#   granularity - either "broad_class" or "sub_class"
+#
+# Returns:
+#   a list containing two entries: "errors" is a data frame with all errors
+#   from all files concatenated together, and "quality stats" is a data frame
+#   with all statistics from all files concatenated together
 Get_AllBestErrorsAsDf <- function(bulk_datasets, granularity) {
+  # List of "best errors" files matching the bulk data set names and granularity
   file_list <- list.files(dir_best_errors,
                           pattern = paste0("[",
                                            paste(bulk_datasets, collapse = "|"),
@@ -284,23 +407,26 @@ Get_AllBestErrorsAsDf <- function(bulk_datasets, granularity) {
   best_err_list <- lapply(file_list, function(file) {
     data <- readRDS(file)
     print(file)
+
+    # Encode the parameters as strings. We don't need the reference_data_name
+    # or test_data_name because they're the same for every entry in this file,
+    # and total_markers_used isn't really a parameter
     param_strings <- format(data$params, trim = TRUE) %>%
-                        select(-reference_data_name, -test_data_name,
-                               -total_markers_used) %>%
-                        apply(1, paste, collapse = "_")
+      select(-reference_data_name, -test_data_name, -total_markers_used) %>%
+      apply(1, paste, collapse = "_")
 
     param_strings <- data.frame(param_id = names(param_strings),
                                 param_string = as.character(param_strings))
 
+    # Add the parameter strings to the main errors data frame
     errs_df <- merge(data$means, param_strings, by = "param_id")
 
-    if (!("reference_input_type" %in% colnames(data$params))) {
-      data$params$reference_input_type <- "signature"
-    }
-    errs_df <- merge(errs_df, select(data$params, reference_data_name,
-                                     test_data_name, algorithm,
-                                     reference_input_type, normalization,
-                                     regression_method),
+    # Merge a subset of the actual parameters into the data frame. These
+    # parameters exist in every error file for every algorithm
+    errs_df <- merge(errs_df,
+                     select(data$params, reference_data_name, test_data_name,
+                            algorithm, reference_input_type, normalization,
+                            regression_method),
                      by.x = "param_id", by.y = "row.names")
 
     qual_stats <- Get_QualityStatsAsDf(data)
@@ -313,6 +439,8 @@ Get_AllBestErrorsAsDf <- function(bulk_datasets, granularity) {
               "quality_stats" = do.call(rbind, lapply(best_err_list, "[[", "quality_stats"))))
 }
 
+
+# UNUSED -- possibly delete
 Get_AllBestParamsAsDf <- function(reference_datasets, granularity) {
   best_params_all <- lapply(reference_datasets, function(ref_dataset) {
     data <- readRDS(file.path(dir_output, str_glue("best_params_{ref_dataset}_{granularity}.rds")))
@@ -324,36 +452,56 @@ Get_AllBestParamsAsDf <- function(reference_datasets, granularity) {
 }
 
 
+# Helper function to extract statistics from an error file and concatenate them
+# into a data frame
+#
+# Arguments:
+#   data - a named list of the best errors from each file as generated by
+#          Step12_Get_TopParamSets
+#
+# Returns:
+#   a data frame containing columns for parameters and for percent bad inhibitory
+#   ratio data and percent of valid estimates data from each file
 Get_QualityStatsAsDf <- function(data) {
+  # Merge parameters data frame with percent bad inhibitory ratio data
   pct_bad_inh <- merge(data$params,
-                       data.frame(pct_bad_inhibitory_ratio = data$pct_bad_inhibitory_ratio,
-                                  row.names = names(data$pct_bad_inhibitory_ratio)),
+                       data.frame(
+                         pct_bad_inhibitory_ratio = data$pct_bad_inhibitory_ratio,
+                         row.names = names(data$pct_bad_inhibitory_ratio)
+                       ),
                        by = "row.names")
 
   grouping_cols <- c("reference_data_name", "test_data_name", "granularity",
                      "normalization", "regression_method", "algorithm")
 
+  # Mean ratio across each combination of the above columns
   pct_bad_inh <- pct_bad_inh %>%
     group_by_at(grouping_cols) %>%
     summarize(mean_pct_bad_inhibitory_ratio = mean(pct_bad_inhibitory_ratio),
               .groups = "drop")
 
   pct_valid <- data$n_valid_results / data$n_possible_results
+
+  # Get the basic parameters that define each file
   params_mod <- data$params %>%
     select(reference_data_name, test_data_name, granularity,
            normalization, regression_method, algorithm) %>%
     distinct()
+
   rownames(params_mod) <- str_replace(rownames(params_mod), "_[0-9].*", "")
 
+  # Add the percentage of valid estimates to these parameters
   pct_valid <- merge(params_mod, as.data.frame(pct_valid), by = "row.names")
 
+  # Merge all the data together
   quality_stats <- merge(pct_bad_inh, pct_valid, by = grouping_cols) %>%
-                      dplyr::rename(file_id = Row.names)
+    dplyr::rename(file_id = Row.names)
 
   return(quality_stats)
 }
 
 
+# UNUSED -- possibly delete
 Get_AllErrorsAsDf <- function(bulk_datasets, reference_datasets, algorithms, granularity, best_params) {
   # Read in all errors for each dataset & data type,
   # put in one big dataframe
@@ -379,7 +527,7 @@ Get_AllErrorsAsDf <- function(bulk_datasets, reference_datasets, algorithms, gra
           errs <- cbind(errs, errs_ihc)
         }
 
-        errs <- errs[names(params),]
+        errs <- errs[names(params), ]
         errs$tissue <- "All"
         errs$name <- rownames(errs)
 
@@ -421,6 +569,22 @@ Get_AllErrorsAsDf <- function(bulk_datasets, reference_datasets, algorithms, gra
 }
 
 
+# Load all estimates from all files matching the arguments to this function,
+# into a single data frame
+#
+# Arguments:
+#   ref_dataset - the name of the reference (single cell) dataset
+#   bulk_dataset - the name of the bulk data set
+#   algorithms - a list of algorithms to load data for
+#   granularity - either "broad_class" or "sub_class"
+#   best_errors - the "errors" data frame from the list output by
+#                 Get_AllBestErrorsAsDf
+#   est_fields - a named list describing what field corresponds to cell type
+#                estimates for each algorithm
+#
+# Returns:
+#   a melted data frame with columns for cell type, estimated percent, sample,
+#   param id, and algorithm
 Get_AllEstimatesAsDf <- function(ref_dataset, bulk_dataset, algorithms,
                                  granularity, best_errors, est_fields) {
   ests_alg <- list()
@@ -431,31 +595,43 @@ Get_AllEstimatesAsDf <- function(ref_dataset, bulk_dataset, algorithms,
     }
     est_field <- est_fields[[algorithm]]
 
+    # Find the base parameters for each file we want to load
     alg_name <- algorithm
     file_params <- best_errors %>%
-                    subset(reference_data_name == ref_dataset &
-                             test_data_name == bulk_dataset &
-                             algorithm == alg_name) %>%
-                    select(reference_data_name, test_data_name, algorithm,
-                           reference_input_type, normalization,
-                           regression_method) %>%
-                    distinct()
+      subset(reference_data_name == ref_dataset &
+               test_data_name == bulk_dataset &
+               algorithm == alg_name) %>%
+      select(reference_data_name, test_data_name, algorithm,
+             reference_input_type, normalization, regression_method) %>%
+      distinct()
 
     if (nrow(file_params) == 0) {
-      print(str_glue(paste0("No valid data found for {algorithm} / {bulk_dataset}",
-                            " / {ref_dataset} / {granularity}. Skipping...")))
+      print(str_glue(paste0("No valid data found for {algorithm} / ",
+                            "{bulk_dataset} / {ref_dataset} / {granularity}. ",
+                            "Skipping...")))
       next
     }
 
+    # Each row of file_params describes a single estimate file -- load that
+    # file, filter to the best parameter sets, and add some extra metadata to
+    # the data frame for each parameter set
     ests_list <- lapply(1:nrow(file_params), function(P) {
-      ests <- Load_AlgorithmOutputList(algorithm, ref_dataset, bulk_dataset,
-                                       granularity,
-                                       reference_input_type = file_params$reference_input_type[P],
-                                       normalization = file_params$normalization[P],
-                                       regression_method = file_params$regression_method[P])
+      ests <- Load_AlgorithmOutputList(
+        algorithm,
+        ref_dataset,
+        bulk_dataset,
+        granularity,
+        reference_input_type = file_params$reference_input_type[P],
+        normalization = file_params$normalization[P],
+        regression_method = file_params$regression_method[P]
+      )
+
+      # Filter to the best parameter sets and get the estimates data frames
       ests <- ests[names(ests) %in% best_errors$param_id]
       ests <- lapply(ests, "[[", est_field)
 
+      # We need to add "sample" and "param_id" columns to the estimates data
+      # frames so they can be identified when concatenated
       ests <- lapply(names(ests), FUN = function(X) {
         ests[[X]] <- as.data.frame(ests[[X]])
         ests[[X]]$sample <- rownames(ests[[X]])
@@ -468,44 +644,41 @@ Get_AllEstimatesAsDf <- function(ref_dataset, bulk_dataset, algorithms,
       return(ests_df)
     })
 
+    # Concatenate all the estimates together
     ests_df <- do.call(rbind, ests_list)
 
     if (length(ests_df) == 0) {
       next
     }
 
-    #params <- lapply(ests, function(X) {
-    #  as.list(X$params %>% select(-test_data_name))
-    #})
-
-    #full_param_ids <- sapply(params, paste, collapse = "_")
-
-    #if (bulk_dataset == "ROSMAP") {
-    #  ests_melt <- lapply(ests_melt, ConvertToROSMAPCelltypes, remove_unused = FALSE)
-    #}
-
     ests_df <- melt(ests_df, variable.name = "celltype", value.name = "pct_est")
-
-    #ests_melt$name <- str_replace(ests_melt$name, "_ROSMAP", "")
     ests_df$algorithm <- algorithm
 
     ests_alg[[algorithm]] <- ests_df
   }
 
+  # Concatenate all data from all algorithms together
   ests_alg <- do.call(rbind, ests_alg)
 
   return(ests_alg)
 }
 
 
+# Takes a nested list of errors and "flattens" it so that it is no longer nested
+# (i.e. all entries are data frames instead of lists of data frames)
+#
+# Arguments:
+#   err_list - a nested list, where each entry is a list of data frames or vectors
+#
+# Returns:
+#   a list where each entry is either a data frame or vector
 Flatten_ErrorList <- function(err_list) {
   fields <- names(err_list[[1]])
   err_list_new <- lapply(fields, function(field) {
     if (is(err_list[[1]][[field]], "data.frame")) {
-      return(do.call(rbind, lapply(err_list, "[[", field)))
-    }
-    else {
-      return(unlist(lapply(err_list, "[[", field)))
+      return(do.call(rbind, lapply(err_list, "[[", field))) # concat data frames
+    } else {
+      return(unlist(lapply(err_list, "[[", field))) # unlist vectors
     }
   })
   names(err_list_new) <- fields

@@ -84,12 +84,10 @@ Scaden_InnerLoop <- function(sce, bulk_mat, params, algorithm = NULL) {
   gc()
 
   # Predict step
-  res_pcts <- omnideconv::deconvolute_scaden(
-    signature = model_path,
-    bulk_gene_expression = bulk_mat,
-    temp_dir = temp_path,
-    verbose = TRUE
-  )
+  res_pcts <- omnideconv::deconvolute_scaden(signature = model_path,
+                                             bulk_gene_expression = bulk_mat,
+                                             temp_dir = temp_path,
+                                             verbose = TRUE)
 
   res <- list("estimates" = res_pcts,
               "params" = params,
