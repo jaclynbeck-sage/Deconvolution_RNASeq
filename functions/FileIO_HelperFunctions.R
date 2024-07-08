@@ -853,8 +853,6 @@ Load_Markers <- function(dataset, granularity, marker_type,
 
   if (any(lengths(markers$filtered) < 3)) {
     return(NULL)
-  } else {
-    markers <- markers$filtered
   }
 
   return(markers)

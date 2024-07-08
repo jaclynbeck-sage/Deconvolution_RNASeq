@@ -24,7 +24,7 @@ SignatureBased_InnerLoop <- function(signature, bulk_mat, params, algorithm) {
   signature <- as.matrix(signature)
 
   # Filter signature matrix according to parameters
-  signature_filt <- FilterSignature_FromParams(signature, params, bulk_mat)
+  signature_filt <- FilterSignature_FromParams(signature, params)
 
   if (Check_MissingMarkers(signature_filt, params) ||
       Check_TooFewMarkers(signature_filt, params, 3) ||

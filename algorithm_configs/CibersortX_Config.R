@@ -30,7 +30,7 @@
 #           uses too much memory and disk space to be able to stack processes.
 alg_config <- list(
   # Used to create params_loop1 (data-specific arguments) in main function
-  normalizations = c("cpm"), # CibersortX works on linear-scale data
+  normalizations = c("cpm", "tpm"), # CibersortX works on linear-scale data
   reference_input_types = c("cibersortx", "signature"), # CibersortX can use a signature matrix it creates,
                                                         # or the signature created by this pipeline
 
@@ -46,5 +46,5 @@ alg_config <- list(
   required_libraries = c("omnideconv"),
 
   # How many cores to use in parallel
-  cores = 1 # CibersortX uses so much memory and disk space that it can't run in parallel
+  cores = 1 # Only use more than one core if batch-adjusted signature matrices are pre-computed
 )

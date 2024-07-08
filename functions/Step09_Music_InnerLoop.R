@@ -32,8 +32,7 @@ Music_InnerLoop <- function(sce, bulk_mtx, sc_basis, params, verbose = FALSE) {
   n_celltypes <- length(levels(sce$celltype)) # Needed for the Check_ functions to work
 
   # We can use the FilterSignature function to get the list of genes to use
-  tmp <- FilterSignature_FromParams(bulk_mtx[, 1:n_celltypes], params,
-                                    test_data = bulk_mtx)
+  tmp <- FilterSignature_FromParams(bulk_mtx[, 1:n_celltypes], params)
 
   if (Check_MissingMarkers(tmp, params) ||
       Check_TooFewMarkers(tmp, params, 3) ||

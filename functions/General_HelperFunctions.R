@@ -399,8 +399,12 @@ CalculateSignature <- function(dataset, granularity, output_type, geom_mean = FA
 #                  expression difference between the cell type and all other
 #                  cell types) or correlation (prioritize markers with the
 #                  highest correlation to other markers for that cell type)
-#   test_data = a data.frame or matrix of expression data. Only used if
-#               marker_order is "correlation".
+#   test_data_name = the name of the test data set. Only used if marker_order
+#                    is "correlation".
+#   normalization = the normalization strategy. Only used if marker_order is
+#                   "correlation".
+#   regression_method = the regression method for the bulk data. Only used if
+#                   marker_order is "correlation".
 #
 # Returns:
 #   signature matrix containing only the genes that pass the specified filters.
@@ -409,7 +413,8 @@ FilterSignature <- function(signature, filter_level = 1, reference_data_name = N
                             granularity = NULL, n_markers = 1.0,
                             marker_type = "dtangle", marker_subtype = "diff",
                             marker_input_type = "pseudobulk",
-                            marker_order = "distance", test_data = NULL) {
+                            marker_order = "distance", test_data_name = NULL,
+                            normalization = NULL, regression_method = NULL) {
   # Filter for genes where at least one cell type expresses at > 1 cpm
   if (filter_level == 1) {
     ok <- which(rowSums(signature >= 1) > 0)
@@ -428,7 +433,9 @@ FilterSignature <- function(signature, filter_level = 1, reference_data_name = N
                              marker_type, marker_subtype, marker_input_type,
                              marker_order,
                              available_genes = rownames(signature),
-                             test_data = test_data)
+                             test_data_name = test_data_name,
+                             normalization = normalization,
+                             regression_method = regression_method)
     if (is.null(markers)) {
       return(NULL)
     }
@@ -448,14 +455,12 @@ FilterSignature <- function(signature, filter_level = 1, reference_data_name = N
 #               (rows = genes, columns = cell types)
 #   params = a named vector or one-row data frame with the parameters to use.
 #            Must contain variables with the same names as the arguments to
-#            Filter_Signature (except for "signature" and "test_data").
-#   test_data = a data.frame or matrix of expression data. Only used if
-#               marker_order is "correlation".
+#            Filter_Signature (except for "signature").
 #
 # Returns:
 #   signature matrix containing only the genes that pass the specified filters.
 #   rows = genes, columns = cell types.
-FilterSignature_FromParams <- function(signature, params, test_data = NULL) {
+FilterSignature_FromParams <- function(signature, params) {
   return(FilterSignature(signature,
                          filter_level = params$filter_level,
                          reference_data_name = params$reference_data_name,
@@ -465,7 +470,9 @@ FilterSignature_FromParams <- function(signature, params, test_data = NULL) {
                          marker_subtype = params$marker_subtype,
                          marker_input_type = params$marker_input_type,
                          marker_order = params$marker_order,
-                         test_data = test_data))
+                         test_data_name = params$test_data_name,
+                         normalization = params$normalization,
+                         regression_method = params$regression_method))
 }
 
 
@@ -483,13 +490,25 @@ FilterSignature_FromParams <- function(signature, params, test_data = NULL) {
 #   a list where each item is a vector of marker genes for a given cell type
 FilterMarkers <- function(reference_data_name, granularity, n_markers,
                           marker_type, marker_subtype, marker_input_type,
-                          marker_order, available_genes, test_data = NULL) {
+                          marker_order, available_genes, test_data_name = NULL,
+                          normalization = NULL, regression_method = NULL) {
   markers <- Load_Markers(reference_data_name, granularity, marker_type,
                           marker_subtype,
                           input_type = marker_input_type)
 
   if (is.null(markers)) {
     return(NULL)
+  }
+
+  if (marker_order == "correlation") {
+    data_name <- paste(test_data_name, normalization, regression_method,
+                       sep = "_")
+    data_name <- str_replace(data_name, "log_", "")
+    data_name <- str_replace(data_name, "counts", "cpm")
+
+    markers <- markers$ordered_by_correlation[[data_name]]
+  } else {
+    markers <- markers$filtered
   }
 
   # Remove genes that don't exist in the data
@@ -500,16 +519,6 @@ FilterMarkers <- function(reference_data_name, granularity, n_markers,
   # We can't use these markers if any cell type has 1 or 0 markers after filtering
   if (any(lengths(markers) < 2)) {
     return(NULL)
-  }
-
-  if (marker_order == "correlation") {
-    if (is.null(test_data)) {
-      message(paste("Error! No data provided for calculating marker",
-                    "correlation. Markers will be ordered by distance",
-                    "instead of correlation."))
-    } else {
-      markers <- OrderMarkers_ByCorrelation(markers, test_data)
-    }
   }
 
   # Percentage of each cell type's markers
@@ -530,6 +539,34 @@ FilterMarkers <- function(reference_data_name, granularity, n_markers,
   })
 
   return(markers)
+}
+
+
+# Shortcut function for FilterMarkers where the 'params' object can get passed
+# in instead of unpacking all the variables inside it.
+#
+# Arguments:
+#   available_genes = a vector of genes that are valid for this data. Usually
+#                     it's a vector of genes that exist in both the single cell
+#                     and bulk data set.
+#   params = a named vector or one-row data frame with the parameters to use.
+#            Must contain variables with the same names as the arguments to
+#            Filter_Markers (except for "available_genes").
+#
+# Returns:
+#   a list where each item is a vector of marker genes for a given cell type
+FilterMarkers_FromParams <- function(available_genes, params) {
+  return(FilterMarkers(reference_data_name = params$reference_data_name,
+                       granularity = params$granularity,
+                       n_markers = params$n_markers,
+                       marker_type = params$marker_type,
+                       marker_subtype = params$marker_subtype,
+                       marker_input_type = params$marker_input_type,
+                       marker_order = params$marker_order,
+                       available_genes = available_genes,
+                       test_data_name = params$test_data_name,
+                       normalization = params$normalization,
+                       regression_method = params$regression_method))
 }
 
 
@@ -626,15 +663,15 @@ OrderMarkers_ByCorrelation <- function(marker_list, data) {
     markers <- marker_list[[N]]
     markers <- markers[markers %in% rownames(data)]
 
-    # Markers don't need to be ordered if there are 2 or less after filtering
-    if (length(markers) <= 2) {
+    # Markers don't need to be ordered if there are 3 or less after filtering
+    if (length(markers) <= 3) {
       return(markers)
     }
 
     markers <- markers[rowSums(data[markers, ] > 0) >= 3]
 
-    # Check again for 2 or less markers after filtering by gene expression
-    if (length(markers) <= 2) {
+    # Check again for 3 or less markers after filtering by gene expression
+    if (length(markers) <= 3) {
       return(markers)
     }
 

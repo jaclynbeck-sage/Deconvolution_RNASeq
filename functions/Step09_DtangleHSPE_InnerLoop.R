@@ -20,12 +20,8 @@
 #   between algorithms), "params", which is the parameter set used for this run,
 #   and "markers", which is the list of genes used as markers for this run
 DtangleHSPE_InnerLoop <- function(Y, pure_samples, params, algorithm) {
-  markers <- FilterMarkers(params$reference_data_name, params$granularity,
-                           params$n_markers, params$marker_type,
-                           params$marker_subtype, params$marker_input_type,
-                           params$marker_order,
-                           available_genes = colnames(Y),
-                           test_data = t(Y[-unlist(pure_samples), ]))
+  markers <- FilterMarkers_FromParams(available_genes = colnames(Y),
+                                      params)
 
   if (Check_MissingMarkers(markers, params) ||
       Check_TooFewMarkers(markers, params, 3) ||

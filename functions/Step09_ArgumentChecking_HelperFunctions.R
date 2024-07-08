@@ -57,7 +57,7 @@ Check_TooFewMarkers <- function(markers_obj, params, low_threshold = 3) {
                               params$marker_type, params$marker_subtype,
                               input_type = params$marker_input_type)
 
-      totals <- sapply(markers, function(X) {
+      totals <- sapply(markers$filtered, function(X) {
         sum(X %in% rownames(markers_obj))
       })
 
@@ -144,7 +144,7 @@ Check_NotEnoughNewMarkers <- function(markers_obj, params) {
                               params$marker_type, params$marker_subtype,
                               input_type = params$marker_input_type)
 
-      totals <- sapply(markers, function(X) {
+      totals <- sapply(markers$filtered, function(X) {
         sum(X %in% rownames(markers_obj))
       })
 

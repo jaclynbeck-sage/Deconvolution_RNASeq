@@ -6,6 +6,9 @@ library(foreach)
 library(doParallel)
 library(stringr)
 
+source(file.path("functions", "FileIO_HelperFunctions.R"))
+source(file.path("functions", "General_HelperFunctions.R"))
+
 # Settings ---------------------------------------------------------------------
 
 # Which algorithms to run for marker finding
@@ -80,4 +83,67 @@ if ("deseq2" %in% marker_types_run) {
 if ("excluded_genes" %in% marker_types_run) {
   source(file.path("functions", "Step06e_FindMarkerExclusions.R"))
   FindMarkerExclusions(datasets, granularities)
+}
+
+
+# Filter markers down to exclude diagnosis-influenced genes --------------------
+
+for (dataset in datasets) {
+  exclusions_file <- file.path(dir_metadata,
+                               str_glue("{dataset}_excluded_genes.rds"))
+  if (file.exists(exclusions_file)) {
+    exclusions <- readRDS(exclusions_file)
+    exclusions <- exclusions$genes
+  } else { # seaRef won't have exclusions based on diagnosis
+    exclusions <- c()
+  }
+
+  marker_files <- list.files(path = dir_markers,
+                             pattern = dataset,
+                             full.names = TRUE)
+
+  for (file in marker_files) {
+    markers <- readRDS(file)
+    markers$filtered_for_dx <- lapply(markers$filtered, setdiff, exclusions)
+    saveRDS(markers, file)
+
+    loss <- (1 - sum(lengths(markers$filtered_for_dx)) / sum(lengths(markers$filtered))) * 100
+    print(str_glue("{basename(file)}: removed {round(loss)}% of total markers"))
+  }
+}
+
+
+# Calculate ordering by correlation --------------------------------------------
+
+# For every combination of reference data set, bulk data set, normalization,
+# regression, and granularity
+
+params_loop <- expand_grid(test_data_name = c("Mayo", "MSBB", "ROSMAP"),
+                           normalization = c("cpm", "tmm", "tpm"),
+                           regression_method = c("none", "edger", "lme", "dream"))
+
+for (granularity in granularities) {
+  for (dataset in datasets) {
+    marker_files <- list.files(path = dir_markers,
+                               pattern = str_glue("{dataset}_{granularity}"),
+                               full.names = TRUE)
+
+    for (file in marker_files) {
+      markers <- readRDS(file)
+      markers$ordered_by_correlation <- list()
+
+      for (P in 1:nrow(params_loop)) {
+        params <- params_loop[P, ]
+        data <- Load_BulkData(params$test_data_name, params$normalization,
+                              params$regression_method)
+        markers_ordered <- OrderMarkers_ByCorrelation(markers$filtered,
+                                                      as.matrix(assay(data, "counts")))
+
+        markers$ordered_by_correlation[[paste(params, collapse = "_")]] <- markers_ordered
+      }
+
+      print(file)
+      saveRDS(markers, file)
+    }
+  }
 }

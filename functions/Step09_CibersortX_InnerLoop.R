@@ -28,7 +28,7 @@ CibersortX_InnerLoop <- function(signature, bulk_mat, reference_filename, params
   # or worry about markers so we ignore those settings from 'params'.
   # Non-CibersortX signature matrix needs to be filtered.
   if (params$reference_input_type != "cibersortx") {
-    signature <- FilterSignature_FromParams(signature, params, bulk_mat)
+    signature <- FilterSignature_FromParams(signature, params)
 
     if (Check_MissingMarkers(signature, params) ||
       Check_TooFewMarkers(signature, params, 3) ||
