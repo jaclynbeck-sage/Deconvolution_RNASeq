@@ -8,16 +8,21 @@ source("Filenames.R")
 
 synLogin()
 
-folders <- list("singlecell" = list("synID" = "syn58807549", "downloadLocation" = dir_input),
+folders <- list("metadata" = list("synID" = "syn58803307", "downloadLocation" = dir_metadata),
+                "singlecell" = list("synID" = "syn58807549", "downloadLocation" = dir_input),
                 "pseudobulk" = list("synID" = "syn58808874", "downloadLocation" = dir_pseudobulk),
                 "bulk" = list("synID" = "syn58841972", "downloadLocation" = dir_input),
                 "markers" = list("synID" = "syn58842534", "downloadLocation" = dir_markers),
                 "signatures" = list("synID" = "syn59480278", "downloadLocation" = dir_signatures),
-                #"errors" = list("synID" = "syn52245653", "downloadLocation" = dir_errors),
-                "external_metadata" = list("synID" = "syn58803307", "downloadLocation" = dir_metadata))
-                #"Mayo" = list("synID" = "syn52587834", "downloadLocation" = dir_mayo_output),
-                #"MSBB" = list("synID" = "syn52587544", "downloadLocation" = dir_msbb_output),
-                #"ROSMAP" = list("synID" = "syn52587984", "downloadLocation" = dir_rosmap_output))
+                "Mayo" = list("synID" = "syn59490216", "downloadLocation" = file.path(dir_estimates, "Mayo")),
+                "MSBB" = list("synID" = "syn59490283", "downloadLocation" = file.path(dir_estimates, "MSBB")),
+                "ROSMAP" = list("synID" = "syn59490358", "downloadLocation" = file.path(dir_estimates, "ROSMAP")),
+                "errors" = list("synID" = "syn60969684", "downloadLocation" = dir_errors),
+                # uncomment only if these files are needed
+                #"hspe_params" = list("synID" = "syn61709305, "downloadLocation" = dir_hspe_params),
+                #"music_basis" = list("synID" = "syn59500238", "downloadLocation" = dir_music_basis),
+                #"scaden_models" = list("synID" = "syn61551467", "downloadLocation" = dir_scaden_models)
+                )
 
 
 # Helper function for recursive download

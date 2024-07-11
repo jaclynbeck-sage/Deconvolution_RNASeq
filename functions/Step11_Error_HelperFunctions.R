@@ -179,41 +179,30 @@ CalcEstimateStats <- function(all_ests, bulk_metadata, gof_means_all) {
 
   estimate_stats_sample$tissue <- bulk_metadata[estimate_stats_sample$sample, "tissue"]
 
-  # Stats for only the top 10-scoring param sets, but we only want to calculate
-  # this if there are 10 or more params. Less than that and the mean/sd don't
-  # mean a lot.
-  if (length(unique(gof_means_all$param_id)) >= 10) {
-    # Each combination of parameter set / tissue has multiple rows for each
-    # error metric, because errors were calculated using multiple signature
-    # matrices. Get the best cor/rMSE/mAPE from each combination of parameter
-    # set / tissue. Tissue can be a specific tissue or "All".
-    errs_tmp <- gof_means_all %>%
-      group_by(param_id, tissue) %>%
-      summarize(cor = max(cor),
-                rMSE = min(rMSE),
-                mAPE = min(mAPE),
-                .groups = "drop")
+  # Top 10 scoring parameter sets per tissue, per signature used to
+  # calculate the error. Each error metric may have different top 10 lists. If
+  # there are less than 10 parameter sets, this just selects all of them.
+  top_cor <- gof_means_all %>% group_by(tissue, signature) %>% top_n(10, wt = cor)
+  top_rMSE <- gof_means_all %>% group_by(tissue, signature) %>% top_n(10, wt = -rMSE)
+  top_mAPE <- gof_means_all %>% group_by(tissue, signature) %>% top_n(10, wt = -mAPE)
 
-    # Top 10 scoring parameter sets per tissue. Each error metric may have
-    # different top 10 lists.
-    top_cor <- errs_tmp %>% group_by(tissue) %>% top_n(10, wt = cor)
-    top_rMSE <- errs_tmp %>% group_by(tissue) %>% top_n(10, wt = -rMSE)
-    top_mAPE <- errs_tmp %>% group_by(tissue) %>% top_n(10, wt = -mAPE)
+  top_10 <- list(cor = top_cor,
+                 rMSE = top_rMSE,
+                 mAPE = top_mAPE)
 
-    top_10 <- list(cor = top_cor,
-                   rMSE = top_rMSE,
-                   mAPE = top_mAPE)
+  ests_tmp <- all_ests
+  ests_tmp$tissue <- bulk_metadata[ests_tmp$sample, "tissue"]
 
-    ests_tmp <- all_ests
-    ests_tmp$tissue <- bulk_metadata[ests_tmp$sample, "tissue"]
+  # Stats for each of the error metrics on the top 10 scoring parameter sets
+  # for each tissue
+  top_10_stats <- lapply(top_10, function(top_errs) {
+    # Calculate stats for each tissue (which may be a specific tissue or "All")
+    ests_top_10 <- lapply(unique(top_errs$tissue), function(tiss) {
+      top_tmp <- subset(top_errs, tissue == tiss)
 
-    # Stats for each of the error metrics on the top 10 scoring parameter sets
-    # for each tissue
-    top_10_stats <- lapply(top_10, function(top_errs) {
-      # Calculate stats for each tissue (which may be a specific tissue or "All")
-      ests_top_10 <- lapply(unique(top_errs$tissue), function(tiss) {
-        top_tmp <- subset(top_errs, tissue == tiss)
-        ests_filt <- subset(ests_tmp, param_id %in% top_tmp$param_id)
+      top_stats <- lapply(unique(top_tmp$signature), function(sig) {
+        top_sub <- subset(top_tmp, signature == sig)
+        ests_filt <- subset(ests_tmp, param_id %in% top_sub$param_id)
 
         if (tiss != "All") {
           ests_filt <- subset(ests_filt, tissue == tiss)
@@ -229,21 +218,16 @@ CalcEstimateStats <- function(all_ests, bulk_metadata, gof_means_all) {
                     .groups = "drop_last")
 
         ests_stats$tissue <- tiss
+        ests_stats$signature <- sig
         return(ests_stats)
       })
-      ests_top_10 <- do.call(rbind, ests_top_10)
-      return(ests_top_10)
+
+      top_stats <- do.call(rbind, top_stats)
     })
-  } else {
-    # If there aren't at least 10 items to compare, just copy estimate_stats_sample
-    # and mimic the structure of top_10_stats
-    top_10_stats <- lapply(c("cor", "rMSE", "mAPE"), function(X) {
-      tmp <- estimate_stats_sample
-      tmp$tissue <- "All"
-      return(rbind(tmp, estimate_stats_sample))
-    })
-    names(top_10_stats) <- c("cor", "rMSE", "mAPE")
-  }
+
+    ests_top_10 <- do.call(rbind, ests_top_10)
+    return(ests_top_10)
+  })
 
   # average and sd of the *mean* values for each sample, per cell type
   estimate_stats_all <- estimate_stats_sample %>%

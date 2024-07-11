@@ -13,7 +13,7 @@ algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "HSPE",
                 "Music", "Scaden", "Baseline")
 
 for (bulk_dataset in bulk_datasets) {
-  # Dtangle only -- get top 10% scoring parameter sets for each file for use with HSPE
+  # Dtangle only -- get top 10 scoring parameter sets for each file for use with HSPE
   algorithm <- "Dtangle"
   err_files <- Get_ErrorFiles(bulk_dataset, algorithm, granularity,
                               reference_dataset = NULL)
@@ -35,7 +35,7 @@ for (bulk_dataset in bulk_datasets) {
 
     cols_test <- colnames(select_if(errs_all, is.numeric))
 
-    get_10pct_vals <- function(errs_df, col_name) {
+    get_top10_vals <- function(errs_df, col_name) {
       if (length(grep("cor", col_name)) > 0) {
         slice_fun <- slice_max
       } else {
@@ -44,19 +44,19 @@ for (bulk_dataset in bulk_datasets) {
 
       # We calculated errors against 5 signatures for each parameter set, so
       # first we pick the best error among the 5 for each parameter set and
-      # then pick the top 10% errors from that data
+      # then pick the top 10 errors from that data
       top_vals <- errs_df %>%
         group_by(param_id) %>%
         slice_fun(.data[[col_name]], n = 1) %>% # top error for each param set
         group_by(tissue) %>%
-        slice_fun(.data[[col_name]], prop = 0.1) # top 10%
+        slice_fun(.data[[col_name]], n = 10) # top 10
 
       return(top_vals)
     }
 
     best_vals <- lapply(cols_test, function(col_name) {
       df <- errs_all %>%
-        get_10pct_vals(col_name)
+        get_top10_vals(col_name)
       return(df$param_id)
     })
     best_vals <- unique(unlist(best_vals))
