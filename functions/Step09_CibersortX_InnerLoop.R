@@ -32,7 +32,8 @@ CibersortX_InnerLoop <- function(signature, bulk_mat, reference_filename, params
 
     if (Check_MissingMarkers(signature, params) ||
       Check_TooFewMarkers(signature, params, 3) ||
-      Check_NotEnoughNewMarkers(signature, params)) {
+      Check_NotEnoughNewMarkers(signature, params) ||
+      Check_TooManyMarkers(signature, params, high_threshold = 8000)) {
       return(NULL)
     }
   }
