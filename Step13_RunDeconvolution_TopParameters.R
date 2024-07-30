@@ -176,6 +176,14 @@ for (P in 1:nrow(params_loop1)) {
         missing_samples <- setdiff(rownames(data$Y),
                                    rownames(prev_res$estimates))
         data_filt$Y <- data$Y[missing_samples, ]
+
+        # Since "Y" has both pseudobulk and bulk samples in it, missing_samples
+        # will include all pseudobulk samples as well as any missing bulk
+        # samples. This is needed for subsetting data_filt, but when looking at
+        # the length of missing_samples below it will look like more samples
+        # need to be run. This piece of code gets how many bulk samples are
+        # actually missing.
+        missing_samples <- missing_samples[-unlist(data$pure_samples)]
       }
 
       # If this file already has all samples in it, no need to re-run
