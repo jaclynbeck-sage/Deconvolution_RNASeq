@@ -32,11 +32,11 @@
 alg_config <- list(
   # Used to create params_loop1 (data-specific arguments) in main function
   normalizations = c("log_cpm", "log_tmm", "log_tpm"), # HSPE works on log-scale data
-  reference_input_types = c("singlecell", "pseudobulk"),
+  reference_input_types = c("pseudobulk"),
 
   # For params_loop2 (algorithm-specific arguments) in main function
   params_markers = CreateParams_MarkerTypes(), # all args are default
-  additional_args = NULL, # dtangle has additional arguments but we aren't testing them
+  additional_args = NULL, # HSPE has additional arguments but we aren't testing them
 
   # Define the function that runs each param set
   inner_loop_file = file.path("functions", "Step09_DtangleHSPE_InnerLoop.R"),

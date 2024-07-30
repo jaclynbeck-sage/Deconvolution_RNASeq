@@ -68,7 +68,8 @@ dir.create(dir_gene_files, showWarnings = FALSE)
 # Gene conversions used for ROSMAP, Mayo, and MSBB. The files from all three
 # studies (syn27024953, syn27068755, syn26967452) are identical so we just use
 # the one from ROSMAP.
-filename <- synGet("syn26967452", downloadLocation = dir_gene_files)
+filename <- synGet("syn26967452", version = 1,
+                   downloadLocation = dir_gene_files)
 
 ros_genes <- read.table(filename$path, header = TRUE) %>%
   dplyr::select(ensembl_gene_id, hgnc_symbol) %>%
@@ -137,7 +138,8 @@ all_genes <- all_genes %>%
   as.data.frame()
 
 # Get exon lengths for each gene, for the purpose of calculating TPM on the
-# bulk datasets. The bulk datasets were aligned to Ensembl release 97.
+# bulk datasets. The bulk datasets were aligned to Gencode release 31, which
+# corresponds to Ensembl release 97.
 tx <- GenomicFeatures::makeTxDbFromEnsembl(organism = "Homo sapiens",
                                            release = 97)
 ex <- GenomicFeatures::exonsBy(tx, by = "gene")

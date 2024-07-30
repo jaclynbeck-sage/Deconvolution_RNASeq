@@ -30,8 +30,8 @@
 #           multi-threads within each process
 alg_config <- list(
   # Used to create params_loop1 (data-specific arguments) in main function
-  normalizations = c("counts", "cpm", "tmm", "tpm"), # MuSiC works on linear-scale data
-  reference_input_types = c("singlecell", "pseudobulk"),
+  normalizations = c("counts"), # MuSiC works on linear-scale data
+  reference_input_types = c("singlecell"),
 
   # For params_loop2 (algorithm-specific arguments) in main function.
   # MuSiC was designed to use the whole set of genes, but I am testing whether
@@ -42,7 +42,7 @@ alg_config <- list(
   params_markers = CreateParams_FilterableSignature(
                       filter_level = c(0, 1, 2, 3),
                       n_markers = c(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
-                                    3, 5, 10, 20, 50, 100, 200, 500)
+                                    3, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000)
                     ), # all other args are default
   additional_args = expand_grid(ct.cov = c(FALSE), # Their ct.cov methods don't work as intended and/or take forever to converge
                                 centered = c(TRUE, FALSE),

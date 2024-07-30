@@ -30,14 +30,14 @@
 #           uses too much memory and disk space to be able to stack processes.
 alg_config <- list(
   # Used to create params_loop1 (data-specific arguments) in main function
-  normalizations = c("cpm", "tmm"), # Scaden works on linear-scale data
+  normalizations = c("cpm", "tmm", "tpm"), # Scaden works on linear-scale data
   reference_input_types = c("singlecell"),
 
   # For params_loop2 (algorithm-specific arguments) in main function
   params_markers = CreateParams_FilterableSignature(filter_levels = 0), # all other args are default, this
                                                                         # produces one row with filter = 0
                                                                         # since this alg doesn't use markers
-  additional_args = NULL, # No additional args.
+  additional_args = expand_grid(n_cells = c(100, 500, 1000)),
 
   # Define the function that runs each param set
   inner_loop_file = file.path("functions", "Step09_Scaden_InnerLoop.R"),

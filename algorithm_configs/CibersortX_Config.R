@@ -30,19 +30,15 @@
 #           uses too much memory and disk space to be able to stack processes.
 alg_config <- list(
   # Used to create params_loop1 (data-specific arguments) in main function
-  normalizations = c("cpm"), # CibersortX works on linear-scale data
+  normalizations = c("cpm", "tpm"), # CibersortX works on linear-scale data
   reference_input_types = c("cibersortx", "signature"), # CibersortX can use a signature matrix it creates,
                                                         # or the signature created by this pipeline
 
   # For params_loop2 (algorithm-specific arguments) in main function
   # Note: If the input type is "cibersortx", only filter_level = 0 will be used.
-  params_markers = CreateParams_FilterableSignature(filter_levels = c(0, 3),
-                                                    n_markers = 500,
-                                                    marker_types = list("dtangle" = "p.value"),
-                                                    marker_input_types = "pseudobulk",
-                                                    marker_order = "correlation"),
+  params_markers = CreateParams_FilterableSignature(filter_levels = c(0, 3)), # All other args are default
 
-  additional_args = NULL, # No additional args. Most non-default CibersortX config variables are incompatible with single cell data
+  additional_args = expand_grid(batch_correct = c(TRUE, FALSE)), # Use rmbatchSmode to correct signature or not
 
   # Define the function that runs each param set
   inner_loop_file = file.path("functions", "Step09_CibersortX_InnerLoop.R"),
@@ -50,5 +46,5 @@ alg_config <- list(
   required_libraries = c("omnideconv"),
 
   # How many cores to use in parallel
-  cores = 1 # CibersortX uses so much memory and disk space that it can't run in parallel
+  cores = 1 # Only use more than one core if batch-adjusted signature matrices are pre-computed
 )

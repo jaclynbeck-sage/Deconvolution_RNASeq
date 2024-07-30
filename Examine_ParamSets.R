@@ -15,9 +15,7 @@ datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
 granularity <- "broad_class"
 bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
 
-# CibersortX and Scaden only have one parameter set per file so they are not
-# examined in this script
-algorithms <- c("DeconRNASeq", "Dtangle", "DWLS", "HSPE", "Music")
+algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "HSPE", "Music", "Scaden")
 
 do_plot <- TRUE
 
@@ -212,8 +210,8 @@ for (bulk_dataset in bulk_datasets) {
                 rename_centered <- c("TRUE" = "centered", "FALSE" = "not centered")
                 rename_normalize <- c("TRUE" = "normalized", "FALSE" = "not normalized")
 
-                errs_plot$music_arg <- paste(rename_centered[as.character(errs_plot$centered)],
-                                            rename_normalize[as.character(errs_plot$normalize)],
+                errs_all$music_arg <- paste(rename_centered[as.character(errs_all$centered)],
+                                            rename_normalize[as.character(errs_all$normalize)],
                                             sep = " / ")
                 algorithm_arg <- "music_arg"
               }

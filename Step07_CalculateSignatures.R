@@ -16,13 +16,17 @@ for (dataset in datasets) {
   A_sub <- CalculateA(dataset, "sub_class")
 
   saveRDS(list("A_broad_class" = A_broad, "A_sub_class" = A_sub),
-          file = file.path(dir_input, str_glue("{dataset}_A_matrix.rds")))
+          file = file.path(dir_signatures, str_glue("{dataset}_A_matrix.rds")))
 
   # Calculate a signature for each cell type. This matrix includes all genes in
   # the data set and isn't filtered at this point.
   signatures <- lapply(c("cpm", "tmm"), function(output_type) {
-    sig_broad <- CalculateSignature(dataset, "broad_class", output_type)
-    sig_sub <- CalculateSignature(dataset, "sub_class", output_type)
+    sig_broad <- CalculateSignature(dataset, "broad_class",
+                                    output_type,
+                                    geom_mean = FALSE)
+    sig_sub <- CalculateSignature(dataset, "sub_class",
+                                  output_type,
+                                  geom_mean = FALSE)
     return(list("broad_class" = sig_broad, "sub_class" = sig_sub))
   })
 
@@ -35,6 +39,12 @@ for (dataset in datasets) {
     # after casting to a dense matrix and doesn't expose their write function,
     # so this is a re-implementation.
     sce <- Load_SingleCell(dataset, granularity, "counts")
+
+    # CibersortX can't have cell types with '.' in them, and cell types are
+    # converted to lowercase to avoid string sorting issues between R and C.
+    sce$celltype <- str_replace(as.character(sce$celltype), "\\.", "_")
+    sce$celltype <- str_to_lower(sce$celltype)
+
     f_name <- Save_SingleCellToCibersort(sce, dataset, granularity)
     celltypes <- sce$celltype
     rm(sce)
@@ -52,10 +62,21 @@ for (dataset in datasets) {
                                   output_dir = dir_cibersort,
                                   verbose = TRUE)
 
-    # Cell types are out of order and some genes have had "-" replaced by ".",
-    # this undoes that
-    sig <- sig[, levels(celltypes)]
-    rownames(sig) <- str_replace(rownames(sig), "\\.", "-")
+    # Cell types are out of order and lower-case. Putting them in sorted
+    # alphabetical order puts them in the same order as the original cell type
+    # names so they can be directly replaced.
+    sig <- sig[, sort(colnames(sig))]
+    colnames(sig) <- colnames(signatures$cpm[[granularity]])
+
+    # CibersortX changes "-" characters to ".". This undoes that without
+    # modifying gene names that already had "." in them.
+    orig_names <- rownames(signatures$cpm[[granularity]])
+    mismatches <- !(rownames(sig) %in% orig_names)
+
+    if (any(mismatches)) {
+      new_names <- str_replace_all(rownames(sig)[mismatches],  "\\.", "-")
+      rownames(sig)[mismatches] <- new_names
+    }
 
     # Cleanup finished docker container
     system("docker rm $(docker ps -a -q --filter ancestor=cibersortx/fractions)")
@@ -68,5 +89,5 @@ for (dataset in datasets) {
   signatures[["cibersortx"]] <- cx_signatures
 
   saveRDS(signatures,
-          file = file.path(dir_input, str_glue("{dataset}_signature.rds")))
+          file = file.path(dir_signatures, str_glue("{dataset}_signature.rds")))
 }

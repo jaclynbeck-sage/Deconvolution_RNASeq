@@ -32,12 +32,8 @@ source(file.path("functions", "FileIO_HelperFunctions.R"))
 #                                         CibersortX PLUS the full single cell
 #                                         data set as a SingleCellExperiment
 #                                         object
-#   output_type = if reference_input_type is "singlecell" or "pseudobulk",
-#                 specifies how the counts are transformed:
-#                   "counts" will return raw, unaltered counts
-#                   "cpm" will normalize the counts to counts per million
-#                   "logcpm" will take the log2(cpm) of non-zero cpm entries
-#                   "log1p_cpm" will take the log2(cpm+1) of cpms
+#   output_type = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm", or
+#                 "log_tpm". See Load_CountsFile for description.
 #   regression_method = "none", if raw uncorrected counts should be used for
 #                       bulk data, or one of "edger", "deseq2", or "dream", to
 #                       use batch-corrected counts from one of those methods.
@@ -118,8 +114,8 @@ Load_AlgorithmInputData_FromParams <- function(params) {
 #   n_markers = a vector containing one or more percentages (range 0-1.0) and/or
 #               one or more integers (range 2-Inf) specifying how many markers
 #               per cell type to use. If NULL, default values of c(0.01, 0.02,
-#               0.05, 0.1, 0.2, 0.5, 0.75, 1.0, 3, 5, 10, 20, 50, 100, 200) will
-#               be used.
+#               0.05, 0.1, 0.2, 0.5, 0.75, 1.0, 3, 5, 10, 20, 50, 100, 200, 500)
+#               will be used.
 #   marker_types = a list where the names of the entries are one of "autogenes",
 #                  "dtangle", "seurat", or "deseq2" and the items in each entry
 #                  are a list of marker subtypes to use for that algorithm. See
@@ -142,7 +138,7 @@ CreateParams_MarkerTypes <- function(n_markers = NULL, marker_types = NULL,
   # Default values for n_markers and marker_types if they are not defined
   if (is.null(n_markers)) {
     n_markers <- c(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
-                   3, 5, 10, 20, 50, 100, 200)
+                   3, 5, 10, 20, 50, 100, 200, 500)
   }
   if (is.null(marker_types)) {
     marker_types <- list("dtangle" = c("ratio", "diff", "p.value", "regression"),
@@ -332,11 +328,12 @@ CalculateA <- function(dataset, granularity) {
 #   granularity = either "broad_class" or "sub_class"
 #   output_type = either "cpm" or "tmm", for whether to use pure CPM or normalize
 #                 using tmm factors
+#   geom_mean = whether to take the geometric mean instead of the arithmetic mean
 #
 # Returns:
 #   matrix of average CPMs for each gene, for each cell type (rows = genes,
 #   columns = cell types)
-CalculateSignature <- function(dataset, granularity, output_type) {
+CalculateSignature <- function(dataset, granularity, output_type, geom_mean = FALSE) {
   pb <- Load_PseudobulkPureSamples(dataset, granularity, output_type)
 
   pb_cpm <- assay(pb, "counts")
@@ -344,7 +341,15 @@ CalculateSignature <- function(dataset, granularity, output_type) {
   # Get the mean over all samples, for each gene and cell type
   sig <- sapply(levels(pb$celltype), function(ct) {
     cols <- which(pb$celltype == ct)
-    rowMeans(pb_cpm[, cols], na.rm = TRUE)
+    if (geom_mean) {
+      log_means <- rowMeans(log(pb_cpm[, cols] + 1), na.rm = TRUE)
+      cpm_means <- exp(log_means) - 1
+      cpm_means[cpm_means < 0] <- 0
+      #sig <- scuttle::calculateCPM(sig) # TODO is this necessary?
+    } else {
+      cpm_means <- rowMeans(pb_cpm[, cols], na.rm = TRUE)
+    }
+    return(cpm_means)
   })
 
   return(sig)
@@ -394,8 +399,12 @@ CalculateSignature <- function(dataset, granularity, output_type) {
 #                  expression difference between the cell type and all other
 #                  cell types) or correlation (prioritize markers with the
 #                  highest correlation to other markers for that cell type)
-#   test_data = a data.frame or matrix of expression data. Only used if
-#               marker_order is "correlation".
+#   test_data_name = the name of the test data set. Only used if marker_order
+#                    is "correlation".
+#   normalization = the normalization strategy. Only used if marker_order is
+#                   "correlation".
+#   regression_method = the regression method for the bulk data. Only used if
+#                   marker_order is "correlation".
 #
 # Returns:
 #   signature matrix containing only the genes that pass the specified filters.
@@ -404,7 +413,8 @@ FilterSignature <- function(signature, filter_level = 1, reference_data_name = N
                             granularity = NULL, n_markers = 1.0,
                             marker_type = "dtangle", marker_subtype = "diff",
                             marker_input_type = "pseudobulk",
-                            marker_order = "distance", test_data = NULL) {
+                            marker_order = "distance", test_data_name = NULL,
+                            normalization = NULL, regression_method = NULL) {
   # Filter for genes where at least one cell type expresses at > 1 cpm
   if (filter_level == 1) {
     ok <- which(rowSums(signature >= 1) > 0)
@@ -423,7 +433,9 @@ FilterSignature <- function(signature, filter_level = 1, reference_data_name = N
                              marker_type, marker_subtype, marker_input_type,
                              marker_order,
                              available_genes = rownames(signature),
-                             test_data = test_data)
+                             test_data_name = test_data_name,
+                             normalization = normalization,
+                             regression_method = regression_method)
     if (is.null(markers)) {
       return(NULL)
     }
@@ -443,14 +455,12 @@ FilterSignature <- function(signature, filter_level = 1, reference_data_name = N
 #               (rows = genes, columns = cell types)
 #   params = a named vector or one-row data frame with the parameters to use.
 #            Must contain variables with the same names as the arguments to
-#            Filter_Signature (except for "signature" and "test_data").
-#   test_data = a data.frame or matrix of expression data. Only used if
-#               marker_order is "correlation".
+#            Filter_Signature (except for "signature").
 #
 # Returns:
 #   signature matrix containing only the genes that pass the specified filters.
 #   rows = genes, columns = cell types.
-FilterSignature_FromParams <- function(signature, params, test_data = NULL) {
+FilterSignature_FromParams <- function(signature, params) {
   return(FilterSignature(signature,
                          filter_level = params$filter_level,
                          reference_data_name = params$reference_data_name,
@@ -460,7 +470,9 @@ FilterSignature_FromParams <- function(signature, params, test_data = NULL) {
                          marker_subtype = params$marker_subtype,
                          marker_input_type = params$marker_input_type,
                          marker_order = params$marker_order,
-                         test_data = test_data))
+                         test_data_name = params$test_data_name,
+                         normalization = params$normalization,
+                         regression_method = params$regression_method))
 }
 
 
@@ -478,7 +490,8 @@ FilterSignature_FromParams <- function(signature, params, test_data = NULL) {
 #   a list where each item is a vector of marker genes for a given cell type
 FilterMarkers <- function(reference_data_name, granularity, n_markers,
                           marker_type, marker_subtype, marker_input_type,
-                          marker_order, available_genes, test_data = NULL) {
+                          marker_order, available_genes, test_data_name = NULL,
+                          normalization = NULL, regression_method = NULL) {
   markers <- Load_Markers(reference_data_name, granularity, marker_type,
                           marker_subtype,
                           input_type = marker_input_type)
@@ -487,19 +500,25 @@ FilterMarkers <- function(reference_data_name, granularity, n_markers,
     return(NULL)
   }
 
+  if (marker_order == "correlation") {
+    data_name <- paste(test_data_name, normalization, regression_method,
+                       sep = "_")
+    data_name <- str_replace(data_name, "log_", "")
+    data_name <- str_replace(data_name, "counts", "cpm")
+
+    markers <- markers$ordered_by_correlation[[data_name]]
+  } else {
+    markers <- markers$filtered
+  }
+
   # Remove genes that don't exist in the data
   markers <- lapply(markers, function(X) {
     intersect(X, available_genes)
   })
 
-  if (marker_order == "correlation") {
-    if (is.null(test_data)) {
-      message(paste("Error! No data provided for calculating marker",
-                    "correlation. Markers will be ordered by distance",
-                    "instead of correlation."))
-    } else {
-      markers <- OrderMarkers_ByCorrelation(markers, test_data)
-    }
+  # We can't use these markers if any cell type has 1 or 0 markers after filtering
+  if (any(lengths(markers) < 2)) {
+    return(NULL)
   }
 
   # Percentage of each cell type's markers
@@ -520,6 +539,34 @@ FilterMarkers <- function(reference_data_name, granularity, n_markers,
   })
 
   return(markers)
+}
+
+
+# Shortcut function for FilterMarkers where the 'params' object can get passed
+# in instead of unpacking all the variables inside it.
+#
+# Arguments:
+#   available_genes = a vector of genes that are valid for this data. Usually
+#                     it's a vector of genes that exist in both the single cell
+#                     and bulk data set.
+#   params = a named vector or one-row data frame with the parameters to use.
+#            Must contain variables with the same names as the arguments to
+#            Filter_Markers (except for "available_genes").
+#
+# Returns:
+#   a list where each item is a vector of marker genes for a given cell type
+FilterMarkers_FromParams <- function(available_genes, params) {
+  return(FilterMarkers(reference_data_name = params$reference_data_name,
+                       granularity = params$granularity,
+                       n_markers = params$n_markers,
+                       marker_type = params$marker_type,
+                       marker_subtype = params$marker_subtype,
+                       marker_input_type = params$marker_input_type,
+                       marker_order = params$marker_order,
+                       available_genes = available_genes,
+                       test_data_name = params$test_data_name,
+                       normalization = params$normalization,
+                       regression_method = params$regression_method))
 }
 
 
@@ -615,9 +662,16 @@ OrderMarkers_ByCorrelation <- function(marker_list, data) {
   new_list <- sapply(names(marker_list), function(N) {
     markers <- marker_list[[N]]
     markers <- markers[markers %in% rownames(data)]
+
+    # Markers don't need to be ordered if there are 3 or less after filtering
+    if (length(markers) <= 3) {
+      return(markers)
+    }
+
     markers <- markers[rowSums(data[markers, ] > 0) >= 3]
 
-    if (length(markers) <= 2) {
+    # Check again for 3 or less markers after filtering by gene expression
+    if (length(markers) <= 3) {
       return(markers)
     }
 
@@ -657,11 +711,12 @@ OrderMarkers_ByCorrelation <- function(marker_list, data) {
 #   metadata - the metadata dataframe (colData()) from a SummarizedExperiment
 #   covariates - a dataframe of covariates, where rows are samples and columns
 #                are the covariates
-#   scale - TRUE or FALSE, whether to scale numeric columns
+#   scale_numerical - TRUE or FALSE, whether to scale numeric columns
 #
 # Returns:
 #   a dataframe with merged metadata and cleaned covariates
-Clean_BulkCovariates <- function(bulk_dataset_name, metadata, covariates, scale = TRUE) {
+Clean_BulkCovariates <- function(bulk_dataset_name, metadata, covariates,
+                                 scale_numerical = TRUE) {
   covariates <- subset(covariates, specimenID %in% rownames(metadata))
 
   for (col in c("sex", "race", "spanish", "ethnicity", "individualID", "apoe4_allele",
@@ -676,15 +731,6 @@ Clean_BulkCovariates <- function(bulk_dataset_name, metadata, covariates, scale 
   covariates$age_death[covariates$age_death == "90+"] <- 90
   covariates$age_death <- as.numeric(covariates$age_death)
 
-  # Scale numerical covariates
-  if (scale) {
-    for (colname in colnames(covariates)) {
-      if (is.numeric(covariates[, colname])) {
-        covariates[, colname] <- scale(covariates[, colname])
-      }
-    }
-  }
-
   # Remove duplicate columns that already exist in colData
   covariates <- covariates %>% select(-diagnosis, -tissue)
 
@@ -697,5 +743,15 @@ Clean_BulkCovariates <- function(bulk_dataset_name, metadata, covariates, scale 
 
   # Put the data frame back in the original order, as merge might change it
   metadata <- data.frame(metadata[sample_order, ])
+
+  # Scale numerical covariates if scale == TRUE
+  if (scale_numerical) {
+    for (colname in colnames(metadata)) {
+      if (is.numeric(metadata[, colname])) {
+        metadata[, colname] <- as.numeric(scale(metadata[, colname]))
+      }
+    }
+  }
+
   return(metadata)
 }

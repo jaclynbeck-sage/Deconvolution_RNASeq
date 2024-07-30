@@ -35,6 +35,7 @@ FindMarkers_Seurat <- function(datasets, granularities) {
       Idents(seurat) <- seurat$celltype
       markers <- FindAllMarkers(seurat,
                                 logfc.threshold = 0.5,
+                                min.pct = 0.1,
                                 only.pos = TRUE, test.use = "MAST",
                                 latent.vars = c("nCount_originalexp"))
 

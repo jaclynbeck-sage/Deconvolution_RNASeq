@@ -9,16 +9,22 @@ dir_output <- file.path(dir_data, "output")
 dir_metadata <- file.path(dir_data, "metadata")
 dir_tmp <- file.path(dir_data, "tmp")
 dir_markers <- file.path(dir_data, "markers")
+dir_signatures <- file.path(dir_data, "signatures")
+dir_cibersort_corrected_signatures <- file.path(dir_signatures, "cibersortx_batch_corrected")
 dir_cibersort <- "/data" # outside this working directory, gets shared with cibersort docker
 
 dir_estimates <- file.path(dir_output, "estimates")
+dir_top_estimates <- file.path(dir_output, "top_estimates")
 dir_errors <- file.path(dir_output, "errors")
-dir_best_errors <- file.path(dir_errors, "best_errors")
+dir_top_parameters <- file.path(dir_output, "top_parameters")
+dir_best_errors <- file.path(dir_output, "best_errors")
 
 dir_estimates_tmp <- file.path(dir_estimates, "tmp")
 dir_errors_tmp <- file.path(dir_errors, "tmp")
 
 dir_scaden_models <- file.path(dir_output, "scaden_models")
+dir_music_basis <- file.path(dir_output, "music_basis")
+dir_hspe_params <- file.path(dir_output, "hspe_params")
 
 dir_raw_data <- file.path(dir_input, "raw_data")
 dir_preprocessed <- file.path(dir_input, "preprocessed")

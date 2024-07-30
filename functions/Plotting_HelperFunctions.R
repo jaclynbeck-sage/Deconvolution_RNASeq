@@ -25,11 +25,16 @@ MakePropsDataframe <- function(props_truth, props_est, est_field) {
 # It is assumed that 'error_names' is either a single name of a single error,
 # or a vector of errors that should all have the same axis constraints,
 # since the axes are fixed in the figure.
-Plot_ErrsByAlgorithm <- function(errors_df, error_names, test_data_names = c(),
+Plot_ErrsByAlgorithm <- function(errors_df, params, error_names,
+                                 test_data_names = c(),
                                  x_axis = "reference_data_name",
                                  facet_var = "algorithm",
                                  fill_colors = NULL, ...) {
-  errs <- subset(errors_df, error_type %in% error_names)
+  errs <- subset(errors_df, error_type %in% error_names &
+                   solve_type %in% params[["solve_type"]] &
+                   normalization %in% params[["normalization"]] &
+                   regression_method %in% params[["regression_method"]])
+
   if (!is.null(test_data_names) & length(test_data_names) > 0) {
     errs <- subset(errs, test_data_name %in% test_data_names)
   }
@@ -42,11 +47,16 @@ Plot_ErrsByAlgorithm <- function(errors_df, error_names, test_data_names = c(),
 
 
 # Each facet is an error type + dataset, with algorithms on the x-axis
-Plot_ErrsByDataset <- function(errors_df, error_names, test_data_names = c(),
+Plot_ErrsByDataset <- function(errors_df, params, error_names,
+                               test_data_names = c(),
                                x_axis = "algorithm",
                                facet_var = "reference_data_name",
                                fill_colors = NULL, ...) {
-  errs <- subset(errors_df, error_type %in% error_names)
+  errs <- subset(errors_df, error_type %in% error_names &
+                   solve_type %in% params[["solve_type"]] &
+                   normalization %in% params[["normalization"]] &
+                   regression_method %in% params[["regression_method"]])
+
   if (!is.null(test_data_names) & length(test_data_names) > 0) {
     errs <- subset(errs, test_data_name %in% test_data_names)
   }

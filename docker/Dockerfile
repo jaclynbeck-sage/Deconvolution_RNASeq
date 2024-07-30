@@ -6,6 +6,7 @@ RUN apt-get install -y libpng-dev libglpk-dev curl libxt-dev
 RUN apt-get install -y liblzma-dev libbz2-dev libhdf5-dev
 RUN apt-get install -y libmysqlclient21 # for GenomicFeatures
 RUN apt-get install -y libgsl-dev # for sageseqr
+RUN apt-get clean
 
 # Install docker for CIBERSORTx
 RUN cd /home/rstudio && curl -fsSL https://get.docker.com -o install-docker.sh

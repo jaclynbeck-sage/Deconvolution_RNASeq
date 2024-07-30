@@ -32,7 +32,7 @@ source("Filenames.R")
 #                   The corrected counts (or raw counts if "none") will then be
 #                   transformed as usual according to "output_type". Valid values:
 #                     "edger" - regression via edgeR::glmQLFit (bulk only)
-#                     "deseq2" - regression via DESeq2::DESeq (bulk only)
+#                     "lme" - regression via lme4::lmer or lm (bulk only)
 #                     "dream" - regression via voom/dream (bulk only)
 #                     "none" - use raw counts
 #
@@ -64,8 +64,8 @@ Load_CountsFile <- function(filename, output_type, regression_method = "none") {
     stop(paste0("Error! 'output_type' should be one of ", output_opts, "."))
   }
 
-  if (!(regression_method %in% c("none", "edger", "deseq2", "dream"))) {
-    stop("Error! 'regression_method' should be one of 'none', 'edger', 'deseq2', or 'dream'.")
+  if (!(regression_method %in% c("none", "edger", "lme", "dream"))) {
+    stop("Error! 'regression_method' should be one of 'none', 'edger', 'lme', or 'dream'.")
   }
 
   se_obj <- readRDS(filename)
@@ -109,7 +109,7 @@ Load_CountsFile <- function(filename, output_type, regression_method = "none") {
       norm_counts <- log2(norm_counts + 1)
     }
     else { # Sparse matrix
-      norm_counts@x <- log2(norm_counts@x+1)
+      norm_counts@x <- log2(norm_counts@x + 1)
     }
   }
 
@@ -129,8 +129,8 @@ Load_CountsFile <- function(filename, output_type, regression_method = "none") {
 #   dataset = the name of the data set to load in
 #   granularity = either "broad_class" or "sub_class", for which level of cell
 #                 types to use in the metadata
-#   output_type = one of "counts", "cpm", "tmm", "log_cpm", or "log_tmm". See
-#                 Load_CountsFile for description.
+#   output_type = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm", or
+#                 "log_tpm". See Load_CountsFile for description.
 #
 # Returns:
 #   a SingleCellExperiment object that is the exact same as what was read from
@@ -141,7 +141,7 @@ Load_CountsFile <- function(filename, output_type, regression_method = "none") {
 Load_SingleCell <- function(dataset, granularity, output_type = "counts") {
   sc_file <- file.path(dir_input, str_glue("{dataset}_sce.rds"))
 
-  singlecell <- Load_CountsFile(sc_file, output_type)
+  singlecell <- Load_CountsFile(sc_file, output_type, regression_method = "none")
   metadata <- colData(singlecell)
 
   if (!(granularity %in% c("broad_class", "sub_class"))) {
@@ -180,8 +180,8 @@ Save_SingleCell <- function(dataset, sce) {
 #   dataset = the name of the data set to load in
 #   granularity = either "broad_class" or "sub_class", for which level of cell
 #                 types to load in.
-#   output_type = one of "counts", "cpm", "tmm", "log_cpm", or "log_tmm". See
-#                 Load_CountsFile for description.
+#   output_type = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm", or
+#                 "log_tpm". See Load_CountsFile for description.
 #
 # Returns:
 #   a SummarizedExperiment object that is the exact same as what was read from
@@ -191,7 +191,7 @@ Load_PseudobulkPureSamples <- function(dataset, granularity, output_type = "coun
   pb_file <- str_glue("pseudobulk_{dataset}_puresamples_{granularity}.rds")
   pb_file <- file.path(dir_pseudobulk, pb_file)
 
-  pseudobulk <- Load_CountsFile(pb_file, output_type)
+  pseudobulk <- Load_CountsFile(pb_file, output_type, regression_method = "none")
   return(pseudobulk)
 }
 
@@ -224,8 +224,8 @@ Save_PseudobulkPureSamples <- function(se, dataset, granularity) {
 #               to load in.
 #   granularity = either "broad_class" or "sub_class", for which level of cell
 #                 types to load in.
-#   output_type = one of "counts", "cpm", "tmm", "log_cpm", or "log_tmm". See
-#                 Load_CountsFile for description.
+#   output_type = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm", or
+#                 "log_tpm". See Load_CountsFile for description.
 #
 # Returns:
 #   a SummarizedExperiment object that is the exact same as what was read from
@@ -235,7 +235,7 @@ Load_Pseudobulk <- function(dataset, data_type, granularity, output_type = "coun
   pb_file <- str_glue("pseudobulk_{dataset}_{data_type}_{granularity}.rds")
   pb_file <- file.path(dir_pseudobulk, pb_file)
 
-  pseudobulk <- Load_CountsFile(pb_file, output_type)
+  pseudobulk <- Load_CountsFile(pb_file, output_type, regression_method = "none")
   return(pseudobulk)
 }
 
@@ -267,10 +267,10 @@ Save_Pseudobulk <- function(se, dataset, data_type, granularity) {
 #
 # Arguments:
 #   dataset = the name of the dataset ("ROSMAP", "Mayo", or "MSBB")
-#   output_type = one of "counts", "cpm", "tmm", "log_cpm", or "log_tmm". See
-#                 Load_CountsFile for description.
+#   output_type = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm", or
+#                 "log_tpm". See Load_CountsFile for description.
 #   regression_method = "none", if raw uncorrected counts should be used for
-#                       bulk data, or one of "edger", "deseq2", or "dream", to
+#                       bulk data, or one of "edger", "lme", or "dream", to
 #                       use batch-corrected counts from one of those methods.
 #
 # Returns:
@@ -286,7 +286,7 @@ Load_BulkData <- function(dataset, output_type = "counts", regression_method = "
 
 # Save_BulkData: Save a SummarizedExperiment object to the input folder. This
 # object should be finalized data that has passed QC and has slots for normalized
-# data from edgeR, DESeq2, and dream.
+# data from edgeR, lme4, and dream.
 #
 # Arguments:
 #   dataset = the name of the dataset ("ROSMAP", "Mayo", or "MSBB")
@@ -343,7 +343,7 @@ Load_AvgLibSize <- function(dataset, granularity) {
 #   in counts per million (or TMM-normalized), describing the expected value of
 #   each gene for eachcell type.
 Load_SignatureMatrix <- function(dataset, granularity, output_type) {
-  sig_matrix <- readRDS(file.path(dir_input, str_glue("{dataset}_signature.rds")))
+  sig_matrix <- readRDS(file.path(dir_signatures, str_glue("{dataset}_signature.rds")))
 
   if (grepl("tmm", output_type)) {
     sig <- sig_matrix$tmm[[granularity]]
@@ -578,15 +578,24 @@ Load_AlgorithmIntermediate <- function(algorithm, params) {
 #   name_base = a string that uniquely identifies this list of outputs, which
 #               currently is of the format:
 #               '<reference_data_name>_<test_data_name>_<granularity>_<reference_input_type>_<normalization>_<regression_method>'
+#   top_params = TRUE or FALSE. If TRUE, files will be saved to 'dir_top_estimates'
+#                as defined in Filenames.R. If FALSE, files will be saved to
+#                'dir_estimates'.
 #
 # Returns:
 #   Nothing
-Save_AlgorithmOutputList <- function(output_list, algorithm, test_dataset, name_base) {
+Save_AlgorithmOutputList <- function(output_list, algorithm, test_dataset,
+                                     name_base, top_params = FALSE) {
   list_file_format <- paste0("estimates_{algorithm}_{name_base}.rds")
 
-  dir_alg <- file.path(dir_estimates, test_dataset, algorithm)
+  if (top_params) {
+    dir_alg <- file.path(dir_top_estimates, test_dataset, algorithm)
+  } else {
+    dir_alg <- file.path(dir_estimates, test_dataset, algorithm)
+  }
+
   if (!dir.exists(dir_alg)) {
-    dir.create(dir_alg)
+    dir.create(dir_alg, recursive = TRUE)
   }
 
   saveRDS(output_list,
@@ -818,7 +827,7 @@ Save_Markers <- function(markers, dataset, granularity, marker_type,
   marker_file_format <- Get_MarkerFileFormat(dataset, granularity, marker_type,
                                              marker_subtype, input_type)
   if (is.null(marker_file_format)) {
-    stop("marker_type must be one of 'autogenes', 'deseq2', 'dtangle', or 'deseq2'")
+    stop("marker_type must be one of 'autogenes', 'deseq2', 'dtangle', or 'seurat'")
   }
 
   saveRDS(markers,
@@ -840,7 +849,7 @@ Load_Markers <- function(dataset, granularity, marker_type,
                                              marker_subtype, input_type)
 
   if (is.null(marker_file_format)) { # This indicates a typo in the input somewhere
-    stop("marker_type must be one of 'autogenes', 'deseq2', 'dtangle', or 'deseq2'")
+    stop("marker_type must be one of 'autogenes', 'deseq2', 'dtangle', or 'seurat'")
   }
 
   marker_file <- file.path(dir_markers, str_glue(marker_file_format))
@@ -852,12 +861,7 @@ Load_Markers <- function(dataset, granularity, marker_type,
   markers <- readRDS(file = marker_file)
 
   if (any(lengths(markers$filtered) < 3)) {
-    #message(paste0("WARNING: not enough markers in the filtered marker list for ",
-    #              str_glue(marker_file_format), ". Using unfiltered marker set."))
-    markers <- markers$all # all other algorithms have it under "all"
-  }
-  else {
-    markers <- markers$filtered # All 3 marker types have a 'filtered' list
+    return(NULL)
   }
 
   return(markers)
@@ -910,4 +914,43 @@ Save_SingleCellToCibersort <- function(sce, dataset_name, granularity) {
   gc()
 
   return(f_name)
+}
+
+
+# Music save/load functions ----------------------------------------------------
+
+# Save_MusicBasis: Saves the sc_basis object computed by MuSiC::music_basis so
+# it doesn't need to be repeatedly calculated.
+#
+# Arguments:
+#   sc_basis = the object returned by MuSiC::music_basis
+#   reference_data_name = the name of the single cell data set
+#   granularity = either "broad_class" or "sub_class"
+#
+# Returns:
+#   nothing
+Save_MusicBasis <- function(sc_basis, reference_data_name, granularity) {
+  basis_file <- file.path(dir_music_basis,
+                          str_glue("music_basis_{reference_data_name}_{granularity}.rds"))
+
+  saveRDS(sc_basis, basis_file)
+}
+
+
+# Load_MusicBasis: loads the sc_basis object computed by MuSiC::music_basis
+#
+# Arguments: see descriptions for Save_MusicBasis arguments
+#
+# Returns:
+#   the sc_basis object computed by MuSiC::music_basis. This is a named list of
+#   matrices and vectors needed by MuSiC.
+Load_MusicBasis <- function(reference_data_name, granularity) {
+  basis_file <- file.path(dir_music_basis,
+                          str_glue("music_basis_{reference_data_name}_{granularity}.rds"))
+
+  if (!file.exists(basis_file)) {
+    return(NULL)
+  }
+
+  return(readRDS(basis_file))
 }

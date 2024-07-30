@@ -14,8 +14,8 @@ Is_MarkerList <- function(markers_obj) {
 
 
 # If any cell type has 0 markers, the FilterMarkers and FilterSignature functions
-# return NULL, so this function checks for a NULL markers_obj and prints out an
-# message.
+# return NULL, so this function checks for a NULL markers_obj and prints out a
+# warning message.
 #
 # Arguments:
 #   markers_obj = either a signature matrix (or dataframe) or a list of cell type markers
@@ -36,10 +36,13 @@ Check_MissingMarkers <- function(markers_obj, params) {
 }
 
 
-# If there's less than ~3 markers per cell type, this isn't useful
-# information. Checking total markers (signature) or mean markers (marker list)
-# instead of markers per cell type allows some leeway for rarer cell types to
-# have less than 3 markers as long as the other cell types have enough.
+# If there's less than 3 markers for any cell type, this isn't useful
+# information. For signature matrices, if they were filtered using a marker list
+# we load the marker list and check how many markers per cell type exist in the
+# signature. If it was filtered on CPM instead, we can only check that there are
+# low_threshold * n_celltypes genes in it since we didn't use markers to filter.
+# If the input is a list of markers, we check that there are at least 3 markers
+# for each cell type.
 #
 # Arguments:
 #   same as Check_MissingMarkers
@@ -48,13 +51,26 @@ Check_MissingMarkers <- function(markers_obj, params) {
 # Returns:
 #   TRUE if there are fewer than low_threshold markers per cell type, FALSE otherwise
 Check_TooFewMarkers <- function(markers_obj, params, low_threshold = 3) {
-  if (Is_SignatureMatrix(markers_obj)) {
-    not_enough <- (nrow(markers_obj) < low_threshold * ncol(markers_obj))
-  }
-  else if (Is_MarkerList(markers_obj)) {
-    not_enough <- (mean(lengths(markers_obj)) < low_threshold)
-  }
-  else {
+  if (Is_SignatureMatrix(markers_obj)) { # Signature matrix
+    if (params$marker_type != "None") { # signature was filtered using markers
+      markers <- Load_Markers(params$reference_data_name, params$granularity,
+                              params$marker_type, params$marker_subtype,
+                              input_type = params$marker_input_type)
+
+      totals <- sapply(markers$filtered, function(X) {
+        sum(X %in% rownames(markers_obj))
+      })
+
+      not_enough <- any(totals < low_threshold)
+
+    } else { # signature was filtered using CPM
+      not_enough <- (nrow(markers_obj) < (low_threshold * ncol(markers_obj)))
+    }
+
+  } else if (Is_MarkerList(markers_obj)) { # Marker list
+    not_enough <- any(lengths(markers_obj) < low_threshold)
+
+  } else {
     stop("Invalid input for marker_obj.")
   }
 
@@ -83,11 +99,9 @@ Check_TooFewMarkers <- function(markers_obj, params, low_threshold = 3) {
 Check_TooManyMarkers <- function(markers_obj, params, high_threshold = 5000) {
   if (Is_SignatureMatrix(markers_obj)) {
     too_many <- (nrow(markers_obj) > high_threshold)
-  }
-  else if (Is_MarkerList(markers_obj)) {
+  } else if (Is_MarkerList(markers_obj)) {
     too_many <- (sum(lengths(markers_obj)) > high_threshold)
-  }
-  else {
+  } else {
     stop("Invalid input for marker_obj.")
   }
 
@@ -104,7 +118,13 @@ Check_TooManyMarkers <- function(markers_obj, params, high_threshold = 5000) {
 
 # For whole-number n_markers parameters, the n_markers argument (mostly)
 # doubles each time. If there aren't enough markers in each cell type to do
-# anything new with this n_markers value, skip testing.
+# anything new with this n_markers value, skip testing. For signature matrices,
+# if they were filtered using a marker list we load the marker list and check
+# how many markers per cell type exist in the signature. If it was filtered on
+# CPM instead, we can only check that there are low_threshold * n_celltypes
+# genes in it since we didn't use markers to filter. If the input is a list of
+# markers, we check that there are at least low_threshold for each cell type.
+#
 # Arguments:
 #   same as Check_MissingMarkers
 #
@@ -119,12 +139,25 @@ Check_NotEnoughNewMarkers <- function(markers_obj, params) {
   low_threshold <- params$n_markers / 2
 
   if (Is_SignatureMatrix(markers_obj)) {
-    not_enough <- nrow(markers_obj) <= (low_threshold * ncol(markers_obj))
-  }
-  else if (Is_MarkerList(markers_obj)) {
+    if (params$marker_type != "None") { # signature was filtered using markers
+      markers <- Load_Markers(params$reference_data_name, params$granularity,
+                              params$marker_type, params$marker_subtype,
+                              input_type = params$marker_input_type)
+
+      totals <- sapply(markers$filtered, function(X) {
+        sum(X %in% rownames(markers_obj))
+      })
+
+      not_enough <- all(totals <= low_threshold)
+
+    } else { # signature was filtered by CPM
+      not_enough <- nrow(markers_obj) <= (low_threshold * ncol(markers_obj))
+
+    }
+  } else if (Is_MarkerList(markers_obj)) {
     not_enough <- all(lengths(markers_obj) <= low_threshold)
-  }
-  else {
+
+  } else {
     stop("Invalid input for marker_obj.")
   }
 
