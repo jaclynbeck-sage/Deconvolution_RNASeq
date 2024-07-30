@@ -578,15 +578,24 @@ Load_AlgorithmIntermediate <- function(algorithm, params) {
 #   name_base = a string that uniquely identifies this list of outputs, which
 #               currently is of the format:
 #               '<reference_data_name>_<test_data_name>_<granularity>_<reference_input_type>_<normalization>_<regression_method>'
+#   top_params = TRUE or FALSE. If TRUE, files will be saved to 'dir_top_estimates'
+#                as defined in Filenames.R. If FALSE, files will be saved to
+#                'dir_estimates'.
 #
 # Returns:
 #   Nothing
-Save_AlgorithmOutputList <- function(output_list, algorithm, test_dataset, name_base) {
+Save_AlgorithmOutputList <- function(output_list, algorithm, test_dataset,
+                                     name_base, top_params = FALSE) {
   list_file_format <- paste0("estimates_{algorithm}_{name_base}.rds")
 
-  dir_alg <- file.path(dir_estimates, test_dataset, algorithm)
+  if (top_params) {
+    dir_alg <- file.path(dir_top_estimates, test_dataset, algorithm)
+  } else {
+    dir_alg <- file.path(dir_estimates, test_dataset, algorithm)
+  }
+
   if (!dir.exists(dir_alg)) {
-    dir.create(dir_alg)
+    dir.create(dir_alg, recursive = TRUE)
   }
 
   saveRDS(output_list,

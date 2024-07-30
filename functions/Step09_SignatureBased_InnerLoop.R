@@ -3,10 +3,10 @@
 # method are DeconRNASeq and DWLS.
 #
 # Arguments:
-#   signature = a data.frame describing the average expression of each gene (in
-#               cpm) for each cell type (rows = genes, columns = cell types).
-#               Must be a data.frame, not a matrix.
-#   bulk_mat = a matrix of bulk expression (rows = genes, columns = samples).
+#   data = a named list that must contain the following items:
+#     reference = a signature matrix describing the average expression of each
+#                 gene (in cpm) for each cell type (rows = genes, columns = cell types).
+#     test = a matrix of bulk expression (rows = genes, columns = samples).
 #   params = a single-row data frame or a named vector/list of parameters
 #            containing the following variables: reference_data_name,
 #            test_data_name, granularity, filter_level, n_markers, marker_type,
@@ -19,9 +19,9 @@
 #   a list containing entries for the celltype percentage estimates (name varies
 #   between algorithms), "params", which is the parameter set used for this run,
 #   and "markers", which is the list of genes used as markers for this run
-SignatureBased_InnerLoop <- function(signature, bulk_mat, params, algorithm) {
+SignatureBased_InnerLoop <- function(data, params, algorithm) {
   # Ensure signature is a matrix
-  signature <- as.matrix(signature)
+  signature <- as.matrix(data$reference)
 
   # Filter signature matrix according to parameters
   signature_filt <- FilterSignature_FromParams(signature, params)
@@ -33,8 +33,8 @@ SignatureBased_InnerLoop <- function(signature, bulk_mat, params, algorithm) {
   }
 
   # Signature and bulk data should have the same rows post-filtering.
-  keepgene <- intersect(rownames(signature_filt), rownames(bulk_mat))
-  bulk_mat_filt <- bulk_mat[keepgene, ]
+  keepgene <- intersect(rownames(signature_filt), rownames(data$test))
+  bulk_mat_filt <- data$test[keepgene, ]
   signature_filt <- signature_filt[keepgene, ]
 
   tryCatch(

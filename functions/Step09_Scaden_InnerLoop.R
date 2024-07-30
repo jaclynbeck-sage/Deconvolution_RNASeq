@@ -2,10 +2,11 @@
 # a 'predict' step.
 #
 # Arguments:
-#   sce = a SingleCellExperiment object containing the reference data. Must have
-#         a colData column named "celltype", denoting the cell type assignment
-#         of each cell.
-#   bulk_mat = a matrix (genes x samples) of bulk data. Must be a dense matrix.
+#   data = a named list that must contain the following items:
+#     reference = a SingleCellExperiment object containing the reference data.
+#                 Must have a colData column named "celltype", denoting the cell
+#                 type assignment of each cell.
+#     test = a matrix (genes x samples) of bulk data. Must be a dense matrix.
 #   params = a single-row data frame or a named vector/list of parameters
 #            containing the following variables: reference_data_name,
 #            test_data_name, granularity, filter_level, n_markers, marker_type,
@@ -18,7 +19,7 @@
 #   "params", which is the parameter set used for this run, and "markers", which
 #   is the list of genes shared by the single cell and bulk data sets (since
 #   Scaden doesn't actually use markers).
-Scaden_InnerLoop <- function(sce, bulk_mat, params, algorithm = NULL) {
+Scaden_InnerLoop <- function(data, params, algorithm = NULL) {
   # directory names need to be passed in as full paths
   full_filepath <- file.path(getwd(), dir_scaden_models)
   folder_name <- paste(params, collapse = "_")
@@ -44,12 +45,12 @@ Scaden_InnerLoop <- function(sce, bulk_mat, params, algorithm = NULL) {
   # If it doesn't exist, make simulated data
   if (!file.exists(file_simulated)) {
     # Needs to be a dense matrix
-    dense_sce <- t(as.matrix(counts(sce)))
+    dense_sce <- t(as.matrix(counts(data$reference)))
     gc()
 
     simulated_h5 <- omnideconv::scaden_simulate(
-      cell_type_annotations = as.character(sce$celltype),
-      gene_labels = rownames(sce),
+      cell_type_annotations = as.character(data$reference$celltype),
+      gene_labels = rownames(data$reference),
       single_cell_object = dense_sce,
       temp_dir = temp_path,
       cells = params$n_cells,
@@ -72,7 +73,7 @@ Scaden_InnerLoop <- function(sce, bulk_mat, params, algorithm = NULL) {
   # Train the model with this bulk data set
   processed <- omnideconv::scaden_process(h5ad = simulated_h5,
                                           temp_dir = temp_path,
-                                          bulk_gene_expression = bulk_mat,
+                                          bulk_gene_expression = data$test,
                                           verbose = TRUE)
 
   model_path <- omnideconv::scaden_train(h5ad_processed = processed,
@@ -85,13 +86,13 @@ Scaden_InnerLoop <- function(sce, bulk_mat, params, algorithm = NULL) {
 
   # Predict step
   res_pcts <- omnideconv::deconvolute_scaden(signature = model_path,
-                                             bulk_gene_expression = bulk_mat,
+                                             bulk_gene_expression = data$test,
                                              temp_dir = temp_path,
                                              verbose = TRUE)
 
   res <- list("estimates" = res_pcts,
               "params" = params,
-              "markers" = intersect(rownames(sce), rownames(bulk_mat)))
+              "markers" = intersect(rownames(data$reference), rownames(data$test)))
 
   # Remove temp directory with dense matrix files
   unlink(temp_path, recursive = TRUE)

@@ -11,17 +11,12 @@ source(file.path("functions", "Step09_Deconvolution_HelperFunctions.R"))
 # Parameter setup --------------------------------------------------------------
 
 # options: "CibersortX", "DWLS", "DeconRNASeq", "Dtangle", "HSPE", "Music", "Scaden"
+# Note that if an algorithm was run in Step09 with "ct_ad_only" = FALSE, all this
+# script will do is subset the existing output to the results from the top
+# parameter sets and save those as a new file.
 algorithm <- "CibersortX"
 
 datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
-
-ct_ad_only <- TRUE
-
-# Force these three algorithms to use all data all the time. For the paper, I
-# also ran DeconRNASeq and Dtangle with ct_ad_only = FALSE.
-if ((algorithm %in% c("CibersortX", "HSPE", "Scaden"))) {
-  ct_ad_only <- FALSE
-}
 
 source(file.path("algorithm_configs", str_glue("{algorithm}_Config.R")))
 
@@ -31,13 +26,9 @@ params_loop1 <- expand_grid(reference_data_name = datasets,
                             granularity = c("broad_class", "sub_class"),
                             reference_input_type = alg_config$reference_input_types,
                             normalization = alg_config$normalizations,
-                            regression_method = c("none", "edger", "lme", "dream")) %>%
+                            regression_method = c("none", "edger", "lme", "dream"),
+                            samples = "all_samples") %>%
   arrange(normalization)
-
-# Algorithm-specific parameters -- marker types, number of markers, plus any
-# additional arguments to the algorithm itself
-params_loop2 <- expand_grid(alg_config$params_markers,
-                            alg_config$additional_args) # this value can be NULL if no other additional args
 
 
 # Parallel execution setup -----------------------------------------------------
@@ -66,14 +57,33 @@ required_libraries <- alg_config$required_libraries
 #       so they exist in each newly-created parallel environment
 
 for (P in 1:nrow(params_loop1)) {
-  data <- Load_AlgorithmInputData_FromParams(params_loop1[P, ])
+  # Check if there is a file of top parameters -- if there isn't, either errors
+  # haven't been calculated for this set of data or there were no valid estimates
+  # for this set of data, so we can skip running this one.
+  file_params <- select(params_loop1[P, ], -samples)
+  file_id <- paste(c(algorithm, file_params), collapse = "_")
+  top_param_file <- file.path(dir_top_parameters,
+                              params_loop1$test_data_name[P],
+                              algorithm,
+                              str_glue("top_parameters_{file_id}.rds"))
 
-  if (ct_ad_only) {
-    message("Running CT and AD cases only.")
-    data$test <- data$test[, data$test$diagnosis %in% c("CT", "AD")]
-  } else {
-    message("Running with all samples.")
+  if (!file.exists(top_param_file)) {
+    warning(paste(top_param_file, "doesn't exist! Skipping..."))
+    next
   }
+
+  top_params <- readRDS(top_param_file)
+
+  # Use all the parameter sets in the file. We remove columns that also exist
+  # in params_loop1 and also remove unused columns "total_markers_used" and
+  # "algorithm".
+  params_loop2 <- top_params$params %>%
+    select(-reference_data_name, -test_data_name, -granularity,
+           -reference_input_type, -normalization, -regression_method,
+           -total_markers_used, -algorithm)
+
+  # Load input data
+  data <- Load_AlgorithmInputData_FromParams(params_loop1[P, ])
 
   data$test <- as.matrix(assay(data$test, "counts"))
 
@@ -86,24 +96,9 @@ for (P in 1:nrow(params_loop1)) {
     # Extra pre-processing needed for Dtangle/HSPE -- reformat the input
     data <- Modify_DtangleHSPE_Input(data, params_loop1[P, ])
 
-    # Load the subset of parameters for HSPE that were determined by Dtangle
-    if (algorithm == "HSPE") {
-      params_filename <- paste0("hspe_params_",
-                                paste(params_loop1[P, ], collapse = "_"),
-                                ".rds")
-      params_filename <- file.path(dir_hspe_params, params_filename)
-
-      if (file.exists(params_filename)) {
-        params_subset <- readRDS(params_filename)
-        params_subset$string_id <- apply(params_subset, 1, paste, collapse = "_")
-      } else {
-        message(str_glue("WARNING: {params_filename} does not exist. Skipping..."))
-        next # We have to skip this file
-      }
-    }
   } else if (algorithm == "Music") {
     # Extra pre-processing needed for MuSiC -- calculate or load sc_basis
-    data <- Modify_Music_Input(data, params_loop1[P,])
+    data <- Modify_Music_Input(data, params_loop1[P, ])
   }
 
   ## Loop through algorithm-specific arguments ---------------------------------
@@ -118,54 +113,104 @@ for (P in 1:nrow(params_loop1)) {
 
     params <- cbind(params_loop1[P, ], params_loop2[R, ])
 
-    # For HSPE, skip this parameter set if it isn't in the specified subset of
-    # parameters to run
-    if (algorithm == "HSPE") {
-      if (nrow(plyr::match_df(params, params_subset, on = colnames(params))) == 0) {
-        return(NULL)
-      }
-    }
+    # Not very memory efficient but we don't want to alter "data" and affect
+    # other threads using it
+    data_filt <- data
 
-    # There are some invalid parameter combinations for CibersortX: if the
-    # reference_input_type = cibersortx, only use filter_level = 0 because
-    # CibersortX already filtered its signature. If reference_input_type =
-    # signature, only use filter_level = 3 because CibersortX expects a filtered
-    # signature.
-    if (algorithm == "CibersortX") {
-      if ((params$reference_input_type == "cibersortx") & (params$filter_level != 0)) {
-        return(NULL)
-      } else if ((params$reference_input_type == "signature") & (params$filter_level != 3)) {
-        return(NULL)
-      }
-    }
-
-    # If we are picking up from a failed/crashed run, and we've already run
-    # this parameter set, load the result instead of re-running the algorithm
+    # If we've already run this script on this parameter set, the intermediate
+    # file will have "all_samples" at the end of the filename to differentiate
+    # it from Step09 results that don't have all samples.
     prev_res <- Load_AlgorithmIntermediate(algorithm, params)
     if (!is.null(prev_res)) {
       message(paste0("Using previously-run result for ",
                      paste(params, collapse = " ")))
+
       prev_res$param_id <- paste(algorithm,
                                  paste(params_loop1[P, ], collapse = "_"),
                                  R, sep = "_")
+
       return(prev_res)
     }
 
-    # Otherwise, call the algorithm-specific function to run it with this
-    # set of parameters
+    # If we haven't already run this script, in most cases we have already run
+    # Step09 and there may be a saved estimates file containing results for
+    # all samples or CT/AD samples only. If this is the case, we only need to
+    # re-run the algorithm on the samples not in the file, and concatenate the
+    # results together, instead of re-running all samples.
+    prev_res <- Load_AlgorithmOutputList(algorithm,
+                                         params$reference_data_name,
+                                         params$test_data_name,
+                                         params$granularity,
+                                         params$reference_input_type,
+                                         params$normalization,
+                                         params$regression_method)
+    if (!is.null(prev_res)) {
+      message(paste0("Found Step09 result for ",
+                     paste(params, collapse = " ")))
+
+      # Find which result matches these parameters
+      prev_params <- do.call(rbind, lapply(prev_res, "[[", "params"))
+      prev_params <- prev_params[, colnames(params_loop2)]
+      match_params <- plyr::match_df(prev_params, params_loop2[R, ])
+
+      if (nrow(match_params) != 1) {
+        stop("Step09 results do not contain this parameter set.")
+      }
+
+      prev_res <- prev_res[[rownames(match_params)]]
+      gc()
+
+      # TODO temporary
+      if (algorithm == "Music") {
+        prev_res$estimates <- prev_res$Est.pctRNA.weighted
+      }
+
+      message(paste("Found Step09 result containing", nrow(prev_res$estimates),
+                    "samples."))
+
+      if ("test" %in% names(data)) {
+        missing_samples <- setdiff(colnames(data$test),
+                                   rownames(prev_res$estimates))
+        data_filt$test <- data$test[, missing_samples]
+      } else if ("Y" %in% names(data)) {
+        missing_samples <- setdiff(rownames(data$Y),
+                                   rownames(prev_res$estimates))
+        data_filt$Y <- data$Y[missing_samples, ]
+      }
+
+      # If this file already has all samples in it, no need to re-run
+      if (length(missing_samples) == 0) {
+        message("No additional samples need to be run.")
+        prev_res$param_id <- paste(algorithm,
+                                   paste(params_loop1[P, ], collapse = "_"),
+                                   R, sep = "_")
+        return(prev_res)
+      }
+
+      message(paste("Running", length(missing_samples), "additional samples."))
+    }
+
+    # Call the algorithm-specific function to run it with this set of parameters
     set.seed(12345)
     inner_loop_func <- match.fun(alg_config$inner_loop_func)
 
-    res <- inner_loop_func(data, params, algorithm)
+    res <- inner_loop_func(data_filt, params, algorithm)
 
     if (!is.null(res)) {
       res$param_id <- paste(algorithm,
                             paste(params_loop1[P, ], collapse = "_"),
                             R, sep = "_")
+
+      # Add CT/AD samples back to the result, if applicable
+      if (!is.null(prev_res)) {
+        res$estimates <- rbind(res$estimates[, colnames(prev_res$estimates)],
+                               prev_res$estimates)
+      }
     }
 
     # Save each result in case of crashing
     Save_AlgorithmIntermediate(res, algorithm)
+    gc()
     return(res)
   } # end foreach loop
 
@@ -182,7 +227,8 @@ for (P in 1:nrow(params_loop1)) {
   print(str_glue("Saving final list for {name_base}..."))
   Save_AlgorithmOutputList(results_list, algorithm,
                            test_dataset = params_loop1$test_data_name[P],
-                           name_base = name_base)
+                           name_base = name_base,
+                           top_params = TRUE)
 
   rm(results_list, data)
   gc()

@@ -32,14 +32,29 @@ FindMarkerExclusions <- function(datasets, granularities) {
 
       seurat <- NormalizeData(seurat, normalization.method = "LogNormalize")
 
+      ident_2 <- "Control"
+
+      # Lau is the only data set that doesn't use "Control" as the name for
+      # control samples
+      if (dataset == "lau") {
+        ident_2 <- "healthy control"
+      }
+
       Idents(seurat) <- seurat$diagnosis
 
       s_obj <- SplitObject(seurat, split.by = "celltype")
-      markers_all <- lapply(s_obj, FindAllMarkers,
+      markers_all <- lapply(s_obj, FindMarkers,
+                            ident.1 = "AD",
+                            ident.2 = ident_2,
                             logfc.threshold = 0.5,
                             min.pct = 0.1,
                             test.use = "MAST",
                             latent.vars = c("nCount_originalexp"))
+
+      markers_all <- lapply(markers_all, function(X) {
+        X$gene <- rownames(X)
+        return(X)
+      })
 
       markers <- do.call(rbind, markers_all)
       markers <- subset(markers, p_val_adj <= 0.05)

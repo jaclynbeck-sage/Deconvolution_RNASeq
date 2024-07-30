@@ -138,7 +138,8 @@ all_genes <- all_genes %>%
   as.data.frame()
 
 # Get exon lengths for each gene, for the purpose of calculating TPM on the
-# bulk datasets. The bulk datasets were aligned to Ensembl release 97.
+# bulk datasets. The bulk datasets were aligned to Gencode release 31, which
+# corresponds to Ensembl release 97.
 tx <- GenomicFeatures::makeTxDbFromEnsembl(organism = "Homo sapiens",
                                            release = 97)
 ex <- GenomicFeatures::exonsBy(tx, by = "gene")
