@@ -27,16 +27,9 @@ cores <- 12
 cl <- makeCluster(cores, type = "FORK", outfile = "errors_output.txt")
 registerDoParallel(cl)
 
-est_fields <- list("CibersortX" = "estimates",
-                   "DeconRNASeq" = "estimates",
-                   "Dtangle" = "estimates",
-                   "DWLS" = "estimates",
-                   "HSPE" = "estimates",
-                   "Music" = "Est.pctRNA.weighted",
-                   "Scaden" = "estimates",
-                   "Baseline" = "estimates")
-
-algorithms <- names(est_fields)
+# Which algorithms to calculate errors for
+algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "HSPE",
+                "Music", "Scaden", "Baseline")
 
 # Pre-load all signature matrices
 all_signatures_cpm <- sapply(singlecell_datasets, function(X) {
@@ -94,7 +87,6 @@ for (bulk_dataset in bulk_datasets) {
   # Loop over each algorithm's results
   for (algorithm in algorithms) {
     print(str_glue("Calculating errors for {bulk_dataset}: {algorithm}"))
-    est_field <- est_fields[[algorithm]]
 
     dir_alg <- file.path(dir_estimates, bulk_dataset, algorithm)
     res_files <- list.files(dir_alg, pattern = granularity, full.names = TRUE)
@@ -185,7 +177,7 @@ for (bulk_dataset in bulk_datasets) {
           return(tmp)
         }
 
-        est_pct <- deconv_list[[param_id]][[est_field]]
+        est_pct <- deconv_list[[param_id]]$estimates
 
         if (any(is.na(est_pct))) {
           message(str_glue("Param set {param_id} has NA values. Skipping..."))

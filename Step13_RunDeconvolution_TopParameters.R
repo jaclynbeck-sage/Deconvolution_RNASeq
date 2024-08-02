@@ -160,11 +160,6 @@ for (P in 1:nrow(params_loop1)) {
       prev_res <- prev_res[[rownames(match_params)]]
       gc()
 
-      # TODO temporary
-      if (algorithm == "Music") {
-        prev_res$estimates <- prev_res$Est.pctRNA.weighted
-      }
-
       message(paste("Found Step09 result containing", nrow(prev_res$estimates),
                     "samples."))
 
