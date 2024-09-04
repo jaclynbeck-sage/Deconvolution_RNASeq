@@ -15,7 +15,7 @@ registerDoParallel(cl)
 
 datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
 
-granularity <- "sub_class"
+granularity <- "broad_class"
 bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
 algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "HSPE",
                 "Music", "Scaden", "Baseline")
@@ -210,19 +210,3 @@ for (bulk_dataset in bulk_datasets) {
 
 stopCluster(cl)
 print("Finished")
-# TODO
-sig_scores <- lapply(cols_test, function(col_name) {
-  df <- errs_all %>%
-    get_top10_vals(col_name) %>%
-    group_by(signature) %>%
-    summarize(across(all_of(cols_test), mean), .groups = "drop")
-})
-
-best_sig <- lapply(sig_scores, function(X) {
-  inds <- c(which.max(X$cor), which.min(X$rMSE), which.min(X$mAPE))
-  X$signature[inds]
-})
-best_sig <- table(unlist(best_sig))
-best_sig <- names(best_sig)[which.max(best_sig)]
-
-print(str_glue("Best signature: {best_sig}"))

@@ -656,11 +656,16 @@ Load_AlgorithmOutputList <- function(algorithm, reference_dataset, test_dataset,
 #
 # Returns:
 #   Nothing
-Save_ErrorList <- function(dataset_name, error_list, algorithm, params_data) {
+Save_ErrorList <- function(dataset_name, error_list, algorithm, params_data,
+                           top_params = FALSE) {
   name_base <- paste(params_data, collapse = "_")
   error_file_format <- paste0("errors_{algorithm}_{name_base}.rds")
 
-  dir_errors_alg <- file.path(dir_errors, dataset_name, algorithm)
+  if (top_params) {
+    dir_errors_alg <- file.path(dir_best_errors, dataset_name, algorithm)
+  } else {
+    dir_errors_alg <- file.path(dir_errors, dataset_name, algorithm)
+  }
   dir.create(dir_errors_alg, recursive = TRUE, showWarnings = FALSE)
 
   saveRDS(error_list,
@@ -680,11 +685,17 @@ Save_ErrorList <- function(dataset_name, error_list, algorithm, params_data) {
 #   a list of errors containing entries for mean errors, errors by sample,
 #   parameters, and some statistics about the errors. If the error file doesn't
 #   exist, the function returns NULL.
-Load_ErrorList <- function(algorithm, params) {
+Load_ErrorList <- function(algorithm, params, top_params = FALSE) {
   name_base <- paste(params, collapse = "_")
   error_file_format <- paste0("errors_{algorithm}_{name_base}.rds")
-  error_file <- file.path(dir_errors, params$test_data_name, algorithm,
-                          str_glue(error_file_format))
+
+  if (top_params) {
+    error_file <- file.path(dir_best_errors, params$test_data_name, algorithm,
+                            str_glue(error_file_format))
+  } else {
+    error_file <- file.path(dir_errors, params$test_data_name, algorithm,
+                            str_glue(error_file_format))
+  }
 
   if (!file.exists(error_file)) {
     #message(paste(error_file, "doesn't exist!"))

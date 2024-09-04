@@ -1,12 +1,10 @@
-library(synapser)
 library(stringr)
 library(dplyr)
 source("Filenames.R")
-
-synLogin()
+source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
 # Deconvolution WG Synapse space
-errors_folder <- Folder("error_calculations", parent = "syn58802522")
+errors_folder <- Folder("11_error_calculations", parent = "syn58802522")
 errors_folder <- synStore(errors_folder, forceVersion = FALSE)
 
 # Get provenance IDs from algorithm output folder TODO
@@ -35,8 +33,10 @@ params_list_df <- do.call(rbind, params_list_df)
 params_list_df$name_base <- str_replace(unlist(params_list_df$name), "estimates_", "")
 params_list_df$name_base <- str_replace(params_list_df$name_base, ".rds", "")
 
+github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step11_CalculateErrors.R"
+
 # Loop over each data set and algorithm
-for (test_dataset in unique(params_list_df$test_dataset)) {
+for (test_dataset in c("Mayo", "MSBB", "ROSMAP")) { #unique(params_list_df$test_dataset)) {
   bulk_errors_folder <- Folder(test_dataset, parent = errors_folder)
   bulk_errors_folder <- synStore(bulk_errors_folder)
 
@@ -48,21 +48,19 @@ for (test_dataset in unique(params_list_df$test_dataset)) {
 
     dir_alg <- file.path(dir_errors, test_dataset, algorithm)
 
-    files <- list.files(dir_alg)
+    files <- list.files(dir_alg, full.names = TRUE)
 
     # Parameter output lists
     for (filename in files) {
       # The name of the error file should match the name of the algorithm output file
-      error_name_base <- str_replace(filename, "errors_", "")
-      error_name_base <- str_replace(error_name_base, ".rds", "")
+      #error_name_base <- str_replace(filename, "errors_", "")
+      #error_name_base <- str_replace(error_name_base, ".rds", "")
 
-      provenance <- subset(params_list_df, name_base == error_name_base)
+      #provenance <- subset(params_list_df, name_base == error_name_base)
 
-      file <- File(path = file.path(dir_alg, filename), parent = algorithm_errors_folder)
-      file <- synStore(file,
-                       used = unlist(provenance$id),
-                       forceVersion = FALSE)
-      print(paste0(file$properties$id, ": ", file$properties$name))
+      UploadFile(filename,
+                 parent_folder = algorithm_errors_folder,
+                 provenance = list("used" = c(), "executed" = github))
     }
   }
 }

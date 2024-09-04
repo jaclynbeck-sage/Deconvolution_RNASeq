@@ -6,6 +6,8 @@ library(stringr)
 library(reshape2)
 library(patchwork)
 
+# TODO Music best errors (and probably best estimates files) are missing CT + AD samples
+
 source(file.path("functions", "Step11_Error_HelperFunctions.R"))
 source(file.path("functions", "Plotting_HelperFunctions.R"))
 
@@ -13,29 +15,33 @@ options(scipen = 999)
 
 datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
 
-est_fields = list("CibersortX" = "estimates",
-                  "DeconRNASeq" = "estimates",
-                  "Dtangle" = "estimates",
-                  "DWLS" = "estimates",
-                  "HSPE" = "estimates",
-                  "Music" = "Est.pctRNA.weighted",
-                  "Scaden" = "estimates",
-                  "Baseline" = "estimates")
+algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "HSPE", "Music",
+                "Scaden", "Baseline")
 
-algorithms <- names(est_fields)
-
-granularity <- c("broad_class")
+granularity <- c("sub_class")
 
 bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
 
 best_errors_list <- Get_AllBestErrorsAsDf(bulk_datasets, granularity)
 best_errors <- best_errors_list$errors
+best_estimates <- best_errors_list$estimates
 quality_stats <- best_errors_list$quality_stats
 
+errors_tmp <- subset(best_errors, tissue == "All" & algorithm != "Baseline")
+best_signature <- errors_tmp %>%
+  group_by(param_id) %>%
+  summarize(best_cor = signature[which.max(cor)],
+            best_rMSE = signature[which.min(rMSE)],
+            best_mAPE = signature[which.min(mAPE)])
+
+best_signature <- table(c(best_signature$best_cor, best_signature$best_rMSE, best_signature$best_mAPE))
+best_signature <- names(best_signature)[which.max(best_signature)]
+
 best_errs_filt <- best_errors %>%
+  subset(signature == best_signature) %>%
   mutate(reference_data_name = str_replace(reference_data_name, "_.*", ""),
-         reference_data_name = if_else(algorithm == "Baseline",
-                                       reference_data_name, "single cell"),
+         #reference_data_name = if_else(algorithm == "Baseline",
+         #                             reference_data_name, "single cell"),
          tissue = paste(test_data_name, tissue),
          regression_method = str_replace(regression_method, "none", "no regression"),
          normalization = str_replace(normalization, "counts", "cpm"),
@@ -202,8 +208,9 @@ plt8 <- ggplot(subset(errs_melt2, error_type == "mAPE" & algorithm != "Baseline 
 
 for (err_metric in c("cor", "rMSE", "mAPE")) {
   errs_sub <- subset(melt(best_errors, variable.name = "error_type"),
-                     solve_type == "signature" & error_type == err_metric &
-                       tissue == "All" & grepl(err_metric, metrics))
+                     solve_type == "signature" & signature == best_signature &
+                       error_type == err_metric & tissue == "All")# &
+                       #grepl(err_metric, metrics))
   errs_sub$normalization <- str_replace(errs_sub$normalization, "log_", "")
   errs_sub$normalization <- str_replace(errs_sub$normalization, "counts", "cpm")
 
@@ -215,7 +222,7 @@ for (err_metric in c("cor", "rMSE", "mAPE")) {
   errs_sub2 <- subset(melt(best_errors, variable.name = "error_type"),
                       test_data_name == "Mayo" &
                         solve_type == "signature" & error_type == err_metric &
-                        tissue != "All" & grepl(err_metric, metrics))
+                        signature == best_signature & tissue != "All") # & grepl(err_metric, metrics))
   errs_sub2$normalization <- str_replace(errs_sub2$normalization, "log_", "")
   errs_sub2$normalization <- str_replace(errs_sub2$normalization, "counts", "cpm")
 
@@ -227,7 +234,7 @@ for (err_metric in c("cor", "rMSE", "mAPE")) {
   errs_sub3 <- subset(melt(best_errors, variable.name = "error_type"),
                       test_data_name == "MSBB" &
                         solve_type == "signature" & error_type == err_metric &
-                        tissue != "All" & grepl(err_metric, metrics))
+                        signature == best_signature & tissue != "All") #& grepl(err_metric, metrics))
   errs_sub3$normalization <- str_replace(errs_sub3$normalization, "log_", "")
   errs_sub3$normalization <- str_replace(errs_sub3$normalization, "counts", "cpm")
 
@@ -239,7 +246,7 @@ for (err_metric in c("cor", "rMSE", "mAPE")) {
   errs_sub4 <- subset(melt(best_errors, variable.name = "error_type"),
                       test_data_name == "ROSMAP" &
                         solve_type == "signature" & error_type == err_metric &
-                        tissue != "All" & grepl(err_metric, metrics))
+                        signature == best_signature & tissue != "All")# & grepl(err_metric, metrics))
   errs_sub4$normalization <- str_replace(errs_sub4$normalization, "log_", "")
   errs_sub4$normalization <- str_replace(errs_sub4$normalization, "counts", "cpm")
 
@@ -252,6 +259,8 @@ for (err_metric in c("cor", "rMSE", "mAPE")) {
 
 quality_stats$normalization <- str_replace(quality_stats$normalization, "log_", "")
 quality_stats$normalization <- str_replace(quality_stats$normalization, "counts", "cpm")
+
+quality_stats$algorithm <- str_replace(rownames(quality_stats), "_.*", "")
 quality_stats <- subset(quality_stats, algorithm != "Baseline")
 
 ############ Bad inhibitory ratio, norm vs regression ##############
@@ -287,6 +296,7 @@ file_params <- quality_stats %>% subset(algorithm == "CibersortX") %>%
          regression_method, algorithm) %>%
   distinct()
 
+# TODO this is broken -- doesn't distinguish between 'cibersortx' and 'signature'
 for (row in 1:nrow(file_params)) {
   tmp <- subset(quality_stats,
                 test_data_name == file_params$test_data_name[row] &
@@ -305,18 +315,18 @@ for (row in 1:nrow(file_params)) {
   }
 }
 
-ggplot(quality_stats, aes(x = normalization, y = pct_valid,
+ggplot(quality_stats, aes(x = normalization, y = pct_valid_results,
                           fill = regression_method)) +
   geom_boxplot() + theme_bw() + #facet_wrap(~tissue)
   facet_grid(rows = vars(test_data_name), cols = vars(algorithm)) +
   scale_fill_manual(values = regression_colors)
 
 qbox_stats2 <- quality_stats %>% group_by(test_data_name, algorithm) %>%
-  summarize(max_val = max(pct_valid),
-            min_val = min(pct_valid),
-            median_val = median(pct_valid),
-            upper_quartile = quantile(pct_valid, probs = 0.75, na.rm = TRUE),
-            lower_quartile = quantile(pct_valid, probs = 0.25, na.rm = TRUE),
+  summarize(max_val = max(pct_valid_results),
+            min_val = min(pct_valid_results),
+            median_val = median(pct_valid_results),
+            upper_quartile = quantile(pct_valid_results, probs = 0.75, na.rm = TRUE),
+            lower_quartile = quantile(pct_valid_results, probs = 0.25, na.rm = TRUE),
             .groups = "drop")
 
 ggplot(qbox_stats2, aes(x = algorithm, ymin = min_val, ymax = max_val,
@@ -342,14 +352,28 @@ for (dataset in datasets) {
     metadata <- as.data.frame(colData(bulk_se))
 
     # TODO other tissues and lm?
-    best_errors_sub <- subset(best_errors, tissue == "DLPFC" &
-                                solve_type == "signature" &
-                                regression_method == "edger" &
+    best_errors_sub <- subset(best_errors, tissue == "All" & #tissue == "DLPFC" &
+                                solve_type == "signature" & signature == best_signature &
+                                regression_method == "lme" &
                                 normalization %in% c("counts", "cpm", "log_cpm") &
-                                test_data_name == bulk_dataset)
+                                test_data_name == bulk_dataset &
+                                reference_data_name == dataset)
 
-    best_ests <- Get_AllEstimatesAsDf(dataset, bulk_dataset, algorithms,
-                                      granularity, best_errors_sub, est_fields)
+    best_params <- best_errors_sub %>%
+      group_by(algorithm, reference_input_type) %>%
+      summarize(best_cor = param_id[which.max(cor)],
+                best_rMSE = param_id[which.min(rMSE)],
+                best_mAPE = param_id[which.min(mAPE)],
+                .groups = "drop")
+
+    best_params <- unique(c(best_params$best_cor, best_params$best_rMSE,
+                            best_params$best_mAPE))
+
+    best_errors_sub <- subset(best_errors_sub, param_id %in% best_params)
+
+    #best_ests <- Get_AllEstimatesAsDf(dataset, bulk_dataset, algorithms,
+    #                                  granularity, best_errors_sub, est_fields)
+    best_ests <- subset(best_estimates, param_id %in% best_params)
 
     # TODO fix
     #best_params <- subset(best_errors, reference_data_name == dataset &
@@ -362,26 +386,30 @@ for (dataset in datasets) {
     #best_params$param_id <- sapply(best_params$params, paste, collapse = " ")
 
     #best_ests <- ests_alg %>% merge(best_params, by = c("algorithm", "param_id"))
+
+    best_ests$algorithm <- str_replace(best_ests$param_id, "_.*", "")
     best_ests <- best_ests %>% group_by(algorithm) %>%
       mutate(title = paste(algorithm, "params",
                            as.numeric(factor(param_id))),
              title_short = title) %>%
       ungroup()
 
-    best_ests_dlpfc <- subset(best_ests, sample %in% metadata$sample[metadata$tissue == "DLPFC"])
+    #best_ests_dlpfc <- subset(best_ests, sample %in% metadata$sample[metadata$tissue == "DLPFC"])
 
     plot_id <- paste("Reference dataset:", dataset, "/ Bulk dataset:", bulk_dataset,
-                     "/ Tissue: DLPFC / Normalization: CPM / Regression: edgeR")
+                     "/ Tissue: All / Normalization: CPM / Regression: lme")
+                     #"/ Tissue: DLPFC / Normalization: CPM / Regression: edgeR")
 
+    # TODO this is percent cells, not percent RNA
     merscope <- data.frame(celltype = c("Astrocyte", "Excitatory", "Inhibitory",
                                         "Microglia", "Oligodendrocyte", "OPC",
                                         "Vascular"),
                            pct = c(10, 34, 7, 6, 32.5, 3.5, 11.5)/100)
-    merscope = subset(merscope, celltype %in% c("Astrocyte", "Oligodendrocyte"))
-    merscope = rbind(merscope, data.frame(celltype = c("Endothelial", "Pericyte"),
-                                          pct = c(8, 3.5)/100))
+    #merscope = subset(merscope, celltype %in% c("Astrocyte", "Oligodendrocyte"))
+    #merscope = rbind(merscope, data.frame(celltype = c("Endothelial", "Pericyte"),
+    #                                      pct = c(8, 3.5)/100))
 
-    plt <- ggplot(best_ests_dlpfc, aes(x = algorithm, y = pct_est, color = title)) +
+    plt <- ggplot(best_ests, aes(x = algorithm, y = percent, color = title)) +
       geom_boxplot(width = 0.5) + theme_bw() +
       theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
       theme(legend.position = "bottom") +
@@ -400,7 +428,7 @@ for (dataset in datasets) {
     significant <- list()
     for (param_set in unique(ests_ad$title_short)) {
       ests_param <- subset(ests_ad, title_short == param_set)
-      anov <- aov(pct_est ~ diagnosis*celltype*tissue, data = ests_param)
+      anov <- aov(percent ~ diagnosis*celltype*tissue, data = ests_param)
       tuk <- TukeyHSD(anov, "diagnosis:celltype:tissue")
 
       ct_v_tissue <- expand.grid(levels(ests_ad$celltype), levels(ests_ad$tissue))
@@ -422,7 +450,7 @@ for (dataset in datasets) {
 
     for (alg in unique(ests_ad$algorithm)) {
       ests_params <- subset(ests_ad, algorithm == alg & diagnosis %in% c("CT", "AD"))
-      plt <- ggplot(ests_params, aes(x = celltype, y = pct_est, fill = diagnosis, color = significant), group = tissue) +
+      plt <- ggplot(ests_params, aes(x = celltype, y = percent, fill = diagnosis, color = significant), group = tissue) +
         geom_boxplot(width = 0.5) + theme_bw() +
         theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
         scale_color_manual(values = c("#dddddd", "#000000")) +

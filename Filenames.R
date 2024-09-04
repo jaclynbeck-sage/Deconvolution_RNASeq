@@ -10,6 +10,7 @@ dir_metadata <- file.path(dir_data, "metadata")
 dir_tmp <- file.path(dir_data, "tmp")
 dir_markers <- file.path(dir_data, "markers")
 dir_signatures <- file.path(dir_data, "signatures")
+dir_analysis <- file.path(dir_data, "analysis")
 dir_cibersort_corrected_signatures <- file.path(dir_signatures, "cibersortx_batch_corrected")
 dir_cibersort <- "/data" # outside this working directory, gets shared with cibersort docker
 
@@ -46,8 +47,10 @@ file_searef_h5 <- file.path(dir_seaad_raw, "ref_counts.h5ad")
 file_seaad_h5 <- file.path(dir_seaad_raw, "seaad_counts.h5ad")
 
 url_searef_h5 <- "https://sea-ad-single-cell-profiling.s3.amazonaws.com/MTG/RNAseq/Reference_MTG_RNAseq_final-nuclei.2022-06-07.h5ad"
-url_seaad_h5 <- "https://sea-ad-single-cell-profiling.s3.amazonaws.com/MTG/RNAseq/SEAAD_MTG_RNAseq_final-nuclei.2023-05-05.h5ad"
-url_seaad_merfish <- "https://sea-ad-single-cell-profiling.s3.amazonaws.com/MTG/MERFISH/SEAAD_MTG_MERFISH_all-nuclei.2023-05-08.h5ad"
+url_seaad_h5 <- "https://sea-ad-single-cell-profiling.s3.amazonaws.com/MTG/RNAseq/SEAAD_MTG_RNAseq_final-nuclei.2024-02-13.h5ad"
+url_seaad_merfish <- "https://sea-ad-spatial-transcriptomics.s3.amazonaws.com/middle-temporal-gyrus/all_donors-h5ad/SEAAD_MTG_MERFISH.2024-02-13.h5ad"
+url_seaad_donor_metadata <- "https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/b4/c7/b4c727e1-ede1-4c61-b2ee-bf1ae4a3ef68/sea-ad_cohort_donor_metadata_072524.xlsx"
+url_seaad_cain_map <- "https://sea-ad-single-cell-profiling.s3.amazonaws.com/PFC/RNAseq/public_datasets/Cain_2022-cell-annotation.2024-03-27.csv"
 
 dir_mayo_output <- file.path(dir_estimates, "Mayo")
 dir_msbb_output <- file.path(dir_estimates, "MSBB")

@@ -377,20 +377,22 @@ Filter_Params <- function(err_list, best_params) {
 #   granularity - either "broad_class" or "sub_class"
 #
 # Returns:
-#   a list containing two entries: "errors" is a data frame with all errors
-#   from all files concatenated together, and "quality stats" is a data frame
-#   with all statistics from all files concatenated together
+#   a list containing three entries: "errors" is a data frame with all errors
+#   from all files concatenated together, "quality stats" is a data frame
+#   with all statistics from all files concatenated together, and "estimates"
+#   is a data frame with all estimates from all files concatenated together
 Get_AllBestErrorsAsDf <- function(bulk_datasets, granularity) {
   # List of "best errors" files matching the bulk data set names and granularity
   file_list <- list.files(dir_best_errors,
-                          pattern = paste0("[",
+                          pattern = paste0("(",
                                            paste(bulk_datasets, collapse = "|"),
-                                           "].*", granularity),
-                          full.names = TRUE)
+                                           ").*", granularity),
+                          full.names = TRUE,
+                          recursive = TRUE)
 
   best_err_list <- lapply(file_list, function(file) {
     data <- readRDS(file)
-    print(file)
+    print(basename(file))
 
     # Encode the parameters as strings. We don't need the reference_data_name
     # or test_data_name because they're the same for every entry in this file,
@@ -403,24 +405,73 @@ Get_AllBestErrorsAsDf <- function(bulk_datasets, granularity) {
                                 param_string = as.character(param_strings))
 
     # Add the parameter strings to the main errors data frame
-    errs_df <- merge(data$means, param_strings, by = "param_id")
+    errs_df <- merge(data$means$all_signature, param_strings, by = "param_id")
 
     # Merge a subset of the actual parameters into the data frame. These
     # parameters exist in every error file for every algorithm
     errs_df <- merge(errs_df,
                      select(data$params, reference_data_name, test_data_name,
-                            algorithm, reference_input_type, normalization,
+                            reference_input_type, normalization,
                             regression_method),
                      by.x = "param_id", by.y = "row.names")
+
+    errs_df$algorithm <- str_replace(errs_df$param_id, "_.*", "")
 
     qual_stats <- Get_QualityStatsAsDf(data)
 
     return(list("errors" = errs_df,
+                #"estimates" = data$estimates,
                 "quality_stats" = qual_stats))
   })
 
   return(list("errors" = do.call(rbind, lapply(best_err_list, "[[", "errors")),
+              #"estimates" = do.call(rbind, lapply(best_err_list, "[[", "estimates")),
               "quality_stats" = do.call(rbind, lapply(best_err_list, "[[", "quality_stats"))))
+}
+
+
+Get_AllBestEstimatesAsDf <- function(bulk_datasets, granularity, metadata, best_params = NULL) {
+  # List of "best errors" files matching the bulk data set names and granularity
+  file_list <- list.files(dir_top_estimates,
+                          pattern = paste0("(",
+                                           paste(bulk_datasets, collapse = "|"),
+                                           ").*", granularity),
+                          full.names = TRUE,
+                          recursive = TRUE)
+
+  best_ests_list <- lapply(file_list, function(file) {
+    data <- readRDS(file)
+    print(basename(file))
+
+    data <- data[names(data) %in% best_params$param_id]
+
+    for (N in names(data)) {
+      tissues <- subset(best_params, param_id == N)$tissue
+      samples <- subset(metadata, tissue %in% tissues)$sample
+
+      new_ests <- as.data.frame(data[[N]]$estimates[as.character(samples),])
+      new_ests$sample <- rownames(new_ests)
+
+      new_ests <- new_ests %>%
+        melt(id.vars = c("sample"),
+             variable.name = "celltype",
+             value.name = "percent") %>%
+        merge(combined_metadata, by = "sample", all.y = FALSE)
+
+      new_ests$param_id <- N
+      new_ests$algorithm <- str_replace(N, "_.*", "")
+
+      data[[N]]$estimates <- new_ests
+    }
+
+    ests_df <- do.call(rbind, lapply(data, "[[", "estimates"))
+    params <- do.call(rbind, lapply(data, "[[", "params"))
+
+    return(list("estimates" = ests_df,
+                "params" = params))
+  })
+
+  return(do.call(rbind, lapply(best_ests_list, "[[", "estimates")))
 }
 
 
@@ -447,41 +498,18 @@ Get_AllBestParamsAsDf <- function(reference_datasets, granularity) {
 #   a data frame containing columns for parameters and for percent bad inhibitory
 #   ratio data and percent of valid estimates data from each file
 Get_QualityStatsAsDf <- function(data) {
-  # Merge parameters data frame with percent bad inhibitory ratio data
-  pct_bad_inh <- merge(data$params,
-                       data.frame(
-                         pct_bad_inhibitory_ratio = data$pct_bad_inhibitory_ratio,
-                         row.names = names(data$pct_bad_inhibitory_ratio)
-                       ),
-                       by = "row.names")
-
-  grouping_cols <- c("reference_data_name", "test_data_name", "granularity",
-                     "normalization", "regression_method", "algorithm")
-
-  # Mean ratio across each combination of the above columns
-  pct_bad_inh <- pct_bad_inh %>%
-    group_by_at(grouping_cols) %>%
-    summarize(mean_pct_bad_inhibitory_ratio = mean(pct_bad_inhibitory_ratio),
-              .groups = "drop")
-
-  pct_valid <- data$n_valid_results / data$n_possible_results
-
   # Get the basic parameters that define each file
   params_mod <- data$params %>%
     select(reference_data_name, test_data_name, granularity,
-           normalization, regression_method, algorithm) %>%
+           normalization, regression_method) %>%
     distinct()
 
   rownames(params_mod) <- str_replace(rownames(params_mod), "_[0-9].*", "")
 
-  # Add the percentage of valid estimates to these parameters
-  pct_valid <- merge(params_mod, as.data.frame(pct_valid), by = "row.names")
+  params_mod$mean_pct_bad_inhibitory_ratio <- mean(data$pct_bad_inhibitory_ratio)
+  params_mod$pct_valid_results <- data$n_valid_results / data$n_possible_results
 
-  # Merge all the data together
-  quality_stats <- merge(pct_bad_inh, pct_valid, by = grouping_cols) %>%
-    dplyr::rename(file_id = Row.names)
-
-  return(quality_stats)
+  return(params_mod)
 }
 
 

@@ -60,7 +60,6 @@ for (granularity in c("broad_class", "sub_class")) {
     params <- data.frame("reference_data_name" = "random_uniform",
                          "test_data_name" = bulk_dataset,
                          "granularity" = granularity)
-    name_base <- paste(params, collapse = "_")
 
     dataset_uniform <- lapply(1:100, function(N) {
       ests <- runif(length(celltypes) * length(samples), min = 0, max = 1)
@@ -77,8 +76,6 @@ for (granularity in c("broad_class", "sub_class")) {
       return(list("estimates" = ests, "params" = params_tmp))
     })
 
-    names(dataset_uniform) <- paste(name_base, 1:100, sep = "_")
-
 
     ### Educated guesses -------------------------------------------------------
     # 20 per reference data set = 100 total
@@ -86,7 +83,6 @@ for (granularity in c("broad_class", "sub_class")) {
     params <- data.frame("reference_data_name" = "random_educated",
                          "test_data_name" = bulk_dataset,
                          "granularity" = granularity)
-    name_base <- paste(params, collapse = "_")
 
     dataset_educated <- list()
     for (reference_dataset in reference_datasets) {
@@ -119,7 +115,6 @@ for (granularity in c("broad_class", "sub_class")) {
         return(list("estimates" = ests, "params" = params_tmp))
       })
 
-      names(list_tmp) <- paste(name_base, reference_dataset, 1:20, sep = "_")
       dataset_educated <- append(dataset_educated, list_tmp)
     }
 
@@ -129,7 +124,6 @@ for (granularity in c("broad_class", "sub_class")) {
     params <- data.frame("reference_data_name" = "random_biased",
                          "test_data_name" = bulk_dataset,
                          "granularity" = granularity)
-    name_base <- paste(params, collapse = "_")
 
     dataset_bias <- list()
     for (ct in 1:length(celltypes)) {
@@ -159,7 +153,6 @@ for (granularity in c("broad_class", "sub_class")) {
         return(list("estimates" = ests, "params" = params_tmp))
       })
 
-      names(list_tmp) <- paste(name_base, celltypes[ct], 1:10, sep = "_")
       dataset_bias <- append(dataset_bias, list_tmp)
     }
 
@@ -170,15 +163,12 @@ for (granularity in c("broad_class", "sub_class")) {
                          "test_data_name" = bulk_dataset,
                          "granularity" = granularity,
                          "trial" = 1)
-    name_base <- paste(params, collapse = "_")
 
     zeros <- matrix(rep(0, length(samples) * length(celltypes)),
                     nrow = length(samples),
                     dimnames = list(samples, celltypes))
 
     dataset_zeros <- list(list("estimates" = zeros, "params" = params))
-
-    names(dataset_zeros) <- name_base
 
     full_dataset <- list(dataset_uniform, dataset_educated,
                          dataset_bias, dataset_zeros)
@@ -196,14 +186,16 @@ for (granularity in c("broad_class", "sub_class")) {
           err_item$params <- cbind(err_item$params, params_permute[R, ])
           cols_keep <- c("reference_data_name", "test_data_name", "granularity",
                          "normalization", "regression_method", "trial")
-          rownames(err_item$params) <- paste(err_item$params[cols_keep],
-                                             collapse = "_")
+
+          name_base <- paste0("Baseline_",
+                              paste(err_item$params[cols_keep], collapse = "_"))
+          rownames(err_item$params) <- name_base
+          err_item$param_id <- name_base
+
           return(err_item)
         })
 
-        names(err_list_copy) <- sapply(err_list_copy, function(err_item) {
-          rownames(err_item$params)
-        })
+        names(err_list_copy) <- sapply(err_list_copy, "[[", "param_id")
 
         # Create the same naming scheme as other algorithm output
         params_base <- err_list_copy[[1]]$params %>%

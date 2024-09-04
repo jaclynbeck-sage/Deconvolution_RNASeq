@@ -19,6 +19,8 @@ library(doParallel)
 source(file.path("functions", "General_HelperFunctions.R"))
 source(file.path("functions", "Step11_Error_HelperFunctions.R"))
 
+use_top_estimates <- TRUE
+
 granularity <- "broad_class"
 bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
 singlecell_datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
@@ -88,7 +90,12 @@ for (bulk_dataset in bulk_datasets) {
   for (algorithm in algorithms) {
     print(str_glue("Calculating errors for {bulk_dataset}: {algorithm}"))
 
-    dir_alg <- file.path(dir_estimates, bulk_dataset, algorithm)
+    if (use_top_estimates) {
+      dir_alg <- file.path(dir_top_estimates, bulk_dataset, algorithm)
+    } else {
+      dir_alg <- file.path(dir_estimates, bulk_dataset, algorithm)
+    }
+
     res_files <- list.files(dir_alg, pattern = granularity, full.names = TRUE)
 
     if (length(res_files) == 0) {
@@ -117,8 +124,12 @@ for (bulk_dataset in bulk_datasets) {
                reference_input_type, normalization, regression_method) %>%
         distinct()
 
+      if (use_top_estimates) {
+        params_data$samples <- "all_samples"
+      }
+
       # If the error file already exists, don't re-process
-      tmp <- Load_ErrorList(algorithm, params_data)
+      tmp <- Load_ErrorList(algorithm, params_data, top_params = use_top_estimates)
       if (!is.null(tmp)) {
         msg <- paste("Error file for", algorithm,
                      paste(params_data, collapse = " "),
@@ -168,6 +179,10 @@ for (bulk_dataset in bulk_datasets) {
         source(file.path("functions", "Step11_Error_HelperFunctions.R"))
 
         param_id <- names(deconv_list)[[P]]
+
+        if (use_top_estimates) {
+          deconv_list[[param_id]]$params$samples <- "all_samples"
+        }
 
         # If the error calculation for this param_id exists, don't re-calculate
         tmp <- Load_ErrorIntermediate(algorithm, deconv_list[[param_id]]$params)
@@ -334,7 +349,8 @@ for (bulk_dataset in bulk_datasets) {
       names(err_list$by_sample) <- rownames(err_list$params)
       names(err_list$by_sample_lm) <- rownames(err_list$params)
 
-      Save_ErrorList(bulk_dataset, err_list, algorithm, params_data)
+      Save_ErrorList(bulk_dataset, err_list, algorithm, params_data,
+                     top_params = use_top_estimates)
 
       print(paste("Errors calculated for", nrow(err_list$params), "of",
                   total_length, "parameter sets."))
