@@ -19,7 +19,7 @@ library(doParallel)
 source(file.path("functions", "General_HelperFunctions.R"))
 source(file.path("functions", "Step11_Error_HelperFunctions.R"))
 
-use_top_estimates <- TRUE
+use_top_estimates <- FALSE
 
 granularity <- "broad_class"
 bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
@@ -245,21 +245,33 @@ for (bulk_dataset in bulk_datasets) {
 
         # Check for if the algorithm estimated more inhibitory than excitatory
         # neurons, which generally means the estimate is bad
-        pct_bad_inhibitory_ratio <- 0
         if (granularity == "broad_class") {
-          num_ests <- sum(est_pct[, "Inhibitory"] > est_pct[, "Excitatory"])
+          bad_ests <- data.frame(sample = rownames(est_pct),
+                                 Excitatory = est_pct[, "Excitatory"],
+                                 Inhibitory = est_pct[, "Inhibitory"]) %>%
+            mutate(is_bad_estimate = Inhibitory > Excitatory)
+
         } else if (granularity == "sub_class") {
           excitatory_cols <- grepl("Exc", colnames(est_pct))
           inhibitory_cols <- grepl("Inh", colnames(est_pct))
 
-          summed_estimates <- data.frame(
+          bad_ests <- data.frame(
+            sample = rownames(est_pct),
             Excitatory = rowSums(est_pct[, excitatory_cols]),
-            Inhibitory = rowSums(est_pct[, inhibitory_cols])
-          )
-          num_ests <- sum(summed_estimates$Inhibitory > summed_estimates$Excitatory)
+            Inhibitory = rowSums(est_pct[, inhibitory_cols]),
+          ) %>% mutate(is_bad_estimate = Inhibitory > Excitatory)
         }
 
-        pct_bad_inhibitory_ratio <- num_ests / nrow(est_pct)
+        pct_bad_inhibitory_ratio <- bulk_metadata %>%
+          as.data.frame() %>%
+          select(sample, tissue) %>%
+          merge(bad_ests, by = "sample", all.x = FALSE) %>%
+          group_by(tissue) %>%
+          summarize(n_bad = sum(is_bad_estimate),
+                    count = n(),
+                    pct_bad_inhibitory_ratio = n_bad / count,
+                    param_id = param_id) %>%
+          select(tissue, pct_bad_inhibitory_ratio, param_id)
 
         params <- deconv_list[[param_id]]$params
 
@@ -324,8 +336,7 @@ for (bulk_dataset in bulk_datasets) {
       gof_means_all_lm <- do.call(rbind, lapply(deconv_list, "[[", "gof_means_lm"))
       params <- do.call(rbind, lapply(deconv_list, "[[", "params"))
 
-      pct_inh <- sapply(deconv_list, "[[", "pct_bad_inhibitory_ratio")
-      names(pct_inh) <- rownames(params)
+      pct_inh <- do.call(rbind, lapply(deconv_list, "[[", "pct_bad_inhibitory_ratio"))
 
       all_ests <- do.call(rbind, lapply(deconv_list, "[[", "estimates"))
       all_ests <- melt(all_ests,

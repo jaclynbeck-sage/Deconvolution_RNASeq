@@ -68,7 +68,7 @@ for (P in 1:nrow(params_loop1)) {
                               str_glue("top_parameters_{file_id}.rds"))
 
   if (!file.exists(top_param_file)) {
-    warning(paste(top_param_file, "doesn't exist! Skipping..."))
+    message(paste(top_param_file, "doesn't exist! Skipping..."))
     next
   }
 
@@ -90,15 +90,15 @@ for (P in 1:nrow(params_loop1)) {
   # Extra processing for CibersortX: Some re-formatting of the input, plus
   # re-use of batch-corrected signature if it exists
   if (algorithm == "CibersortX") {
-    data <- Modify_CibersortX_Input(data, params_loop1[P, ])
+    data <- Modify_CibersortX_Input(data, file_params)
 
   } else if (algorithm %in% c("Dtangle", "HSPE")) {
     # Extra pre-processing needed for Dtangle/HSPE -- reformat the input
-    data <- Modify_DtangleHSPE_Input(data, params_loop1[P, ])
+    data <- Modify_DtangleHSPE_Input(data, file_params)
 
   } else if (algorithm == "Music") {
     # Extra pre-processing needed for MuSiC -- calculate or load sc_basis
-    data <- Modify_Music_Input(data, params_loop1[P, ])
+    data <- Modify_Music_Input(data, file_params)
   }
 
   ## Loop through algorithm-specific arguments ---------------------------------

@@ -145,11 +145,11 @@ for (bulk_dataset in bulk_datasets) {
       err_stats <- melt(errs_sub_all, variable.name = "metric",
                         id.vars = c("param_id", "tissue", "solve_type",
                                     "signature", "best_metric")) %>%
-                    group_by(tissue, solve_type, signature, metric) %>%
-                    summarize(mean_err = mean(value),
-                              sd_err = sd(value),
-                              rel_sd_err = sd_err / mean_err,
-                              .groups = "drop")
+        group_by(tissue, solve_type, signature, metric) %>%
+        summarize(mean_err = mean(value),
+                  sd_err = sd(value),
+                  rel_sd_err = sd_err / mean_err,
+                  .groups = "drop")
       err_stats$file_id <- file_id
 
       est_stats <- subset(err_list$estimates, param_id %in% best_param_ids) %>%
@@ -166,7 +166,7 @@ for (bulk_dataset in bulk_datasets) {
                           params = err_list$params[best_param_ids,],
                           by_sample = do.call(rbind, err_list$by_sample[best_param_ids]),
                           by_sample_lm = do.call(rbind, err_list$by_sample_lm[best_param_ids]),
-                          pct_bad_inhibitory_ratio = err_list$pct_bad_inhibitory_ratio[best_param_ids],
+                          pct_bad_inhibitory_ratio = subset(err_list$pct_bad_inhibitory_ratio, param_id %in% best_param_ids),
                           n_valid_results = err_list$n_valid_results,
                           n_possible_results = err_list$n_possible_results,
                           error_stats = err_stats,

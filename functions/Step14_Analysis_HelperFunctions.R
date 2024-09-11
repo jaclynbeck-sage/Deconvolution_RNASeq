@@ -26,12 +26,12 @@ Get_AllBestErrorsAsDf <- function(bulk_datasets, granularity) {
     # Merge a subset of the parameters into the mean errors data frame. These
     # parameters exist in every error file for every algorithm
     errs_df <- merge(data$means$all_signature,
-                     select(data$params, reference_data_name, test_data_name,
-                            reference_input_type, normalization,
-                            regression_method),
+                     dplyr::select(data$params, reference_data_name,
+                                   test_data_name, reference_input_type,
+                                   normalization, regression_method),
                      by.x = "param_id", by.y = "row.names") %>%
-      mutate(algorithm = str_replace(param_id, "_.*", ""),
-             pct_valid_results = data$n_valid_results / data$n_possible_results)
+      dplyr::mutate(algorithm = str_replace(param_id, "_.*", ""),
+                    pct_valid_results = data$n_valid_results / data$n_possible_results)
 
     inh_ratio <- data.frame(param_id = names(data$pct_bad_inhibitory_ratio),
                             pct_bad_inhibitory_ratio = data$pct_bad_inhibitory_ratio)
@@ -139,9 +139,9 @@ Find_BestParameters <- function(errs_df, group_cols) {
   best_params <- best_params %>%
     melt(measure.vars = c("best_cor", "best_rMSE", "best_mAPE"),
          value.name = "param_id") %>%
-    select(tissue, param_id) %>%
+    dplyr::select(tissue, param_id) %>%
     subset(!is.na(param_id)) %>%
-    distinct()
+    dplyr::distinct()
 
   return(best_params)
 }
@@ -159,14 +159,14 @@ Get_AverageStats <- function(errs_df, ests_df) {
 
   ests_df <- subset(ests_df, param_id %in% errs_df$param_id &
                       tissue == unique(errs_df$tissue)) %>%
-    mutate(avg_id = avg_id)
+    dplyr::mutate(avg_id = avg_id)
 
   cols_keep_errs <- setdiff(colnames(errs_df),
                             c("param_id", "cor", "rMSE", "mAPE"))
 
   data_keep_ests <- ests_df %>%
-    select(-percent, -param_id) %>%
-    distinct()
+    dplyr::select(-percent, -param_id) %>%
+    dplyr::distinct()
 
   # Speed-up optimization: wtd.mean takes longer on data with 1 row and throws a
   # lot of warnings in that case. It's also unnecessary to take the mean/sd when
@@ -182,22 +182,25 @@ Get_AverageStats <- function(errs_df, ests_df) {
     ests_df$weight <- 1
 
   } else if (nrow(errs_df) == 2) {
-      bests <- c(which.max(errs_df$cor), which.min(errs_df$rMSE), which.min(errs_df$mAPE))
-      weights <- as.data.frame(table(errs_df$param_id[bests]))
-      colnames(weights) <- c("param_id", "weight")
+    bests <- c(which.max(errs_df$cor),
+               which.min(errs_df$rMSE),
+               which.min(errs_df$mAPE))
 
-      errs_df <- merge(errs_df, weights, by = "param_id")
-      ests_df <- merge(ests_df, weights, by = "param_id")
+    weights <- as.data.frame(table(errs_df$param_id[bests]))
+    colnames(weights) <- c("param_id", "weight")
 
-      mean_fun <- wtd.mean
-      sd_fun <- wtd.var
+    errs_df <- merge(errs_df, weights, by = "param_id")
+    ests_df <- merge(ests_df, weights, by = "param_id")
+
+    mean_fun <- wtd.mean
+    sd_fun <- wtd.var
 
   } else { # nrow = 3
-      mean_fun <- function(values, weights) { mean(values) }
-      sd_fun <- function(values, weights) { sd(values) }
+    mean_fun <- function(values, weights) { mean(values) }
+    sd_fun <- function(values, weights) { sd(values) }
 
-      errs_df$weight <- 1
-      ests_df$weight <- 1
+    errs_df$weight <- 1
+    ests_df$weight <- 1
   }
 
   avg_err <- errs_df %>%
@@ -249,8 +252,8 @@ Calculate_Significance <- function(ests_df, tissue) {
     summ <- summary(anov)[[1]]
     tuk <- TukeyHSD(anov, "diagnosis:celltype")
 
-    comparisons <- paste0("CT:", levels(ests_df$celltype),
-                          "-AD:", levels(ests_df$celltype))
+    comparisons <- paste0("CT:", levels(ests_param$celltype),
+                          "-AD:", levels(ests_param$celltype))
 
     tuk <- as.data.frame(tuk[[1]][comparisons,])
     tuk$p_adj <- tuk$`p adj`
@@ -267,7 +270,7 @@ Calculate_Significance <- function(ests_df, tissue) {
   })
 
   significant <- do.call(rbind, significant) %>%
-    select(celltype, tissue, p_adj, significant, anova_significant, avg_id)
+    dplyr::select(celltype, tissue, p_adj, significant, anova_significant, avg_id)
 
   # cap minimum p to avoid log(0) further down
   significant$p_adj_thresh <- significant$p_adj
@@ -294,19 +297,19 @@ Get_MeanProps_Significance <- function(avg_list) {
     # parameter set
     mean_props <- ests_ad %>% subset(diagnosis %in% c("CT", "AD")) %>%
       group_by(avg_id, diagnosis, tissue, celltype, algorithm) %>%
-      summarise(mean_pct = mean(percent_mean),
-                sd_pct = sd(percent_mean),
-                rel_sd_pct = sd_pct / mean_pct,
-                count = n(),
-                .groups = "drop")
+      dplyr::summarize(mean_pct = mean(percent_mean),
+                       sd_pct = sd(percent_mean),
+                       rel_sd_pct = sd_pct / mean_pct,
+                       count = n(),
+                       .groups = "drop")
 
     # Make one column for AD and one for CT for each of mean_pct, sd_pct,
     # rel_sd_pct, and count, calculate fold-change between AD and CT means
     mean_props <- pivot_wider(mean_props, names_from = "diagnosis",
                               values_from = c("mean_pct", "sd_pct",
                                               "rel_sd_pct", "count")) %>%
-      mutate(fc = mean_pct_AD / mean_pct_CT,
-             log2_fc = log2(fc)) # equivalent to log2(AD)-log2(CT)
+      dplyr::mutate(fc = mean_pct_AD / mean_pct_CT,
+                    log2_fc = log2(fc)) # equivalent to log2(AD)-log2(CT)
 
     # If one or both of the means is 0, rel_sd_pct values and the FC would be NA
     # due to divide by zero, so they need to be changed to 0
@@ -317,7 +320,7 @@ Get_MeanProps_Significance <- function(avg_list) {
 
     mean_props <- merge(mean_props, significant,
                         by = c("avg_id", "celltype", "tissue")) %>%
-      mutate(log_p = log(p_adj_thresh))
+      dplyr::mutate(log_p = log(p_adj_thresh))
 
     return(mean_props)
   })
