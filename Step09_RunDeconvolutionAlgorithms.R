@@ -75,6 +75,7 @@ for (P in 1:nrow(params_loop1)) {
     message("Running with all samples.")
   }
 
+  bulk_metadata <- colData(data$test)
   data$test <- as.matrix(assay(data$test, "counts"))
 
   # Extra processing for CibersortX: Some re-formatting of the input, plus
@@ -101,9 +102,15 @@ for (P in 1:nrow(params_loop1)) {
         next # We have to skip this file
       }
     }
+
   } else if (algorithm == "Music") {
     # Extra pre-processing needed for MuSiC -- calculate or load sc_basis
     data <- Modify_Music_Input(data, params_loop1[P,])
+
+  } else if (algorithm == "Scaden") {
+    # Scaden needs to run each tissue separately so we need to bring that info
+    # into the inner loop
+    data$bulk_metadata <- bulk_metadata
   }
 
   ## Loop through algorithm-specific arguments ---------------------------------
