@@ -125,7 +125,6 @@ for (bulk_dataset in bulk_datasets) {
         df <- errs_all %>% group_by(tissue, solve_type, signature) %>%
           summarize(best_inds = get_best_vals(.data, col_name),
                     param_id = .data$param_id[best_inds],
-                    #signature = .data$signature[best_inds],
                     .groups = "drop") %>%
           select(-best_inds)
 

@@ -14,16 +14,16 @@ folders <- list("metadata" = list("synID" = "syn58803307", "downloadLocation" = 
                 "bulk" = list("synID" = "syn58841972", "downloadLocation" = dir_input),
                 "markers" = list("synID" = "syn58842534", "downloadLocation" = dir_markers),
                 "signatures" = list("synID" = "syn59480278", "downloadLocation" = dir_signatures),
-                "Mayo" = list("synID" = "syn59490216", "downloadLocation" = file.path(dir_estimates, "Mayo")),
-                "MSBB" = list("synID" = "syn59490283", "downloadLocation" = file.path(dir_estimates, "MSBB")),
-                "ROSMAP" = list("synID" = "syn59490358", "downloadLocation" = file.path(dir_estimates, "ROSMAP")),
+                "estimates" = list("synID" = "syn59489760", "downloadLocation" = dir_estimates),
                 "errors" = list("synID" = "syn60969684", "downloadLocation" = dir_errors),
+                "top_parameters" = list("synID" = "syn61917690", "downloadLocation" = dir_top_parameters),
                 "top_estimates" = list("synID" = "syn61922322", "downloadLocation" = dir_top_estimates)
-                # uncomment only if these files are needed -- can take a long time to download
+                # uncomment only if these files are needed
                 #"hspe_params" = list("synID" = "syn61709305", "downloadLocation" = dir_hspe_params),
                 #"music_basis" = list("synID" = "syn59500238", "downloadLocation" = dir_music_basis),
-                #"scaden_models" = list("synID" = "syn61551467", "downloadLocation" = dir_scaden_models)
-                )
+                # This takes a lot of disk space
+                #"scaden_models" = list("synID" = "syn63151233", "downloadLocation" = dir_scaden_models)
+)
 
 
 # Helper function for recursive download
@@ -33,7 +33,7 @@ download <- function(synID, downloadLocation) {
 
   for (child in parent) {
     res <- synGet(child$id, downloadLocation = downloadLocation,
-                 ifcollision = "overwrite.local")
+                  ifcollision = "overwrite.local")
 
     if (is(res, "synapseclient.entity.Folder")) {
       new_folder <- file.path(downloadLocation, res$name)

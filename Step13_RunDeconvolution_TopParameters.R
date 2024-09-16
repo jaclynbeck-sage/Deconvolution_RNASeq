@@ -157,7 +157,9 @@ for (P in 1:nrow(params_loop1)) {
       # Find which result matches these parameters
       prev_params <- do.call(rbind, lapply(prev_res, "[[", "params"))
       prev_params <- prev_params[, colnames(params_loop2)]
-      match_params <- plyr::match_df(prev_params, params_loop2[R, ])
+      match_params <- plyr::match_df(prev_params, params_loop2[R, ],
+                                     on = intersect(colnames(prev_params),
+                                                    colnames(params_loop2)))
 
       if (nrow(match_params) != 1) {
         stop("Step09 results do not contain this parameter set.")

@@ -258,7 +258,7 @@ for (bulk_dataset in bulk_datasets) {
           bad_ests <- data.frame(
             sample = rownames(est_pct),
             Excitatory = rowSums(est_pct[, excitatory_cols]),
-            Inhibitory = rowSums(est_pct[, inhibitory_cols]),
+            Inhibitory = rowSums(est_pct[, inhibitory_cols])
           ) %>% mutate(is_bad_estimate = Inhibitory > Excitatory)
         }
 
