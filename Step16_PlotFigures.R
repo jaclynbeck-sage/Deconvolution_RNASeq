@@ -13,7 +13,6 @@ source(file.path("functions", "Step16_Plotting_HelperFunctions.R"))
 
 # TODO remove the Mayo TCX param with > 800 rMSE? it's all from TPM
 # TODO Baseline tmm seems to be missing from the baseline only plots in sub_class?
-# TODO pct bad inhibitory ratio is based on all data, not by tissue?
 
 options(scipen = 999)
 
@@ -43,14 +42,35 @@ best_errs_plot <- best_errors %>%
 errs_melt <- best_errs_plot  %>%
   group_by(tissue, reference_data_name, test_data_name, algorithm,
            normalization, regression_method) %>%
-  summarize(cor = max(cor),
-            rMSE = min(rMSE),
-            mAPE = min(mAPE),
-            .groups = "drop") %>%
+  dplyr::summarize(cor = max(cor),
+                   rMSE = min(rMSE),
+                   mAPE = min(mAPE),
+                   .groups = "drop") %>%
   melt(variable.name = "error_type")
 
 baselines_melt <- subset(errs_melt, algorithm == "Baseline")
 errs_melt <- subset(errs_melt, algorithm != "Baseline")
+
+# TODO temporary for looking at which algs/norms/regressions are best
+tmp_by_tissue = best_errors %>%
+  subset(algorithm != "Baseline") %>%
+  dplyr::group_by(tissue) %>%
+  dplyr::mutate(cor_rank = rank(-cor), rMSE_rank = rank(rMSE), mAPE_rank = rank(mAPE))
+best_cor <- subset(tmp_by_tissue, cor_rank <= 3) %>%
+  select(tissue, data_transform, algorithm,
+         reference_data_name, reference_input_type, signature, cor, cor_rank,
+         rMSE_rank, mAPE_rank) %>%
+  arrange(tissue, cor_rank) %>% as.data.frame()
+best_rMSE <- subset(tmp_by_tissue, rMSE_rank <= 3) %>%
+  select(tissue, data_transform, algorithm,
+         reference_data_name, reference_input_type, signature, rMSE, cor_rank,
+         rMSE_rank, mAPE_rank) %>%
+  arrange(tissue, rMSE_rank) %>% as.data.frame()
+best_mAPE <- subset(tmp_by_tissue, mAPE_rank <= 3) %>%
+  select(tissue, data_transform, algorithm,
+         reference_data_name, reference_input_type, signature, mAPE, cor_rank,
+         rMSE_rank, mAPE_rank) %>%
+  arrange(tissue, mAPE_rank) %>% as.data.frame()
 
 # Color setup ------------------------------------------------------------------
 
@@ -129,16 +149,6 @@ plt1 <- Plot_FacetBoxPlot(subset(errs_box, error_type == "cor"),
              linetype = "twodash")
 print(plt1 + plot_annotation(title = "Spread of correlation regardless of normalization / regression"))
 
-plt1v <- Plot_FacetViolinPlot(subset(errs_melt, error_type == "cor"),
-                              fill = "tissue",
-                              x_axis = "reference_data_name",
-                              fill_colors = tissue_colors,
-                              facet_vars = c("test_data_name", "algorithm")) +
-  geom_hline(aes(yintercept = max_val),
-             data = subset(baselines_plot, error_type == "cor"),
-             linetype = "twodash")
-print(plt1v + plot_annotation(title = "Spread of correlation regardless of normalization / regression"))
-
 plt2 <- Plot_FacetBoxPlot(subset(errs_box_noref, error_type == "cor"),
                           fill = "tissue",
                           x_axis = "algorithm",
@@ -148,17 +158,6 @@ plt2 <- Plot_FacetBoxPlot(subset(errs_box_noref, error_type == "cor"),
              data = subset(baselines_plot, error_type == "cor"),
              linetype = "twodash")
 print(plt2 + plot_annotation(title = "Spread of correlation regardless of reference, normalization, or regression"))
-
-plt2v <- Plot_FacetViolinPlot(subset(errs_melt, error_type == "cor"),
-                              fill = "tissue",
-                              x_axis = "algorithm",
-                              fill_colors = tissue_colors,
-                              facet_vars = c("test_data_name")) +
-  geom_hline(aes(yintercept = max_val),
-             data = subset(baselines_plot, error_type == "cor"),
-             linetype = "twodash")
-print(plt2v + plot_annotation(title = "Spread of correlation regardless of normalization / regression"))
-
 
 # Plt 1 but divided by tissue so there is a baseline line for each tissue
 # separately
@@ -175,17 +174,6 @@ plt3 <- Plot_FacetBoxPlot(subset(errs_box, error_type == "cor"),
              linetype = "twodash")
 print(plt3 + plot_annotation(title = "Spread of correlation by tissue, regardless of normalization, or regression"))
 
-plt3v <- Plot_FacetViolinPlot(subset(errs_melt, error_type == "cor"),
-                              fill = "tissue",
-                              x_axis = "reference_data_name",
-                              fill_colors = tissue_colors,
-                              facet_vars = c("tissue", "algorithm")) +
-  geom_hline(aes(yintercept = max_val),
-             data = subset(baselines_plot_tissue, error_type == "cor"),
-             linetype = "twodash")
-print(plt3v + plot_annotation(title = "Spread of correlation regardless of normalization / regression"))
-
-
 
 # rMSE -- this is the only one where the "zeros" baseline is relevant
 plt4a <- Plot_FacetBoxPlot(subset(errs_box, error_type == "rMSE"),
@@ -201,19 +189,6 @@ plt4a <- Plot_FacetBoxPlot(subset(errs_box, error_type == "rMSE"),
 
 print(plt4a + plot_annotation(title = "Spread of rMSE regardless of normalization, or regression"))
 
-plt4av <- Plot_FacetViolinPlot(subset(errs_melt, error_type == "rMSE"),
-                               fill = "tissue",
-                               x_axis = "reference_data_name",
-                               fill_colors = tissue_colors,
-                               facet_vars = c("test_data_name", "algorithm")) +
-  geom_hline(aes(yintercept = min_val),
-             data = subset(baselines_plot, error_type == "rMSE"),
-             linetype = "twodash") +
-  geom_hline(aes(yintercept = min_val), data = zeros_plot, color = "red",
-             linetype = "twodash")
-print(plt4av + plot_annotation(title = "Spread of rMSE regardless of normalization / regression"))
-
-
 plt4b <- Plot_FacetBoxPlot(subset(errs_box_noref, error_type == "rMSE"),
                            fill = "tissue",
                            x_axis = "algorithm",
@@ -227,19 +202,6 @@ plt4b <- Plot_FacetBoxPlot(subset(errs_box_noref, error_type == "rMSE"),
 
 print(plt4b + plot_annotation(title = "Spread of rMSE regardless of reference, normalization, or regression"))
 
-plt4bv <- Plot_FacetViolinPlot(subset(errs_melt, error_type == "rMSE"),
-                               fill = "tissue",
-                               x_axis = "algorithm",
-                               fill_colors = tissue_colors,
-                               facet_vars = c("test_data_name")) +
-  geom_hline(aes(yintercept = min_val),
-             data = subset(baselines_plot, error_type == "rMSE"),
-             linetype = "twodash") +
-  geom_hline(aes(yintercept = min_val), data = zeros_plot, color = "red",
-             linetype = "twodash")
-print(plt4bv + plot_annotation(title = "Spread of rMSE regardless of normalization / regression"))
-
-
 # Plt 4a but divided by tissue so there is a baseline line for each tissue
 # separately.
 plt4c <- Plot_FacetBoxPlot(subset(errs_box, error_type == "rMSE"),
@@ -251,16 +213,6 @@ plt4c <- Plot_FacetBoxPlot(subset(errs_box, error_type == "rMSE"),
              data = subset(baselines_plot_tissue, error_type == "rMSE"),
              linetype = "twodash")
 print(plt4c + plot_annotation(title = "Spread of rMSE by tissue, regardless of normalization, or regression"))
-
-plt4cv <- Plot_FacetViolinPlot(subset(errs_melt, error_type == "rMSE"),
-                               fill = "tissue",
-                               x_axis = "reference_data_name",
-                               fill_colors = tissue_colors,
-                               facet_vars = c("tissue", "algorithm")) +
-  geom_hline(aes(yintercept = min_val),
-             data = subset(baselines_plot_tissue, error_type == "rMSE"),
-             linetype = "twodash")
-print(plt4cv + plot_annotation(title = "Spread of rMSE regardless of normalization / regression"))
 
 
 # mAPE
@@ -275,17 +227,6 @@ plt5a <- Plot_FacetBoxPlot(subset(errs_box, error_type == "mAPE"),
 
 print(plt5a + plot_annotation(title = "Spread of mAPE regardless of normalization, or regression"))
 
-plt5av <- Plot_FacetViolinPlot(subset(errs_melt, error_type == "mAPE"),
-                               fill = "tissue",
-                               x_axis = "reference_data_name",
-                               fill_colors = tissue_colors,
-                               facet_vars = c("test_data_name", "algorithm")) +
-  geom_hline(aes(yintercept = min_val),
-             data = subset(baselines_plot, error_type == "mAPE"),
-             linetype = "twodash")
-print(plt5av + plot_annotation(title = "Spread of mAPE regardless of normalization / regression"))
-
-
 plt5b <- Plot_FacetBoxPlot(subset(errs_box_noref, error_type == "mAPE"),
                            fill = "tissue",
                            x_axis = "algorithm",
@@ -295,17 +236,6 @@ plt5b <- Plot_FacetBoxPlot(subset(errs_box_noref, error_type == "mAPE"),
              data = subset(baselines_plot, error_type == "mAPE"),
              linetype = "twodash")
 print(plt5b + plot_annotation(title = "Spread of mAPE regardless of reference, normalization, or regression"))
-
-plt5bv <- Plot_FacetViolinPlot(subset(errs_melt, error_type == "mAPE"),
-                               fill = "tissue",
-                               x_axis = "algorithm",
-                               fill_colors = tissue_colors,
-                               facet_vars = c("test_data_name")) +
-  geom_hline(aes(yintercept = min_val),
-             data = subset(baselines_plot, error_type == "mAPE"),
-             linetype = "twodash")
-print(plt5bv + plot_annotation(title = "Spread of mAPE regardless of normalization / regression"))
-
 
 # Plt 5a but divided by tissue so there is a baseline line for each tissue
 # separately.
@@ -318,17 +248,6 @@ plt5c <- Plot_FacetBoxPlot(subset(errs_box, error_type == "mAPE"),
              data = subset(baselines_plot_tissue, error_type == "mAPE"),
              linetype = "twodash")
 print(plt5c + plot_annotation(title = "Spread of mAPE by tissue, regardless of normalization, or regression"))
-
-plt5cv <- Plot_FacetViolinPlot(subset(errs_melt, error_type == "mAPE"),
-                               fill = "tissue",
-                               x_axis = "reference_data_name",
-                               fill_colors = tissue_colors,
-                               facet_vars = c("tissue", "algorithm")) +
-  geom_hline(aes(yintercept = min_val),
-             data = subset(baselines_plot_tissue, error_type == "mAPE"),
-             linetype = "twodash")
-print(plt5cv + plot_annotation(title = "Spread of mAPE regardless of normalization / regression"))
-
 
 
 # Normalization vs regression --------------------------------------------------
@@ -352,17 +271,6 @@ plt6 <- Plot_FacetBoxPlot(subset(errs_box_norm, error_type == "cor"),
              linetype = "twodash")
 print(plt6 + plot_annotation(title = "Correlation: normalization vs regression"))
 
-plt6v <- Plot_FacetViolinPlot(subset(errs_melt, error_type == "cor"),
-                              x_axis = "normalization",
-                              fill = "regression_method",
-                              fill_colors = regression_colors,
-                              facet_vars = c("tissue", "algorithm")) +
-  geom_hline(aes(yintercept = max_val, color = normalization),
-             data = subset(baselines_plot_norm, error_type == "cor"),
-             linetype = "twodash")
-print(plt6v + plot_annotation(title = "Correlation: normalization vs regression"))
-
-
 plt7 <- Plot_FacetBoxPlot(subset(errs_box_norm, error_type == "rMSE"),
                           x_axis = "normalization",
                           fill = "regression_method",
@@ -373,17 +281,6 @@ plt7 <- Plot_FacetBoxPlot(subset(errs_box_norm, error_type == "rMSE"),
              linetype = "twodash")
 print(plt7 + plot_annotation(title = "rMSE: normalization vs regression"))
 
-plt7v <- Plot_FacetViolinPlot(subset(errs_melt, error_type == "rMSE"),
-                              x_axis = "normalization",
-                              fill = "regression_method",
-                              fill_colors = regression_colors,
-                              facet_vars = c("tissue", "algorithm")) +
-  geom_hline(aes(yintercept = min_val, color = normalization),
-             data = subset(baselines_plot_norm, error_type == "rMSE"),
-             linetype = "twodash")
-print(plt7v + plot_annotation(title = "rMSE: normalization vs regression"))
-
-
 plt8 <- Plot_FacetBoxPlot(subset(errs_box_norm, error_type == "mAPE"),
                           x_axis = "normalization",
                           fill = "regression_method",
@@ -393,16 +290,6 @@ plt8 <- Plot_FacetBoxPlot(subset(errs_box_norm, error_type == "mAPE"),
              data = subset(baselines_plot_norm, error_type == "mAPE"),
              linetype = "twodash")
 print(plt8 + plot_annotation(title = "mAPE: normalization vs regression"))
-
-plt8v <- Plot_FacetViolinPlot(subset(errs_melt, error_type == "mAPE"),
-                              x_axis = "normalization",
-                              fill = "regression_method",
-                              fill_colors = regression_colors,
-                              facet_vars = c("tissue", "algorithm")) +
-  geom_hline(aes(yintercept = min_val, color = normalization),
-             data = subset(baselines_plot_norm, error_type == "mAPE"),
-             linetype = "twodash")
-print(plt8v + plot_annotation(title = "mAPE: normalization vs regression"))
 
 # Collapsed to test_data_name
 errs_box_tdn <- errs_melt %>%
@@ -422,16 +309,6 @@ plt9 <- Plot_FacetBoxPlot(subset(errs_box_tdn, error_type == "cor"),
              linetype = "twodash")
 print(plt9 + plot_annotation(title = "Correlation: normalization vs regression"))
 
-plt9v <- Plot_FacetViolinPlot(subset(errs_melt, error_type == "cor"),
-                              x_axis = "normalization",
-                              fill = "regression_method",
-                              fill_colors = regression_colors,
-                              facet_vars = c("test_data_name", "algorithm")) +
-  geom_hline(aes(yintercept = max_val, color = normalization),
-             data = subset(baselines_plot_tdn, error_type == "cor"),
-             linetype = "twodash")
-print(plt9v + plot_annotation(title = "Correlation: normalization vs regression"))
-
 plt10 <- Plot_FacetBoxPlot(subset(errs_box_tdn, error_type == "rMSE"),
                            x_axis = "normalization",
                            fill = "regression_method",
@@ -442,16 +319,6 @@ plt10 <- Plot_FacetBoxPlot(subset(errs_box_tdn, error_type == "rMSE"),
              linetype = "twodash")
 print(plt10 + plot_annotation(title = "rMSE: normalization vs regression"))
 
-plt10v <- Plot_FacetViolinPlot(subset(errs_melt, error_type == "rMSE"),
-                               x_axis = "normalization",
-                               fill = "regression_method",
-                               fill_colors = regression_colors,
-                               facet_vars = c("test_data_name", "algorithm")) +
-  geom_hline(aes(yintercept = min_val, color = normalization),
-             data = subset(baselines_plot_tdn, error_type == "rMSE"),
-             linetype = "twodash")
-print(plt10v + plot_annotation(title = "rMSE: normalization vs regression"))
-
 plt11 <- Plot_FacetBoxPlot(subset(errs_box_tdn, error_type == "mAPE"),
                            x_axis = "normalization",
                            fill = "regression_method",
@@ -461,17 +328,6 @@ plt11 <- Plot_FacetBoxPlot(subset(errs_box_tdn, error_type == "mAPE"),
              data = subset(baselines_plot_tdn, error_type == "mAPE"),
              linetype = "twodash")
 print(plt11 + plot_annotation(title = "mAPE: normalization vs regression"))
-
-plt11v <- Plot_FacetViolinPlot(subset(errs_melt, error_type == "mAPE"),
-                               x_axis = "normalization",
-                               fill = "regression_method",
-                               fill_colors = regression_colors,
-                               facet_vars = c("test_data_name", "algorithm")) +
-  geom_hline(aes(yintercept = min_val, color = normalization),
-             data = subset(baselines_plot_tdn, error_type == "mAPE"),
-             linetype = "twodash")
-print(plt11v + plot_annotation(title = "mAPE: normalization vs regression"))
-
 
 # Algorithms collapsed
 errs_box_noalg <- errs_melt %>%
@@ -488,16 +344,6 @@ plt12 <- Plot_FacetBoxPlot(subset(errs_box_noalg, error_type == "cor"),
              linetype = "twodash")
 print(plt12 + plot_annotation(title = "Correlation: normalization vs regression"))
 
-plt12v <- Plot_FacetViolinPlot(subset(errs_melt, error_type == "cor"),
-                               x_axis = "normalization",
-                               fill = "regression_method",
-                               fill_colors = regression_colors,
-                               facet_vars = c("tissue")) +
-  geom_hline(aes(yintercept = max_val, color = normalization),
-             data = subset(baselines_plot_norm, error_type == "cor"),
-             linetype = "twodash")
-print(plt12v + plot_annotation(title = "Correlation: normalization vs regression"))
-
 plt13 <- Plot_FacetBoxPlot(subset(errs_box_noalg, error_type == "rMSE"),
                            x_axis = "normalization",
                            fill = "regression_method",
@@ -507,17 +353,6 @@ plt13 <- Plot_FacetBoxPlot(subset(errs_box_noalg, error_type == "rMSE"),
              data = subset(baselines_plot_norm, error_type == "rMSE"),
              linetype = "twodash")
 print(plt13 + plot_annotation(title = "rMSE: normalization vs regression"))
-
-plt13v <- Plot_FacetViolinPlot(subset(errs_melt, error_type == "rMSE"),
-                               x_axis = "normalization",
-                               fill = "regression_method",
-                               fill_colors = regression_colors,
-                               facet_vars = c("tissue")) +
-  geom_hline(aes(yintercept = min_val, color = normalization),
-             data = subset(baselines_plot_norm, error_type == "rMSE"),
-             linetype = "twodash")
-print(plt13v + plot_annotation(title = "rMSE: normalization vs regression"))
-
 
 plt14 <- Plot_FacetBoxPlot(subset(errs_box_noalg, error_type == "mAPE"),
                            x_axis = "normalization",
@@ -529,17 +364,6 @@ plt14 <- Plot_FacetBoxPlot(subset(errs_box_noalg, error_type == "mAPE"),
              linetype = "twodash")
 print(plt14 + plot_annotation(title = "mAPE: normalization vs regression"))
 
-plt14v <- Plot_FacetViolinPlot(subset(errs_melt, error_type == "mAPE"),
-                               x_axis = "normalization",
-                               fill = "regression_method",
-                               fill_colors = regression_colors,
-                               facet_vars = c("tissue")) +
-  geom_hline(aes(yintercept = min_val, color = normalization),
-             data = subset(baselines_plot_norm, error_type == "mAPE"),
-             linetype = "twodash")
-print(plt14v + plot_annotation(title = "mAPE: normalization vs regression"))
-
-
 for (err_metric in c("cor", "rMSE", "mAPE")) {
   errs_sub <- subset(errs_melt, error_type == err_metric) %>%
     Create_BoxStats(c("test_data_name", "normalization", "regression_method"))
@@ -550,13 +374,6 @@ for (err_metric in c("cor", "rMSE", "mAPE")) {
                            fill = "regression_method",
                            fill_colors = regression_colors)
   print(plt + plot_annotation(title = str_glue("{err_metric}: normalization vs regression")))
-
-  pltv <- Plot_FacetViolinPlot(subset(errs_melt, error_type == err_metric),
-                               x_axis = "normalization",
-                               fill = "regression_method",
-                               fill_colors = regression_colors,
-                               facet_vars = c("test_data_name"))
-  print(pltv + plot_annotation(title = str_glue("{err_metric}: normalization vs regression")))
 
   # One plot for each bulk data set
   for (bulk_name in unique(errs_sub$test_data_name)) {
@@ -572,14 +389,6 @@ for (err_metric in c("cor", "rMSE", "mAPE")) {
       ggtitle(paste(bulk_name, err_metric))
 
     print(plt)
-
-    pltv <- Plot_FacetViolinPlot(subset(errs_melt, test_data_name == bulk_name & error_type == err_metric),
-                                 x_axis = "normalization",
-                                 fill = "regression_method",
-                                 fill_colors = regression_colors,
-                                 facet_vars = c("tissue", "algorithm")) +
-      ggtitle(paste(bulk_name, err_metric))
-    print(pltv)
   }
 }
 
@@ -598,26 +407,12 @@ plt12 <- Plot_FacetBoxPlot(subset(baselines_plot, error_type == "cor"),
                            facet_vars = "tissue")
 print(plt12 + plot_annotation(title = "Baseline correlation: normalization vs regression"))
 
-plt12v <- Plot_FacetViolinPlot(subset(baselines_random, error_type == "cor"),
-                               x_axis = "normalization",
-                               fill = "regression_method",
-                               fill_colors = regression_colors,
-                               facet_vars = c("tissue"))
-print(plt12v + plot_annotation(title = "Baseline correlation: normalization vs regression"))
-
 plt13 <- Plot_FacetBoxPlot(subset(baselines_plot, error_type == "rMSE"),
                            x_axis = "normalization",
                            fill = "regression_method",
                            fill_colors = regression_colors,
                            facet_vars = "tissue")
 print(plt13 + plot_annotation(title = "Baseline rMSE: normalization vs regression"))
-
-plt13v <- Plot_FacetViolinPlot(subset(baselines_random, error_type == "rMSE"),
-                               x_axis = "normalization",
-                               fill = "regression_method",
-                               fill_colors = regression_colors,
-                               facet_vars = c("tissue"))
-print(plt13v + plot_annotation(title = "Baseline rMSE: normalization vs regression"))
 
 plt14 <- Plot_FacetBoxPlot(subset(baselines_plot, error_type == "mAPE"),
                            x_axis = "normalization",
@@ -626,13 +421,6 @@ plt14 <- Plot_FacetBoxPlot(subset(baselines_plot, error_type == "mAPE"),
                            facet_vars = "tissue")
 print(plt14 + plot_annotation(title = "Baseline mAPE: normalization vs regression"))
 
-plt14v <- Plot_FacetViolinPlot(subset(baselines_random, error_type == "mAPE"),
-                               x_axis = "normalization",
-                               fill = "regression_method",
-                               fill_colors = regression_colors,
-                               facet_vars = c("tissue"))
-print(plt14v + plot_annotation(title = "Baseline mAPE: normalization vs regression"))
-
 
 # Errors better than baseline only ---------------------------------------------
 
@@ -640,14 +428,14 @@ errs_better <- merge(errs_melt, baselines_plot,
                      by = c("tissue", "normalization", "regression_method", "error_type")) %>%
   group_by(error_type) %>%
   mutate(better = if(unique(error_type) == "cor") (value >= max_val) else (value <= min_val)) #%>%
-  #subset(better == TRUE) %>%
-  #select(-better, -median_val, -upper_quartile, -lower_quartile)
+#subset(better == TRUE) %>%
+#select(-better, -median_val, -upper_quartile, -lower_quartile)
 
 better_stats <- errs_better %>%
   group_by(tissue, algorithm) %>%
-  summarize(count = n(),
-            pct_better_than_baseline = sum(better) / n(),
-            .groups = "drop")
+  dplyr::summarize(count = n(),
+                   pct_better_than_baseline = sum(better) / n(),
+                   .groups = "drop")
 
 plt <- ggplot(better_stats, aes(x = algorithm, y = pct_better_than_baseline, fill = algorithm)) +
   geom_col() +
@@ -683,20 +471,12 @@ qbox_stats_norm <- quality_stats %>%
             .groups = "drop")
 
 plt <- ggplot(quality_stats, aes(x = normalization, y = pct_bad_inhibitory_ratio,
-                          fill = regression_method)) +
+                                 fill = regression_method)) +
   geom_boxplot() + theme_bw() + #facet_wrap(~tissue)
   facet_grid(rows = vars(tissue), cols = vars(algorithm)) +
   scale_fill_manual(values = regression_colors) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 print(plt + plot_annotation(title = "Percent bad inhibitory ratio"))
-
-pltv <- ggplot(quality_stats, aes(x = normalization, y = pct_bad_inhibitory_ratio,
-                                  fill = regression_method)) +
-  geom_violin() + theme_bw() + #facet_wrap(~tissue)
-  facet_grid(rows = vars(tissue), cols = vars(algorithm)) +
-  scale_fill_manual(values = regression_colors) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-print(pltv + plot_annotation(title = "Percent bad inhibitory ratio"))
 
 plt15 <- Plot_FacetBoxPlot(qbox_stats_norm,
                            x_axis = "normalization",
@@ -705,22 +485,12 @@ plt15 <- Plot_FacetBoxPlot(qbox_stats_norm,
                            facet_vars = c("tissue", "algorithm"))
 print(plt15 + plot_annotation(title = "Percent bad inhibitory ratio"))
 
-# plt15v is pltv above
-
 plt16 <- Plot_FacetBoxPlot(qbox_stats,
                            x_axis = "algorithm",
                            fill = "algorithm",
                            fill_colors = algorithm_colors,
                            facet_vars = "tissue")
 print(plt16 + plot_annotation(title = "Percent bad inhibitory ratio"))
-
-plt16v <- ggplot(quality_stats, aes(x = algorithm, y = pct_bad_inhibitory_ratio,
-                                  fill = algorithm)) +
-  geom_violin() + theme_bw() + facet_wrap(~tissue) +
-  scale_fill_manual(values = algorithm_colors) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-print(plt16v + plot_annotation(title = "Percent bad inhibitory ratio"))
-
 
 
 # params passing QC, norm vs regression
@@ -770,14 +540,6 @@ plt <- ggplot(qstats_all, aes(x = normalization, y = pct_valid_results,
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 print(plt + plot_annotation(title = "Percent valid output"))
 
-pltv <- ggplot(qstats_all, aes(x = normalization, y = pct_valid_results,
-                               fill = regression_method)) +
-  geom_violin() + theme_bw() + #facet_wrap(~tissue)
-  facet_grid(rows = vars(tissue), cols = vars(algorithm)) +
-  scale_fill_manual(values = regression_colors) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-print(pltv + plot_annotation(title = "Percent valid output"))
-
 qbox_stats2 <- qstats_all %>% group_by(test_data_name, algorithm) %>%
   summarize(max_val = max(pct_valid_results),
             min_val = min(pct_valid_results),
@@ -791,12 +553,197 @@ plt <- Plot_FacetBoxPlot(qbox_stats2, x_axis = "algorithm", fill = "algorithm",
                          facet_vars = "test_data_name")
 print(plt + plot_annotation(title = "Percent valid output"))
 
-pltv <- ggplot(qstats_all, aes(x = algorithm, y = pct_valid_results,
-                               fill = algorithm)) +
-  geom_violin() + theme_bw() + facet_wrap(~test_data_name) +
-  scale_fill_manual(values = algorithm_colors) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-print(pltv + plot_annotation(title = "Percent valid output"))
+# Top 3 param sets for each tissue ---------------------------------------------
+
+ranked <- readRDS(file.path(dir_analysis, str_glue("ranked_errors_{granularity}.rds")))
+
+ranked_df <- ranked$ranked_errors_all %>%
+  mutate(normalization = str_replace(normalization, "counts", "cpm"),
+         normalization = str_replace(normalization, "cpm", "counts/cpm"),
+         normalization = str_replace(normalization, "log_", ""))
+
+CountDf <- function(groups) {
+  ranked_df %>%
+    group_by_at(groups) %>%
+    summarize(count = n(), .groups = "drop")
+}
+
+plt <- ggplot(CountDf(c("tissue", "signature")),
+              aes(x = tissue, y = signature, color = count, size = count)) +
+  geom_count() + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5)
+print(plt + plot_annotation(title = "Best signature per tissue (unfiltered)"))
+
+plt <- ggplot(CountDf(c("tissue", "reference_data_name")),
+              aes(x = tissue, y = reference_data_name, color = count, size = count)) +
+  geom_count() + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5)
+print(plt + plot_annotation(title = "Best reference per tissue (unfiltered)"))
+
+plt <- ggplot(CountDf(c("tissue", "data_transform")),
+              aes(x = tissue, y = data_transform, color = count, size = count)) +
+  geom_count() + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5)
+print(plt + plot_annotation(title = "Best data transform per tissue (unfiltered)"))
+
+plt <- ggplot(CountDf(c("tissue", "algorithm")),
+              aes(x = tissue, y = algorithm, color = count, size = count)) +
+  geom_count() + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5)
+print(plt + plot_annotation(title = "Best algorithm per tissue (unfiltered)"))
+
+plt <- ggplot(CountDf(c("type", "algorithm")),
+              aes(x = type, y = algorithm, color = count, size = count)) +
+  geom_count() + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5)
+print(plt + plot_annotation(title = "Best algorithm per error metric (unfiltered)"))
+
+plt <- ggplot(CountDf(c("type", "data_transform")),
+              aes(x = type, y = data_transform, color = count, size = count)) +
+  geom_count() + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5)
+print(plt + plot_annotation(title = "Best data transform per error metric (unfiltered)"))
+
+plt <- ggplot(CountDf(c("normalization", "regression_method")),
+              aes(x = normalization, y = regression_method, color = count, size = count)) +
+  geom_count() + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5)
+print(plt + plot_annotation(title = "Best normalization vs regression method (unfiltered)"))
+
+plt <- ggplot(CountDf(c("tissue", "regression_method")),
+              aes(x = tissue, y = regression_method, color = count, size = count)) +
+  geom_count() + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5)
+print(plt + plot_annotation(title = "Best regression method per tissue (unfiltered)"))
+
+plt <- ggplot(CountDf(c("tissue", "normalization")),
+              aes(x = tissue, y = normalization, color = count, size = count)) +
+  geom_count() + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5)
+print(plt + plot_annotation(title = "Best normalization per tissue (unfiltered)"))
+
+plt <- ggplot(CountDf(c("tissue", "normalization", "regression_method")),
+              aes(x = normalization, y = regression_method, color = count, size = count)) +
+  geom_count() + theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5) +
+  facet_wrap(~tissue, nrow = 1)
+print(plt + plot_annotation(title = "Best normalization/regression per tissue (unfiltered)"))
+
+
+# Same thing but limited to the "best" signatures used for analysis
+
+ranked_df <- ranked$ranked_errors_best_signatures %>%
+  mutate(normalization = str_replace(normalization, "counts", "cpm"),
+         normalization = str_replace(normalization, "cpm", "counts/cpm"),
+         normalization = str_replace(normalization, "log_", ""))
+
+CountDf <- function(groups) {
+  ranked_df %>%
+    group_by_at(groups) %>%
+    summarize(count = n(), .groups = "drop")
+}
+
+plt <- ggplot(CountDf(c("tissue", "signature")),
+              aes(x = tissue, y = signature, color = count, size = count)) +
+  geom_count() + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5)
+print(plt + plot_annotation(title = "Best signature per tissue"))
+
+plt <- ggplot(CountDf(c("tissue", "reference_data_name")),
+              aes(x = tissue, y = reference_data_name, color = count, size = count)) +
+  geom_count() + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5)
+print(plt + plot_annotation(title = "Best reference per tissue"))
+
+plt <- ggplot(CountDf(c("tissue", "data_transform")),
+              aes(x = tissue, y = data_transform, color = count, size = count)) +
+  geom_count() + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5)
+print(plt + plot_annotation(title = "Best data transform per tissue"))
+
+plt <- ggplot(CountDf(c("tissue", "algorithm")),
+              aes(x = tissue, y = algorithm, color = count, size = count)) +
+  geom_count() + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5)
+print(plt + plot_annotation(title = "Best algorithm per tissue"))
+
+plt <- ggplot(CountDf(c("type", "algorithm")),
+              aes(x = type, y = algorithm, color = count, size = count)) +
+  geom_count() + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5)
+print(plt + plot_annotation(title = "Best algorithm per error metric"))
+
+plt <- ggplot(CountDf(c("type", "data_transform")),
+              aes(x = type, y = data_transform, color = count, size = count)) +
+  geom_count() + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5)
+print(plt + plot_annotation(title = "Best data transform per error metric"))
+
+plt <- ggplot(CountDf(c("normalization", "regression_method")),
+              aes(x = normalization, y = regression_method, color = count, size = count)) +
+  geom_count() + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5)
+print(plt + plot_annotation(title = "Best normalization vs regression"))
+
+plt <- ggplot(CountDf(c("tissue", "regression_method")),
+              aes(x = tissue, y = regression_method, color = count, size = count)) +
+  geom_count() + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5)
+print(plt + plot_annotation(title = "Best regression method per tissue"))
+
+plt <- ggplot(CountDf(c("tissue", "normalization")),
+              aes(x = tissue, y = normalization, color = count, size = count)) +
+  geom_count() + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5)
+print(plt + plot_annotation(title = "Best normalization per tissue"))
+
+plt <- ggplot(CountDf(c("tissue", "normalization", "regression_method")),
+              aes(x = normalization, y = regression_method, color = count, size = count)) +
+  geom_count() + theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5) +
+  facet_wrap(~tissue, nrow = 1)
+print(plt + plot_annotation(title = "Best normalization/regression per tissue"))
+
 
 dev.off()
 
@@ -1029,13 +976,6 @@ significance <- readRDS(file.path(dir_analysis,
 sig_toplevel <- do.call(rbind, significance$significance_props_toplevel)
 #sig_avg <- do.call(rbind, significance$significance_props_all)
 
-# Fill in any missing values for combinations of parameters
-params <- expand.grid(celltype = unique(sig_toplevel$celltype),
-                      tissue = unique(sig_toplevel$tissue),
-                      algorithm = unique(sig_toplevel$algorithm))
-
-sig_toplevel <- merge(sig_toplevel, params, by = c("tissue", "celltype", "algorithm"))
-
 # Regular expressions for finding the right data transform
 data_transforms <- expand.grid(normalization = c("(counts|cpm)", "tmm", "tpm"),
                                regression = c("none", "edger", "lme", "dream"))
@@ -1047,8 +987,136 @@ pdf(file.path(dir_figures,
               str_glue("significance_plots_{granularity}_summary.pdf")),
     width=10, height = 12)
 
-for (dt in data_transforms) {
-  sig_filt <- subset(sig_toplevel, grepl(dt, avg_id))
+sig_toplevel$normalization <- sapply(sig_toplevel$avg_id, function(A) {
+  for (norm in c("counts|cpm", "tmm", "tpm")) {
+    if (grepl(norm, A)) {
+      return(str_replace(norm, "\\|", "/"))
+    }
+  }
+})
+
+sig_toplevel$regression_method <- sapply(sig_toplevel$avg_id, function(A) {
+  for (reg in c("none", "edger", "lme", "dream")) {
+    if (grepl(reg, A)) {
+      return(reg)
+    }
+  }
+})
+
+# Fill in any missing values for combinations of parameters
+params <- expand.grid(celltype = unique(sig_toplevel$celltype),
+                      tissue = unique(sig_toplevel$tissue),
+                      algorithm = unique(sig_toplevel$algorithm),
+                      normalization = unique(sig_toplevel$normalization),
+                      regression_method = unique(sig_toplevel$regression_method))
+
+sig_toplevel <- merge(sig_toplevel, params,
+                      by = colnames(params),
+                      all = TRUE)
+sig_toplevel$p_adj_thresh[is.na(sig_toplevel$p_adj_thresh)] <- 1
+
+
+sig_toplevel$data_transform <- paste(sig_toplevel$normalization, "+",
+                                     sig_toplevel$regression_method)
+
+if (granularity == "sub_class") {
+  ct_order <- c("Astrocyte", "Endothelial", paste0("Exc.", 1:10),
+                paste0("Inh.", 1:7), "Microglia", "Oligodendrocyte", "OPC",
+                "Pericyte", "VLMC")
+  sig_toplevel$celltype <- factor(sig_toplevel$celltype, levels = ct_order)
+}
+
+best_dt <- CountDf(c("tissue", "data_transform")) %>%
+  group_by(tissue) %>%
+  slice_max(order_by = count, with_ties = FALSE) %>%
+  mutate(normalization = str_replace(data_transform, " \\+.*", ""),
+         regression_method = str_replace(data_transform, ".*\\+ ", "")) %>%
+  as.data.frame()
+
+best_dt <- tidyr::expand_grid(best_dt, algorithm = unique(sig_toplevel$algorithm))
+best_dt$normalization[best_dt$algorithm == "Music"] <- "counts/cpm"
+best_dt$normalization[best_dt$normalization == "tmm" & best_dt$algorithm == "CibersortX"] <- "counts/cpm"
+
+if (any(best_dt$normalization == "tpm")) {
+  print("WARNING: at least one tissue has 'tpm' as the best normalization")
+}
+
+best_dt <- best_dt %>%
+  mutate(data_transform = paste(normalization, "+", regression_method)) %>%
+  select(tissue, algorithm, data_transform) %>%
+  distinct()
+
+sig_final <- merge(sig_toplevel, best_dt,
+                   by = c("tissue", "algorithm", "data_transform"),
+                   all.x = FALSE)
+
+# Cap log2_fc values to +/- 1 so color scaling is better. Need to account for
+# Inf and -Inf values. Set non-significant log2 values to NA.
+sig_final$log2_fc[sig_final$fc == 0] <- NA
+sig_final$log2_fc[is.infinite(sig_final$log2_fc)] <- 1
+sig_final$log2_fc[sig_final$log2_fc > 1] <- 1
+sig_final$log2_fc[sig_final$log2_fc < -1] <- -1
+
+sig_final$log2_fc[sig_final$p_adj_thresh >= 0.05] <- NA
+
+plot_limit <- c(-1, 1)
+n_cols <- if (granularity == "broad_class") 4 else 6
+
+plt <- ggplot(sig_final, aes(x = tissue, y = algorithm, fill = log2_fc)) +
+  geom_tile(color = "black") + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_wrap(~celltype, ncol = n_cols) +
+  #facet_grid(rows = vars(algorithm), cols = vars(celltype)) +
+  coord_fixed() +
+  scale_fill_distiller(palette = "RdBu", limit = plot_limit, na.value = "white") +
+  ggtitle("Significant changes at p < 0.05 (using best data for each tissue)")
+print(plt)
+
+# Limit to cell types that have something significant
+ok <- subset(sig_final, is.finite(log2_fc))
+sig_final_ok <- subset(sig_final, celltype %in% unique(ok$celltype))
+plt <- ggplot(sig_final_ok, aes(x = tissue, y = algorithm, fill = log2_fc)) + #, size = -log_p)) +
+  geom_tile(color = "black") + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_wrap(~celltype, ncol = n_cols) +
+  #facet_grid(rows = vars(algorithm), cols = vars(celltype)) +
+  coord_fixed() +
+  scale_fill_distiller(palette = "RdBu", limit = plot_limit, na.value = "white") +
+  ggtitle("Significant changes at p < 0.05 (using best data for each tissue)")
+print(plt)
+
+# At p <= 0.01
+
+sig_final_01 <- sig_final
+sig_final_01$log2_fc[sig_final_01$p_adj_thresh >= 0.01] <- NA
+
+plt <- ggplot(sig_final_01, aes(x = tissue, y = algorithm, fill = log2_fc)) +
+  geom_tile(color = "black") + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_wrap(~celltype, ncol = n_cols) +
+  #facet_grid(rows = vars(algorithm), cols = vars(celltype)) +
+  coord_fixed() +
+  scale_fill_distiller(palette = "RdBu", limit = plot_limit, na.value = "white") +
+  ggtitle("Significant changes at p < 0.01 (using best data for each tissue)")
+print(plt)
+
+# Limit to cell types that have something significant
+ok <- subset(sig_final_01, is.finite(log2_fc))
+sig_final_ok <- subset(sig_final_01, celltype %in% unique(ok$celltype))
+plt <- ggplot(sig_final_ok, aes(x = tissue, y = algorithm, fill = log2_fc)) + #, size = -log_p)) +
+  geom_tile(color = "black") + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_wrap(~celltype, ncol = n_cols) +
+  #facet_grid(rows = vars(algorithm), cols = vars(celltype)) +
+  coord_fixed() +
+  scale_fill_distiller(palette = "RdBu", limit = plot_limit, na.value = "white") +
+  ggtitle("Significant changes at p < 0.01 (using best data for each tissue)")
+print(plt)
+
+
+
+for (dt in unique(sig_toplevel$data_transform)) {
+  sig_filt <- subset(sig_toplevel, data_transform == dt)
 
   if (nrow(sig_filt) == 0) {
     next
@@ -1058,11 +1126,11 @@ for (dt in data_transforms) {
   # Cap log2_fc values to +/- 2 so color scaling is better. Need to account for
   # Inf and -Inf values. Set non-significant log2 values to NA.
   sig_filt$log2_fc[sig_filt$fc == 0] <- NA
-  sig_filt$log2_fc[is.infinite(sig_filt$log2_fc)] <- 2
-  sig_filt$log2_fc[sig_filt$log2_fc > 2] <- 2
-  sig_filt$log2_fc[sig_filt$log2_fc < -2] <- -2
+  sig_filt$log2_fc[is.infinite(sig_filt$log2_fc)] <- 1
+  sig_filt$log2_fc[sig_filt$log2_fc > 1] <- 1
+  sig_filt$log2_fc[sig_filt$log2_fc < -1] <- -1
 
-  sig_filt$log2_fc[sig_filt$p_adj_thresh > 0.05] <- NA
+  sig_filt$log2_fc[sig_filt$p_adj_thresh >= 0.05] <- NA
 
   # Cap log_p values to -5 so color scaling is better
   #sig_filt$log_p[sig_filt$log_p < -5] <- -5

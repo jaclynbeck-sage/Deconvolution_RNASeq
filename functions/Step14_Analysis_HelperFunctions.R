@@ -1,3 +1,4 @@
+library(parallel)
 source(file.path("functions", "FileIO_HelperFunctions.R"))
 
 # Loads all the "best_errors" files matching specific parameters into one big
@@ -10,7 +11,7 @@ source(file.path("functions", "FileIO_HelperFunctions.R"))
 #
 # Returns:
 #   a data frame with all errors from all files concatenated together
-Get_AllBestErrorsAsDf <- function(bulk_datasets, granularity) {
+Get_AllBestErrorsAsDf <- function(bulk_datasets, granularity, n_cores = 2) {
   # List of "best errors" files matching the bulk data set names and granularity
   file_list <- list.files(dir_best_errors,
                           pattern = paste0("(",
@@ -19,7 +20,7 @@ Get_AllBestErrorsAsDf <- function(bulk_datasets, granularity) {
                           full.names = TRUE,
                           recursive = TRUE)
 
-  best_err_list <- lapply(file_list, function(file) {
+  best_err_list <- mclapply(file_list, function(file) {
     data <- readRDS(file)
     print(basename(file))
 
@@ -33,19 +34,18 @@ Get_AllBestErrorsAsDf <- function(bulk_datasets, granularity) {
       dplyr::mutate(algorithm = str_replace(param_id, "_.*", ""),
                     pct_valid_results = data$n_valid_results / data$n_possible_results)
 
-    inh_ratio <- data.frame(param_id = names(data$pct_bad_inhibitory_ratio),
-                            pct_bad_inhibitory_ratio = data$pct_bad_inhibitory_ratio)
-
-    errs_df <- merge(errs_df, inh_ratio, by = "param_id")
+    errs_df <- merge(errs_df, data$pct_bad_inhibitory_ratio,
+                     by = c("tissue", "param_id"), all = TRUE)
 
     return(errs_df)
-  })
+  }, mc.cores = n_cores)
 
   return(do.call(rbind, best_err_list))
 }
 
 
-Get_AllBestEstimatesAsDf <- function(bulk_datasets, granularity, metadata, best_params = NULL) {
+Get_AllBestEstimatesAsDf <- function(bulk_datasets, granularity, metadata,
+                                     best_params = NULL, n_cores = 2) {
   # List of "best estimates" files matching the bulk data set names and granularity
   file_list <- list.files(dir_top_estimates,
                           pattern = paste0("(",
@@ -54,7 +54,7 @@ Get_AllBestEstimatesAsDf <- function(bulk_datasets, granularity, metadata, best_
                           full.names = TRUE,
                           recursive = TRUE)
 
-  best_ests_list <- lapply(file_list, function(file) {
+  best_ests_list <- mclapply(file_list, function(file) {
     data <- readRDS(file)
     print(basename(file))
 
@@ -84,63 +84,67 @@ Get_AllBestEstimatesAsDf <- function(bulk_datasets, granularity, metadata, best_
 
     return(list("estimates" = ests_df,
                 "params" = params))
-  })
+  }, mc.cores = n_cores)
 
   return(do.call(rbind, lapply(best_ests_list, "[[", "estimates")))
 }
 
 
 Find_BestSignature <- function(errs_df) {
-  # Estimates for each param_id were scored against all 5 signatures. This
-  # selects the signature that gave the best score along each error metric,
-  # for each tissue separately
-  best_signatures <- errs_df %>%
+  ranks <- errs_df %>%
     subset(algorithm != "Baseline") %>%
-    group_by(tissue, param_id, normalization, regression_method) %>%
-    dplyr::summarize(best_cor = signature[which.max(cor)],
-                     best_rMSE = signature[which.min(rMSE)],
-                     best_mAPE = signature[which.min(mAPE)],
-                     .groups = "drop")
+    Rank_Errors(group_cols = c("tissue", "data_transform"))
 
-  get_best_signature <- function(best_cor, best_rMSE, best_mAPE) {
-    tmp <- table(c(best_cor, best_rMSE, best_mAPE))
+  # Ranks is still grouped by tissue and data_transform
+  ranks_sub <- do.call(rbind, list(
+    dplyr::slice_min(ranks, order_by = cor_rank, n = 1),
+    dplyr::slice_min(ranks, order_by = rMSE_rank, n = 1),
+    dplyr::slice_min(ranks, order_by = mAPE_rank, n = 1)#,
+    #dplyr::slice_min(ranks, order_by = mean_rank, n = 1)
+  ))
+
+  get_best_signature <- function(signature) {
+    tmp <- table(signature)
     names(tmp)[which.max(tmp)]
   }
 
-  best_signatures <- best_signatures %>%
-    group_by(tissue, normalization, regression_method) %>%
-    dplyr::summarize(best_signature = get_best_signature(best_cor, best_rMSE, best_mAPE),
+  best_signatures <- ranks_sub %>%
+    group_by(tissue, data_transform) %>%
+    dplyr::summarize(best_signature = get_best_signature(signature),
                      .groups = "drop")
 
   return(best_signatures)
 }
 
 
+Rank_Errors <- function(errs_df, group_cols) {
+  ranks <- errs_df %>%
+    dplyr::group_by_at(group_cols) %>%
+    dplyr::mutate(cor_rank = rank(-cor),
+                  rMSE_rank = rank(rMSE),
+                  mAPE_rank = rank(mAPE))
+  ranks$mean_rank <- rowMeans(ranks[, c("cor_rank", "rMSE_rank", "mAPE_rank")])
+  return(ranks)
+}
+
+
 Find_BestParameters <- function(errs_df, group_cols) {
-  # Because we scored against all 5 signature matrices, there will be parameter
-  # ids in the errors df where the errors were the best score from a different
-  # signature, not the single signature we are using going forward. This grabs
-  # all parameter IDs associated with a specific set of parameters and picks the
-  # one with the best score along each error metric, to get a single parameter
-  # ID per error metric per set of parameters.
-  # NOTE: The baseline "zeros" entries have NA correlation so they need to
-  # return NA for best_cor, since otherwise calling which.max would return 0
-  # entries and cause an error.
-  best_params <- errs_df %>%
-    group_by_at(group_cols) %>%
-    dplyr::summarize(best_cor = ifelse(all(is.na(cor)), NA, param_id[which.max(cor)]),
-                     best_rMSE = param_id[which.min(rMSE)],
-                     best_mAPE = param_id[which.min(mAPE)],
-                     .groups = "drop")
+  ranks <- errs_df %>%
+    Rank_Errors(group_cols)
+
+  ranks_sub <- do.call(rbind, list(
+    dplyr::slice_min(ranks, order_by = cor_rank, n = 1),
+    dplyr::slice_min(ranks, order_by = rMSE_rank, n = 1),
+    dplyr::slice_min(ranks, order_by = mAPE_rank, n = 1),
+    dplyr::slice_min(ranks, order_by = mean_rank, n = 1)
+  )) %>%
+    ungroup()
 
   # Some parameter IDs will be duplicated across multiple error metrics, this
   # creates a data frame with the list of unique parameter IDs associated with
   # each tissue.
-  best_params <- best_params %>%
-    melt(measure.vars = c("best_cor", "best_rMSE", "best_mAPE"),
-         value.name = "param_id") %>%
+  best_params <- ranks_sub %>%
     dplyr::select(tissue, param_id) %>%
-    subset(!is.na(param_id)) %>%
     dplyr::distinct()
 
   return(best_params)
@@ -148,7 +152,7 @@ Find_BestParameters <- function(errs_df, group_cols) {
 
 
 Get_AverageStats <- function(errs_df, ests_df) {
-  # There can be up to 3 parameter sets per combination of data input
+  # There can be up to 4 parameter sets per combination of data input
   # parameters, but sometimes a single parameter set was the best for multiple
   # error metrics and is only represented once in the df. When this happens, it
   # should be weighted higher when taking the average. Weights only matter for
@@ -157,62 +161,58 @@ Get_AverageStats <- function(errs_df, ests_df) {
 
   avg_id <- unique(errs_df$avg_id)
 
-  ests_df <- subset(ests_df, param_id %in% errs_df$param_id &
-                      tissue == unique(errs_df$tissue)) %>%
+  # Ensures that param_ids that are the best for multiple error metrics are
+  # represented that many times in the data frame
+  ranked <- do.call(rbind, list(
+    dplyr::slice_min(errs_df, order_by = cor_rank, n = 1),
+    dplyr::slice_min(errs_df, order_by = mAPE_rank, n = 1),
+    dplyr::slice_min(errs_df, order_by = rMSE_rank, n = 1)#,
+    #dplyr::slice_min(errs_df, order_by = mean_rank, n = 1)
+  ))
+
+  avg_err <- ranked %>%
+    dplyr::summarize(across(c(cor, rMSE, mAPE),
+                            list("mean" = ~ mean(.x),
+                                 "sd" = ~ sd(.x))),
+                     .groups = "drop") #%>%
+  #cbind(errs_df[1, cols_keep_errs])
+
+  weights <- as.data.frame(table(ranked$param_id))
+  colnames(weights) <- c("param_id", "weight")
+
+  ests_df <- subset(ests_df, param_id %in% ranked$param_id &
+                      tissue == unique(ranked$tissue)) %>%
     dplyr::mutate(avg_id = avg_id)
 
-  cols_keep_errs <- setdiff(colnames(errs_df),
-                            c("param_id", "cor", "rMSE", "mAPE"))
+  #cols_keep_errs <- setdiff(colnames(errs_df),
+  #                          c("param_id", "cor", "rMSE", "mAPE"))
 
   data_keep_ests <- ests_df %>%
     dplyr::select(-percent, -param_id) %>%
     dplyr::distinct()
 
+  ests_df <- merge(ests_df, weights, by = "param_id")
+
   # Speed-up optimization: wtd.mean takes longer on data with 1 row and throws a
   # lot of warnings in that case. It's also unnecessary to take the mean/sd when
-  # there is only 1 row, and unnecessary to do a weighted mean/sd when there are
-  # 3 rows. With the number of times this function gets called, it can take a
-  # while to run on the full data set, and separating it out like this speeds it
-  # up considerably even though it's messier.
-  if (nrow(errs_df) == 1) {
+  # there is only 1 row. With the number of times this function gets called, it
+  # can take a while to run on the full data set, and separating it out like
+  # this speeds it up considerably even though it's messier.
+  if (nrow(ranked) == 1) {
     mean_fun <- function(value, weight) { value }
     sd_fun <- function(value, weight) { 0 }
-
-    errs_df$weight <- 1
-    ests_df$weight <- 1
-
-  } else if (nrow(errs_df) == 2) {
-    bests <- c(which.max(errs_df$cor),
-               which.min(errs_df$rMSE),
-               which.min(errs_df$mAPE))
-
-    weights <- as.data.frame(table(errs_df$param_id[bests]))
-    colnames(weights) <- c("param_id", "weight")
-
-    errs_df <- merge(errs_df, weights, by = "param_id")
-    ests_df <- merge(ests_df, weights, by = "param_id")
-
-    mean_fun <- wtd.mean
-    sd_fun <- wtd.var
-
-  } else { # nrow = 3
+  } else if (nrow(ranked) == 3) {
     mean_fun <- function(values, weights) { mean(values) }
     sd_fun <- function(values, weights) { sd(values) }
-
-    errs_df$weight <- 1
-    ests_df$weight <- 1
+  } else { # any other number of rows
+    mean_fun <- wtd.mean
+    sd_fun <- function(value, weights) { sqrt(wtd.var(value, weights)) }
   }
-
-  avg_err <- errs_df %>%
-    dplyr::summarize(across(c(cor, rMSE, mAPE),
-                            list("mean" = ~ mean_fun(.x, weight),
-                                 "sd" = ~ sqrt(sd_fun(.x, weight))))) %>%
-    cbind(errs_df[1, cols_keep_errs])
 
   avg_est <- ests_df %>%
     group_by(sample, celltype) %>%
     dplyr::summarize(percent_mean = mean_fun(percent, weight),
-                     percent_sd = sqrt(sd_fun(percent, weight)),
+                     percent_sd = sd_fun(percent, weight),
                      .groups = "drop") %>%
     merge(data_keep_ests, by = c("sample", "celltype"))
 
@@ -220,7 +220,7 @@ Get_AverageStats <- function(errs_df, ests_df) {
 }
 
 
-Create_AveragesList <- function(errs_df, ests_df) {
+Create_AveragesList <- function(errs_df, ests_df, n_cores = 2) {
   # Although we could do this in one lapply statement, subsetting best_errors
   # takes a non-trivial amount of time because it's so large, so we do this to
   # break it into smaller pieces before having to call subset every time
@@ -228,11 +228,11 @@ Create_AveragesList <- function(errs_df, ests_df) {
     errs_tmp <- subset(errs_df, tissue == tiss)
     ests_tmp <- subset(ests_df, tissue == tiss)
 
-    avg_tmp <- lapply(unique(errs_tmp$avg_id), function(a_id) {
+    avg_tmp <- mclapply(unique(errs_tmp$avg_id), function(a_id) {
       print(a_id)
       errs_filt <- subset(errs_tmp, avg_id == a_id)
       return(Get_AverageStats(errs_filt, ests_tmp))
-    })
+    }, mc.cores = n_cores)
 
     return(list("avg_errors" = do.call(rbind, lapply(avg_tmp, "[[", "avg_error")),
                 "avg_estimates" = do.call(rbind, lapply(avg_tmp, "[[", "avg_estimates"))))
@@ -261,16 +261,17 @@ Calculate_Significance <- function(ests_df, tissue) {
 
     tuk$celltype <- str_split(rownames(tuk), pattern = ":", simplify = TRUE)[,3]
     tuk$tissue <- tissue
-    tuk$significant <- tuk$p_adj <= 0.05
-    tuk$anova_significant <- summ["diagnosis:celltype", "Pr(>F)"] <= 0.05
-    tuk$anova_significant[is.na(tuk$anova_significant)] <- FALSE # for Baseline zeros
+    tuk$significant_05 <- tuk$p_adj <= 0.05
+    tuk$significant_01 <- tuk$p_adj <= 0.01
+    tuk$anova_pval <- summ["diagnosis:celltype", "Pr(>F)"]
 
     tuk$avg_id <- a_id
     return(tuk)
   })
 
   significant <- do.call(rbind, significant) %>%
-    dplyr::select(celltype, tissue, p_adj, significant, anova_significant, avg_id)
+    dplyr::select(celltype, tissue, p_adj, significant_05, significant_01,
+                  anova_pval, avg_id)
 
   # cap minimum p to avoid log(0) further down
   significant$p_adj_thresh <- significant$p_adj
@@ -280,8 +281,8 @@ Calculate_Significance <- function(ests_df, tissue) {
 }
 
 
-Get_MeanProps_Significance <- function(avg_list) {
-  mean_props_all <- lapply(avg_list, function(avg_item) {
+Get_MeanProps_Significance <- function(avg_list, n_cores = 2) {
+  mean_props_all <- mclapply(avg_list, function(avg_item) {
     errs_tmp <- avg_item$avg_errors
     tissue <- unique(errs_tmp$tissue)
     bulk_dataset <- unique(errs_tmp$test_data_name) # Tissues are unique to a single bulk dataset so this works
@@ -323,7 +324,7 @@ Get_MeanProps_Significance <- function(avg_list) {
       dplyr::mutate(log_p = log(p_adj_thresh))
 
     return(mean_props)
-  })
+  }, mc.cores = n_cores)
 
   return(mean_props_all)
 }

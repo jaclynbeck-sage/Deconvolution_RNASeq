@@ -190,12 +190,12 @@ Plot_FacetViolinPlot <- function(errors_df, x_axis, facet_vars,
 Create_BoxStats <- function(errs_df, grouping_cols) {
   errs_df %>%
     group_by_at(grouping_cols) %>%
-    summarize(max_val = max(value, na.rm = TRUE),
-              min_val = min(value, na.rm = TRUE),
-              median_val = median(value, na.rm = TRUE),
-              upper_quartile = quantile(value, probs = 0.75, na.rm = TRUE),
-              lower_quartile = quantile(value, probs = 0.25, na.rm = TRUE),
-              .groups = "drop") %>%
+    dplyr::summarize(max_val = max(value, na.rm = TRUE),
+                     min_val = min(value, na.rm = TRUE),
+                     median_val = median(value, na.rm = TRUE),
+                     upper_quartile = quantile(value, probs = 0.75, na.rm = TRUE),
+                     lower_quartile = quantile(value, probs = 0.25, na.rm = TRUE),
+                     .groups = "drop") %>%
     as.data.frame()
 }
 
