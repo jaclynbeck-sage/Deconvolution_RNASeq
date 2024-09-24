@@ -12,7 +12,6 @@ source(file.path("functions", "Step14_Analysis_HelperFunctions.R"))
 source(file.path("functions", "Step16_Plotting_HelperFunctions.R"))
 
 # TODO remove the Mayo TCX param with > 800 rMSE? it's all from TPM
-# TODO Baseline tmm seems to be missing from the baseline only plots in sub_class?
 
 options(scipen = 999)
 
@@ -35,7 +34,7 @@ best_errs_plot <- best_errors %>%
          normalization = str_replace(normalization, "counts", "cpm"),
          normalization = str_replace(normalization, "cpm", "counts/cpm"),
          normalization = str_replace(normalization, "log_", ""),
-         data_transform = paste(normalization, "/", regression_method))
+         data_transform = paste(normalization, "+", regression_method))
 
 # There are up to 3 param_ids per set of input parameters. Get the best of each
 # error metric for each set
@@ -50,27 +49,6 @@ errs_melt <- best_errs_plot  %>%
 
 baselines_melt <- subset(errs_melt, algorithm == "Baseline")
 errs_melt <- subset(errs_melt, algorithm != "Baseline")
-
-# TODO temporary for looking at which algs/norms/regressions are best
-tmp_by_tissue = best_errors %>%
-  subset(algorithm != "Baseline") %>%
-  dplyr::group_by(tissue) %>%
-  dplyr::mutate(cor_rank = rank(-cor), rMSE_rank = rank(rMSE), mAPE_rank = rank(mAPE))
-best_cor <- subset(tmp_by_tissue, cor_rank <= 3) %>%
-  select(tissue, data_transform, algorithm,
-         reference_data_name, reference_input_type, signature, cor, cor_rank,
-         rMSE_rank, mAPE_rank) %>%
-  arrange(tissue, cor_rank) %>% as.data.frame()
-best_rMSE <- subset(tmp_by_tissue, rMSE_rank <= 3) %>%
-  select(tissue, data_transform, algorithm,
-         reference_data_name, reference_input_type, signature, rMSE, cor_rank,
-         rMSE_rank, mAPE_rank) %>%
-  arrange(tissue, rMSE_rank) %>% as.data.frame()
-best_mAPE <- subset(tmp_by_tissue, mAPE_rank <= 3) %>%
-  select(tissue, data_transform, algorithm,
-         reference_data_name, reference_input_type, signature, mAPE, cor_rank,
-         rMSE_rank, mAPE_rank) %>%
-  arrange(tissue, mAPE_rank) %>% as.data.frame()
 
 # Color setup ------------------------------------------------------------------
 
@@ -291,44 +269,6 @@ plt8 <- Plot_FacetBoxPlot(subset(errs_box_norm, error_type == "mAPE"),
              linetype = "twodash")
 print(plt8 + plot_annotation(title = "mAPE: normalization vs regression"))
 
-# Collapsed to test_data_name
-errs_box_tdn <- errs_melt %>%
-  Create_BoxStats(c("test_data_name", "algorithm", "error_type",
-                    "normalization", "regression_method"))
-
-baselines_plot_tdn <- baselines_random %>%
-  Create_BoxStats(c("test_data_name", "normalization", "error_type"))
-
-plt9 <- Plot_FacetBoxPlot(subset(errs_box_tdn, error_type == "cor"),
-                          x_axis = "normalization",
-                          fill = "regression_method",
-                          fill_colors = regression_colors,
-                          facet_vars = c("test_data_name", "algorithm")) +
-  geom_hline(aes(yintercept = max_val, color = normalization),
-             data = subset(baselines_plot_tdn, error_type == "cor"),
-             linetype = "twodash")
-print(plt9 + plot_annotation(title = "Correlation: normalization vs regression"))
-
-plt10 <- Plot_FacetBoxPlot(subset(errs_box_tdn, error_type == "rMSE"),
-                           x_axis = "normalization",
-                           fill = "regression_method",
-                           fill_colors = regression_colors,
-                           facet_vars = c("test_data_name", "algorithm")) +
-  geom_hline(aes(yintercept = min_val, color = normalization),
-             data = subset(baselines_plot_tdn, error_type == "rMSE"),
-             linetype = "twodash")
-print(plt10 + plot_annotation(title = "rMSE: normalization vs regression"))
-
-plt11 <- Plot_FacetBoxPlot(subset(errs_box_tdn, error_type == "mAPE"),
-                           x_axis = "normalization",
-                           fill = "regression_method",
-                           fill_colors = regression_colors,
-                           facet_vars = c("test_data_name", "algorithm")) +
-  geom_hline(aes(yintercept = min_val, color = normalization),
-             data = subset(baselines_plot_tdn, error_type == "mAPE"),
-             linetype = "twodash")
-print(plt11 + plot_annotation(title = "mAPE: normalization vs regression"))
-
 # Algorithms collapsed
 errs_box_noalg <- errs_melt %>%
   Create_BoxStats(c("tissue", "error_type",
@@ -402,23 +342,29 @@ baselines_plot <- Create_BoxStats(baselines_random,
 
 plt12 <- Plot_FacetBoxPlot(subset(baselines_plot, error_type == "cor"),
                            x_axis = "normalization",
-                           fill = "regression_method",
-                           fill_colors = regression_colors,
-                           facet_vars = "tissue")
+                           fill = NULL, #"regression_method",
+                           fill_colors = NULL,#regression_colors,
+                           facet_vars = "tissue",
+                           color = "regression_method") +
+  scale_color_manual(values = regression_colors)
 print(plt12 + plot_annotation(title = "Baseline correlation: normalization vs regression"))
 
 plt13 <- Plot_FacetBoxPlot(subset(baselines_plot, error_type == "rMSE"),
                            x_axis = "normalization",
-                           fill = "regression_method",
-                           fill_colors = regression_colors,
-                           facet_vars = "tissue")
+                           fill = NULL, #"regression_method",
+                           fill_colors = NULL, #regression_colors,
+                           facet_vars = "tissue",
+                           color = "regression_method") +
+  scale_color_manual(values = regression_colors)
 print(plt13 + plot_annotation(title = "Baseline rMSE: normalization vs regression"))
 
 plt14 <- Plot_FacetBoxPlot(subset(baselines_plot, error_type == "mAPE"),
                            x_axis = "normalization",
-                           fill = "regression_method",
-                           fill_colors = regression_colors,
-                           facet_vars = "tissue")
+                           fill = NULL, #"regression_method",
+                           fill_colors = NULL, #regression_colors,
+                           facet_vars = "tissue",
+                           color = "regression_method") +
+  scale_color_manual(values = regression_colors)
 print(plt14 + plot_annotation(title = "Baseline mAPE: normalization vs regression"))
 
 
@@ -453,22 +399,23 @@ quality_stats <- subset(best_errs_plot, algorithm != "Baseline") %>%
 
 ## Bad inhibitory ratio, norm vs regression ------------------------------------
 
-qbox_stats <- quality_stats %>% group_by(test_data_name, tissue, algorithm) %>%
-  summarize(max_val = max(pct_bad_inhibitory_ratio),
-            min_val = min(pct_bad_inhibitory_ratio),
-            median_val = median(pct_bad_inhibitory_ratio),
-            upper_quartile = quantile(pct_bad_inhibitory_ratio, probs = 0.75, na.rm = TRUE),
-            lower_quartile = quantile(pct_bad_inhibitory_ratio, probs = 0.25, na.rm = TRUE),
-            .groups = "drop")
+qbox_stats <- quality_stats %>%
+  group_by(test_data_name, tissue, algorithm) %>%
+  dplyr::summarize(max_val = max(pct_bad_inhibitory_ratio),
+                   min_val = min(pct_bad_inhibitory_ratio),
+                   median_val = median(pct_bad_inhibitory_ratio),
+                   upper_quartile = quantile(pct_bad_inhibitory_ratio, probs = 0.75, na.rm = TRUE),
+                   lower_quartile = quantile(pct_bad_inhibitory_ratio, probs = 0.25, na.rm = TRUE),
+                   .groups = "drop")
 
 qbox_stats_norm <- quality_stats %>%
   group_by(test_data_name, tissue, algorithm, normalization, regression_method) %>%
-  summarize(max_val = max(pct_bad_inhibitory_ratio),
-            min_val = min(pct_bad_inhibitory_ratio),
-            median_val = median(pct_bad_inhibitory_ratio),
-            upper_quartile = quantile(pct_bad_inhibitory_ratio, probs = 0.75, na.rm = TRUE),
-            lower_quartile = quantile(pct_bad_inhibitory_ratio, probs = 0.25, na.rm = TRUE),
-            .groups = "drop")
+  dplyr::summarize(max_val = max(pct_bad_inhibitory_ratio),
+                   min_val = min(pct_bad_inhibitory_ratio),
+                   median_val = median(pct_bad_inhibitory_ratio),
+                   upper_quartile = quantile(pct_bad_inhibitory_ratio, probs = 0.75, na.rm = TRUE),
+                   lower_quartile = quantile(pct_bad_inhibitory_ratio, probs = 0.25, na.rm = TRUE),
+                   .groups = "drop")
 
 plt <- ggplot(quality_stats, aes(x = normalization, y = pct_bad_inhibitory_ratio,
                                  fill = regression_method)) +
@@ -541,12 +488,12 @@ plt <- ggplot(qstats_all, aes(x = normalization, y = pct_valid_results,
 print(plt + plot_annotation(title = "Percent valid output"))
 
 qbox_stats2 <- qstats_all %>% group_by(test_data_name, algorithm) %>%
-  summarize(max_val = max(pct_valid_results),
-            min_val = min(pct_valid_results),
-            median_val = median(pct_valid_results),
-            upper_quartile = quantile(pct_valid_results, probs = 0.75, na.rm = TRUE),
-            lower_quartile = quantile(pct_valid_results, probs = 0.25, na.rm = TRUE),
-            .groups = "drop")
+  dplyr::summarize(max_val = max(pct_valid_results),
+                   min_val = min(pct_valid_results),
+                   median_val = median(pct_valid_results),
+                   upper_quartile = quantile(pct_valid_results, probs = 0.75, na.rm = TRUE),
+                   lower_quartile = quantile(pct_valid_results, probs = 0.25, na.rm = TRUE),
+                   .groups = "drop")
 
 plt <- Plot_FacetBoxPlot(qbox_stats2, x_axis = "algorithm", fill = "algorithm",
                          fill_colors = algorithm_colors,
@@ -565,7 +512,7 @@ ranked_df <- ranked$ranked_errors_all %>%
 CountDf <- function(groups) {
   ranked_df %>%
     group_by_at(groups) %>%
-    summarize(count = n(), .groups = "drop")
+    dplyr::summarize(count = n(), .groups = "drop")
 }
 
 plt <- ggplot(CountDf(c("tissue", "signature")),
@@ -660,7 +607,7 @@ ranked_df <- ranked$ranked_errors_best_signatures %>%
 CountDf <- function(groups) {
   ranked_df %>%
     group_by_at(groups) %>%
-    summarize(count = n(), .groups = "drop")
+    dplyr::summarize(count = n(), .groups = "drop")
 }
 
 plt <- ggplot(CountDf(c("tissue", "signature")),
@@ -671,6 +618,7 @@ plt <- ggplot(CountDf(c("tissue", "signature")),
   scale_color_viridis(option = "plasma", direction = -1, begin = 0.5)
 print(plt + plot_annotation(title = "Best signature per tissue"))
 
+# This should be the same as best signature since signature == reference_data_name
 plt <- ggplot(CountDf(c("tissue", "reference_data_name")),
               aes(x = tissue, y = reference_data_name, color = count, size = count)) +
   geom_count() + theme_classic() +
@@ -937,13 +885,13 @@ for (bulk_dataset in bulk_datasets) {
                                diagnosis %in% c("CT", "AD"))
           significance_sub <- subset(significance,
                                      param_id %in% ests_alg$param_id) %>%
-            select(tissue, celltype, param_id, significant)
+            select(tissue, celltype, param_id, significant_01)
 
           ests_box <- merge(ests_alg, significance_sub,
                             by = c("tissue", "celltype", "param_id")) %>%
             mutate(value = percent) %>%
             Create_BoxStats(c("tissue", "celltype", "param_id", "title",
-                              "algorithm", "diagnosis", "significant"))
+                              "algorithm", "diagnosis", "significant_01"))
 
           # TODO fill colors for diagnosis
           plt <- Plot_FacetBoxPlot(ests_box,
@@ -951,7 +899,7 @@ for (bulk_dataset in bulk_datasets) {
                                    facet_vars = c("tissue", "title"),
                                    fill_colors = NULL,
                                    fill = "diagnosis",
-                                   color = "significant",
+                                   color = "significant_01",
                                    width = 0.5) +
             scale_color_manual(values = c("#dddddd", "#000000"))
           return(plt)
@@ -975,13 +923,6 @@ significance <- readRDS(file.path(dir_analysis,
 
 sig_toplevel <- do.call(rbind, significance$significance_props_toplevel)
 #sig_avg <- do.call(rbind, significance$significance_props_all)
-
-# Regular expressions for finding the right data transform
-data_transforms <- expand.grid(normalization = c("(counts|cpm)", "tmm", "tpm"),
-                               regression = c("none", "edger", "lme", "dream"))
-data_transforms <- paste(data_transforms$normalization,
-                         data_transforms$regression,
-                         sep = "_")
 
 pdf(file.path(dir_figures,
               str_glue("significance_plots_{granularity}_summary.pdf")),
@@ -1166,16 +1107,6 @@ for (dt in unique(sig_toplevel$data_transform)) {
     #facet_grid(rows = vars(algorithm), cols = vars(celltype)) +
     coord_fixed() +
     scale_fill_distiller(palette = "RdBu", limit = plot_limit, na.value = "white") +
-    ggtitle(dt)
-  print(plt)
-
-  # Same plot but as a dotplot
-  sig_filt2 <- subset(sig_filt, is.finite(log2_fc))
-  plt <- ggplot(sig_filt2, aes(x = tissue, y = algorithm, color = log2_fc, size = -log_p)) +
-    geom_point() + theme_bw() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    facet_wrap(~celltype, ncol = n_cols) +
-    scale_color_distiller(palette = "RdBu", limit = plot_limit, na.value = "white") +
     ggtitle(dt)
   print(plt)
 }

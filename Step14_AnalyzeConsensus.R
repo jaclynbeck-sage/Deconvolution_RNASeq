@@ -39,36 +39,48 @@ best_errors <- subset(best_errors, tissue != "All") %>%
 # else for rMSE.
 err_ranks <- best_errors %>%
   subset(algorithm != "Baseline") %>%
-  Rank_Errors(group_cols = "tissue")
-
-err_ranks <- do.call(rbind, list(
-  mutate(dplyr::slice_min(err_ranks, order_by = cor_rank, n = 3), type = "best_cor"),
-  mutate(dplyr::slice_min(err_ranks, order_by = rMSE_rank, n = 3), type = "best_rMSE"),
-  mutate(dplyr::slice_min(err_ranks, order_by = mAPE_rank, n = 3), type = "best_mAPE"),
-  mutate(dplyr::slice_min(err_ranks, order_by = mean_rank, n = 3), type = "best_mean")
-))
+  Rank_Errors(group_cols = "tissue") %>%
+  Get_TopRanked(n_top = 3)
 
 # Select a single signature per tissue/data transform against which errors were
 # calculated, so all errors for that tissue/transform are directly comparable
-best_signatures <- Find_BestSignature(best_errors)
+#best_signatures <- Find_BestSignature(best_errors)
 
 # Only keep the error information for scores from the top signature
-best_errors <- merge(best_errors, best_signatures,
-                     by = c("tissue", "data_transform"))
-best_errors <- subset(best_errors, signature == best_signature) %>%
-  select(-best_signature)
+#best_errors <- merge(best_errors, best_signatures,
+#                     by = c("tissue", "data_transform"))
+#best_errors <- subset(best_errors, signature == best_signature) %>%
+#  select(-best_signature)
+best_baselines <- subset(best_errors, algorithm == "Baseline" &
+                           reference_data_name != "zeros") %>%
+  Rank_Errors(group_cols = c("tissue", "data_transform")) %>%
+  Get_TopRanked(n_top = 1)
+
+# The same param_id can appear in a grouping with multiple signatures, so this
+# selects a single item with the best mean rank per grouping (tissue + data transform)
+best_baselines <- best_baselines %>%
+  select(-cor_rank, -rMSE_rank, -mAPE_rank, -type) %>%
+  slice_min(order_by = mean_rank, n = 1) %>%
+  select(-mean_rank) %>%
+  distinct()
+
+# The signature doesn't matter when all percentages are zeros, so we just subset
+# to have one unique param_id per tissue/data transform
+best_zeros <- subset(best_errors, reference_data_name == "zeros") %>%
+  mutate(signature = NA) %>%
+  distinct()
+
+best_errors <- subset(best_errors, algorithm != "Baseline" &
+                        signature == reference_data_name)
+
+best_errors <- do.call(rbind, list(best_errors, best_baselines, best_zeros))
+
 
 # Top 3 results again, limited to only errors from the best signatures
 err_ranks_best <- best_errors %>%
   subset(algorithm != "Baseline") %>%
-  Rank_Errors(group_cols = "tissue")
-
-err_ranks_best <- do.call(rbind, list(
-  mutate(dplyr::slice_min(err_ranks, order_by = cor_rank, n = 3), type = "best_cor"),
-  mutate(dplyr::slice_min(err_ranks, order_by = rMSE_rank, n = 3), type = "best_rMSE"),
-  mutate(dplyr::slice_min(err_ranks, order_by = mAPE_rank, n = 3), type = "best_mAPE"),
-  mutate(dplyr::slice_min(err_ranks, order_by = mean_rank, n = 3), type = "best_mean")
-))
+  Rank_Errors(group_cols = "tissue") %>%
+  Get_TopRanked(n_top = 3)
 
 saveRDS(list("ranked_errors_all" = err_ranks,
              "ranked_errors_best_signatures" = err_ranks_best),
@@ -93,8 +105,8 @@ best_errors <- merge(best_params, best_errors, by = c("tissue", "param_id"),
                      all.y = FALSE)
 
 saveRDS(list("best_errors_all" = best_errors,
-             "best_errors_toplevel" = best_errors_toplevel,
-             "best_signatures" = best_signatures),
+             "best_errors_toplevel" = best_errors_toplevel),#,
+             #"best_signatures" = best_signatures),
         file.path(dir_analysis, paste0("best_errors_", granularity, ".rds")))
 
 # Get the estimates associated with each parameter ID left in the errors df.

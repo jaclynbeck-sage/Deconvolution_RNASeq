@@ -93,15 +93,9 @@ Get_AllBestEstimatesAsDf <- function(bulk_datasets, granularity, metadata,
 Find_BestSignature <- function(errs_df) {
   ranks <- errs_df %>%
     subset(algorithm != "Baseline") %>%
-    Rank_Errors(group_cols = c("tissue", "data_transform"))
-
-  # Ranks is still grouped by tissue and data_transform
-  ranks_sub <- do.call(rbind, list(
-    dplyr::slice_min(ranks, order_by = cor_rank, n = 1),
-    dplyr::slice_min(ranks, order_by = rMSE_rank, n = 1),
-    dplyr::slice_min(ranks, order_by = mAPE_rank, n = 1)#,
-    #dplyr::slice_min(ranks, order_by = mean_rank, n = 1)
-  ))
+    Rank_Errors(group_cols = c("tissue", "data_transform")) %>%
+    Get_TopRank(n_top = 1) %>%
+    subset(cor_rank == 1 | rMSE_rank == 1 | mAPE_rank == 1) # drop top mean_rank
 
   get_best_signature <- function(signature) {
     tmp <- table(signature)
@@ -128,22 +122,29 @@ Rank_Errors <- function(errs_df, group_cols) {
 }
 
 
+Get_TopRanked <- function(df, n_top = 1) {
+  top_ranked <- do.call(rbind, list(
+    mutate(dplyr::slice_min(df, order_by = cor_rank, n = n_top), type = "best_cor"),
+    mutate(dplyr::slice_min(df, order_by = rMSE_rank, n = n_top), type = "best_rMSE"),
+    mutate(dplyr::slice_min(df, order_by = mAPE_rank, n = n_top), type = "best_mAPE"),
+    mutate(dplyr::slice_min(df, order_by = mean_rank, n = n_top), type = "best_mean")
+  ))
+
+  return(top_ranked)
+}
+
+
 Find_BestParameters <- function(errs_df, group_cols) {
   ranks <- errs_df %>%
-    Rank_Errors(group_cols)
-
-  ranks_sub <- do.call(rbind, list(
-    dplyr::slice_min(ranks, order_by = cor_rank, n = 1),
-    dplyr::slice_min(ranks, order_by = rMSE_rank, n = 1),
-    dplyr::slice_min(ranks, order_by = mAPE_rank, n = 1),
-    dplyr::slice_min(ranks, order_by = mean_rank, n = 1)
-  )) %>%
+    Rank_Errors(group_cols) %>%
+    group_by_at(group_cols) %>%
+    Get_TopRanked(n_top = 1) %>%
     ungroup()
 
   # Some parameter IDs will be duplicated across multiple error metrics, this
   # creates a data frame with the list of unique parameter IDs associated with
   # each tissue.
-  best_params <- ranks_sub %>%
+  best_params <- ranks %>%
     dplyr::select(tissue, param_id) %>%
     dplyr::distinct()
 
@@ -162,13 +163,10 @@ Get_AverageStats <- function(errs_df, ests_df) {
   avg_id <- unique(errs_df$avg_id)
 
   # Ensures that param_ids that are the best for multiple error metrics are
-  # represented that many times in the data frame
-  ranked <- do.call(rbind, list(
-    dplyr::slice_min(errs_df, order_by = cor_rank, n = 1),
-    dplyr::slice_min(errs_df, order_by = mAPE_rank, n = 1),
-    dplyr::slice_min(errs_df, order_by = rMSE_rank, n = 1)#,
-    #dplyr::slice_min(errs_df, order_by = mean_rank, n = 1)
-  ))
+  # represented that many times in the data frame. We also don't include the
+  # param set with the top mean_rank here
+  ranked <- Get_TopRanked(errs_df, n_top = 1) %>%
+    subset(cor_rank == 1 | mAPE_rank == 1 | rMSE_rank == 1)
 
   avg_err <- ranked %>%
     dplyr::summarize(across(c(cor, rMSE, mAPE),
