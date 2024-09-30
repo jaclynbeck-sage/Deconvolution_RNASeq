@@ -9,10 +9,7 @@ source(file.path("functions", "Step14_Analysis_HelperFunctions.R"))
 
 n_cores <- parallel::detectCores() - 2
 
-algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "HSPE", "Music",
-                "Scaden", "Baseline")
-
-granularity <- c("sub_class")
+granularity <- c("broad_class")
 
 bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
 
@@ -54,15 +51,17 @@ err_ranks <- best_errors %>%
 best_baselines <- subset(best_errors, algorithm == "Baseline" &
                            reference_data_name != "zeros") %>%
   Rank_Errors(group_cols = c("tissue", "data_transform")) %>%
-  Get_TopRanked(n_top = 1)
+  Get_TopRanked(n_top = 1) %>%
+  select(-cor_rank, -rMSE_rank, -mAPE_rank, -mean_rank, -type) %>%
+  distinct()
 
 # The same param_id can appear in a grouping with multiple signatures, so this
 # selects a single item with the best mean rank per grouping (tissue + data transform)
-best_baselines <- best_baselines %>%
-  select(-cor_rank, -rMSE_rank, -mAPE_rank, -type) %>%
-  slice_min(order_by = mean_rank, n = 1) %>%
-  select(-mean_rank) %>%
-  distinct()
+#best_baselines <- best_baselines %>%
+#  select(-cor_rank, -rMSE_rank, -mAPE_rank, -type) %>%
+#  slice_min(order_by = mean_rank, n = 1) %>%
+#  select(-mean_rank) %>%
+#  distinct()
 
 # The signature doesn't matter when all percentages are zeros, so we just subset
 # to have one unique param_id per tissue/data transform
@@ -156,7 +155,7 @@ saveRDS(list("significance_props_all" = mean_props_all,
 gc()
 
 # This is really slow so we do it last
-best_errors_single <- best_errors
+best_errors_single <- best_errors %>% ungroup()
 
 # Mimic the structure of avg_list as returned from Create_AverageList
 best_errors_single$avg_id <- paste(best_errors_single$tissue,

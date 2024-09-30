@@ -17,8 +17,8 @@ datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
 
 granularity <- "broad_class"
 bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
-algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "HSPE",
-                "Music", "Scaden", "Baseline")
+algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "Music",
+                "Scaden", "Baseline")
 
 for (bulk_dataset in bulk_datasets) {
   # TODO tmp
@@ -165,7 +165,10 @@ for (bulk_dataset in bulk_datasets) {
                           params = err_list$params[best_param_ids,],
                           by_sample = do.call(rbind, err_list$by_sample[best_param_ids]),
                           by_sample_lm = do.call(rbind, err_list$by_sample_lm[best_param_ids]),
+                          pct_bad_inhibitory_ratio_all = err_list$pct_bad_inhibitory_ratio,
                           pct_bad_inhibitory_ratio = subset(err_list$pct_bad_inhibitory_ratio, param_id %in% best_param_ids),
+                          mean_exc_inh_ratio_all = err_list$mean_exc_inh_ratio,
+                          mean_exc_inh_ratio = subset(err_list$mean_exc_inh_ratio, param_id %in% best_param_ids),
                           n_valid_results = err_list$n_valid_results,
                           n_possible_results = err_list$n_possible_results,
                           error_stats = err_stats,

@@ -172,7 +172,8 @@ Get_AverageStats <- function(errs_df, ests_df) {
     dplyr::summarize(across(c(cor, rMSE, mAPE),
                             list("mean" = ~ mean(.x),
                                  "sd" = ~ sd(.x))),
-                     .groups = "drop") #%>%
+                     .groups = "drop") %>%
+    mutate(avg_id = avg_id)
   #cbind(errs_df[1, cols_keep_errs])
 
   weights <- as.data.frame(table(ranked$param_id))
@@ -319,7 +320,10 @@ Get_MeanProps_Significance <- function(avg_list, n_cores = 2) {
 
     mean_props <- merge(mean_props, significant,
                         by = c("avg_id", "celltype", "tissue")) %>%
-      dplyr::mutate(log_p = log(p_adj_thresh))
+      dplyr::mutate(log_p = log(p_adj_thresh)) %>%
+      # pull in missing parameter fields from errs_tmp
+      merge(select(errs_tmp, test_data_name, normalization, regression_method, avg_id),
+            by = "avg_id")
 
     return(mean_props)
   }, mc.cores = n_cores)

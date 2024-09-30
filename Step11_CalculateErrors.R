@@ -30,8 +30,8 @@ cl <- makeCluster(cores, type = "FORK", outfile = "errors_output.txt")
 registerDoParallel(cl)
 
 # Which algorithms to calculate errors for
-algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "HSPE",
-                "Music", "Scaden", "Baseline")
+algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "Music",
+                "Scaden", "Baseline")
 
 # Pre-load all signature matrices
 all_signatures_cpm <- sapply(singlecell_datasets, function(X) {
@@ -106,7 +106,7 @@ for (bulk_dataset in bulk_datasets) {
     all_possible <- 0
     all_valid <- 0
 
-    # Process files in parallel
+    # Process each file
     for (file in res_files) {
       deconv_list <- readRDS(file)
 
@@ -249,7 +249,8 @@ for (bulk_dataset in bulk_datasets) {
           bad_ests <- data.frame(sample = rownames(est_pct),
                                  Excitatory = est_pct[, "Excitatory"],
                                  Inhibitory = est_pct[, "Inhibitory"]) %>%
-            mutate(is_bad_estimate = Inhibitory > Excitatory)
+            mutate(is_bad_estimate = Inhibitory > Excitatory,
+                   ratio = Excitatory / Inhibitory)
 
         } else if (granularity == "sub_class") {
           excitatory_cols <- grepl("Exc", colnames(est_pct))
@@ -259,19 +260,28 @@ for (bulk_dataset in bulk_datasets) {
             sample = rownames(est_pct),
             Excitatory = rowSums(est_pct[, excitatory_cols]),
             Inhibitory = rowSums(est_pct[, inhibitory_cols])
-          ) %>% mutate(is_bad_estimate = Inhibitory > Excitatory)
+          ) %>% mutate(is_bad_estimate = Inhibitory > Excitatory,
+                       ratio = Excitatory / Inhibitory)
         }
 
-        pct_bad_inhibitory_ratio <- bulk_metadata %>%
+        bad_ests <- bulk_metadata %>%
           as.data.frame() %>%
           select(sample, tissue) %>%
-          merge(bad_ests, by = "sample", all.x = FALSE) %>%
+          merge(bad_ests, by = "sample", all.x = FALSE)
+        bad_ests$ratio[is.infinite(bad_ests$ratio)] <- NA
+
+        pct_bad_inhibitory_ratio <- bad_ests %>%
           group_by(tissue) %>%
           summarize(n_bad = sum(is_bad_estimate),
                     count = n(),
                     pct_bad_inhibitory_ratio = n_bad / count,
                     param_id = param_id) %>%
           select(tissue, pct_bad_inhibitory_ratio, param_id)
+
+        mean_exc_inh_ratio <- bad_ests %>%
+          group_by(tissue) %>%
+          summarize(mean_ratio = mean(ratio, na.rm = TRUE),
+                    param_id = param_id)
 
         params <- deconv_list[[param_id]]$params
 
@@ -308,6 +318,7 @@ for (bulk_dataset in bulk_datasets) {
                           # "gof_means_lm" = gof_means_lm,
                           "params" = deconv_list[[param_id]]$params,
                           "pct_bad_inhibitory_ratio" = pct_bad_inhibitory_ratio,
+                          "mean_exc_inh_ratio" = mean_exc_inh_ratio,
                           "estimates" = as.data.frame(est_pct))
 
         decon_new$params$total_markers_used <- length(deconv_list[[param_id]]$markers)
@@ -337,6 +348,7 @@ for (bulk_dataset in bulk_datasets) {
       params <- do.call(rbind, lapply(deconv_list, "[[", "params"))
 
       pct_inh <- do.call(rbind, lapply(deconv_list, "[[", "pct_bad_inhibitory_ratio"))
+      mean_ratio <- do.call(rbind, lapply(deconv_list, "[[", "mean_exc_inh_ratio"))
 
       all_ests <- do.call(rbind, lapply(deconv_list, "[[", "estimates"))
       all_ests <- melt(all_ests,
@@ -353,12 +365,23 @@ for (bulk_dataset in bulk_datasets) {
                        "by_sample_lm" = lapply(deconv_list, "[[", "gof_by_sample_lm"),
                        "estimate_stats" = est_stats,
                        "pct_bad_inhibitory_ratio" = pct_inh,
+                       "mean_exc_inh_ratio" = mean_ratio,
                        "n_valid_results" = length(deconv_list),
                        "n_possible_results" = total_length,
                        "estimates" = all_ests)
 
       names(err_list$by_sample) <- rownames(err_list$params)
       names(err_list$by_sample_lm) <- rownames(err_list$params)
+
+      # Carry over some general stats from the top parameters object that can't
+      # be calculated here
+      if (use_top_estimates) {
+        top_params <- Load_TopParams(algorithm, params[1, ])
+        err_list$n_possible_results <- top_params$n_possible_results
+        err_list$n_valid_results <- top_params$n_valid_results
+        err_list$pct_bad_inh_ratio_all <- top_params$pct_bad_inhibitory_ratio_all
+        err_list$mean_exc_inh_ratio_all <- top_params$mean_exc_inh_ratio_all
+      }
 
       Save_ErrorList(bulk_dataset, err_list, algorithm, params_data,
                      top_params = use_top_estimates)

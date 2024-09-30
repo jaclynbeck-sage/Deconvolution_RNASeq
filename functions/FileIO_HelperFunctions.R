@@ -774,6 +774,38 @@ Load_ErrorIntermediate <- function(algorithm, params) {
 }
 
 
+# Load_TopParams: loads a top parameters file as calculated in Step 12.
+#
+# Arguments:
+#   algorithm = the name of the algorithm to pre-pend to the file name
+#   params = a named vector or single-row dataframe with the parameters used to
+#            generate the top parameters file. Must have the columns named
+#            below in the select_cols variable declaration.
+#
+# Returns:
+#   a named list containing the contents of the top parameters file, or NULL
+#   if the file doesn't exist.
+Load_TopParams <- function(algorithm, params) {
+  select_cols <- c("reference_data_name", "test_data_name", "granularity",
+                   "reference_input_type", "normalization", "regression_method")
+
+  file_params <- params[, select_cols]
+
+  file_id <- paste(c(algorithm, file_params), collapse = "_")
+  top_param_file <- file.path(dir_top_parameters,
+                              params$test_data_name,
+                              algorithm,
+                              str_glue("top_parameters_{file_id}.rds"))
+
+  if (!file.exists(top_param_file)) {
+    return(NULL)
+  }
+
+  top_params <- readRDS(top_param_file)
+  return(top_params)
+}
+
+
 # Marker save/load functions ---------------------------------------------------
 
 # Helper function for Save_Markers and Load_Markers

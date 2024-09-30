@@ -66,7 +66,7 @@ algorithm_colors <- RColorBrewer::brewer.pal(length(algs), "Set2")
 names(algorithm_colors) <- sort(algs)
 
 # Normalizations
-normalization_colors <- RColorBrewer::brewer.pal(length(regs), "Set1")
+normalization_colors <- RColorBrewer::brewer.pal(length(norms), "Set1")
 
 # Regression methods
 regression_colors <- viridis::turbo(length(regs), begin = 0.1, end = 0.9)#RColorBrewer::brewer.pal(length(regs), "Accent")
@@ -931,7 +931,8 @@ pdf(file.path(dir_figures,
 sig_toplevel$normalization <- sapply(sig_toplevel$avg_id, function(A) {
   for (norm in c("counts|cpm", "tmm", "tpm")) {
     if (grepl(norm, A)) {
-      return(str_replace(norm, "\\|", "/"))
+      if (norm == "counts|cpm") { return("CPM") }
+      else { return(toupper(norm)) }
     }
   }
 })
@@ -939,6 +940,9 @@ sig_toplevel$normalization <- sapply(sig_toplevel$avg_id, function(A) {
 sig_toplevel$regression_method <- sapply(sig_toplevel$avg_id, function(A) {
   for (reg in c("none", "edger", "lme", "dream")) {
     if (grepl(reg, A)) {
+      if (reg == "edger") { return("edgeR") }
+      if (reg == "lme") { return("LME") }
+      if (reg == "none") { return("No regression") }
       return(reg)
     }
   }

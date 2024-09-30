@@ -60,19 +60,13 @@ for (P in 1:nrow(params_loop1)) {
   # Check if there is a file of top parameters -- if there isn't, either errors
   # haven't been calculated for this set of data or there were no valid estimates
   # for this set of data, so we can skip running this one.
-  file_params <- select(params_loop1[P, ], -samples)
-  file_id <- paste(c(algorithm, file_params), collapse = "_")
-  top_param_file <- file.path(dir_top_parameters,
-                              params_loop1$test_data_name[P],
-                              algorithm,
-                              str_glue("top_parameters_{file_id}.rds"))
-
-  if (!file.exists(top_param_file)) {
-    message(paste(top_param_file, "doesn't exist! Skipping..."))
+  top_params <- Load_TopParams(algorithm, params_loop1[P, ])
+  if (is.null(top_params)) {
+    message(paste(algorithm,
+                  paste(params_loop1[P, ], collapse = "_"),
+                  "doesn't exist! Skipping..."))
     next
   }
-
-  top_params <- readRDS(top_param_file)
 
   # Use all the parameter sets in the file. We remove columns that also exist
   # in params_loop1 and also remove unused columns "total_markers_used" and

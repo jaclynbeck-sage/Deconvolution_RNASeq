@@ -281,3 +281,132 @@ Plot_TruthVsEstimates_Lines <- function(ests_df, titles, n_col = 4, axis_limits 
     scale_color_discrete(labels = titles) +
     facet_wrap(~celltype, scales = "free", ncol = n_col)
 }
+
+Paper_Renames <- function(df) {
+  dataset_renames <- c("cain" = "Cain 2020", "lau" = "Lau 2020",
+                       "leng" = "Leng 2021", "mathys" = "Mathys 2019",
+                       "seaRef" = "Gabitto 2023",
+                       "random_biased" = "Random (biased)",
+                       "random_educated" = "Random (educated)",
+                       "random_uniform" = "Random (uniform)",
+                       "zeros" = "All zeros")
+  regression_renames <- c("none" = "No regression", "edger" = "edgeR",
+                          "lme" = "LME", "dream" = "dream")
+
+  df <- df %>% mutate(
+    tissue_full = paste(test_data_name, tissue),
+    tissue = factor(tissue, levels = c("CBE", "TCX", "FP", "IFG", "PHG",
+                                       "STG", "ACC", "DLPFC", "PCC")),
+    regression_method = regression_renames[regression_method],
+    normalization = str_replace(normalization, "counts", "cpm"),
+    normalization = str_replace(normalization, "log_", ""),
+    normalization = toupper(normalization),
+    algorithm = str_replace(algorithm, "Music", "MuSiC"),
+    data_transform = paste(normalization, "+", regression_method),
+  )
+
+  if ("cor" %in% colnames(df)) {
+    df <- df %>% dplyr::rename(Correlation = cor, RMSE = rMSE, MAPE = mAPE)
+  }
+
+  if ("reference_data_name" %in% colnames(df)) {
+    df <- df %>%
+      mutate(reference_data_name = dataset_renames[reference_data_name])
+  }
+
+  if ("type" %in% colnames(df)) {
+    df <- df %>%
+      mutate(error_type = str_replace(type, "best_", "")) %>%
+      group_by(error_type) %>%
+      mutate(error_type = if (unique(error_type) == "cor") "Correlation"
+             else toupper(error_type)) %>%
+      ungroup()
+  }
+
+  return(df)
+}
+
+Count_Grouped <- function(df, groups) {
+  df %>%
+    group_by_at(groups) %>%
+    dplyr::summarize(count = n(), .groups = "drop")
+}
+
+
+Get_BestDataTransform <- function(ranked_df) {
+  best_dt <- Count_Grouped(ranked_df, c("tissue", "data_transform")) %>%
+    group_by(tissue) %>%
+    slice_max(order_by = count, with_ties = FALSE) %>%
+    mutate(normalization = str_replace(data_transform, " \\+.*", ""),
+           regression_method = str_replace(data_transform, ".*\\+ ", "")) %>%
+    as.data.frame()
+
+  best_dt <- tidyr::expand_grid(best_dt,
+                                algorithm = c(unique(ranked_df$algorithm), "Baseline"))
+  best_dt$normalization[best_dt$algorithm == "MuSiC"] <- "CPM"
+  best_dt$normalization[best_dt$normalization == "TMM" &
+                          best_dt$algorithm == "CibersortX"] <- "CPM"
+
+  best_dt <- best_dt %>%
+    mutate(data_transform = paste(normalization, "+", regression_method)) %>%
+    select(tissue, algorithm, data_transform) %>%
+    distinct()
+
+  return(best_dt)
+}
+
+Load_BestErrors <- function(granularity) {
+  best_errors_list <- readRDS(file.path(dir_analysis,
+                                        str_glue("best_errors_{granularity}.rds")))
+  best_errors <- Paper_Renames(best_errors_list$best_errors_all)
+  best_errors_top <- Paper_Renames(best_errors_list$best_errors_toplevel)
+
+  quality_stats <- subset(best_errors, algorithm != "Baseline") %>%
+    select(-Correlation, -RMSE, -MAPE)
+
+  quality_stats_top <- subset(best_errors_top, algorithm != "Baseline") %>%
+    select(-Correlation, -RMSE, -MAPE)
+
+  # There are up to 3 param_ids per set of input parameters. Get the best of each
+  # error metric for each set
+  best_errors <- best_errors  %>%
+    group_by(tissue, tissue_full, reference_data_name, test_data_name, algorithm,
+             normalization, regression_method) %>%
+    dplyr::summarize(Correlation = max(Correlation),
+                     RMSE = min(RMSE),
+                     MAPE = min(MAPE),
+                     .groups = "drop") %>%
+    melt(variable.name = "error_type")
+
+  best_errors_top <- best_errors_top  %>%
+    group_by(tissue, tissue_full, reference_data_name, test_data_name, algorithm,
+             normalization, regression_method) %>%
+    dplyr::summarize(Correlation = max(Correlation),
+                     RMSE = min(RMSE),
+                     MAPE = min(MAPE),
+                     .groups = "drop") %>%
+    melt(variable.name = "error_type")
+
+  baselines <- subset(best_errors, algorithm == "Baseline")
+  best_errors <- subset(best_errors, algorithm != "Baseline")
+
+  baselines_top <- subset(best_errors_top, algorithm == "Baseline")
+  best_errors_top <- subset(best_errors_top, algorithm != "Baseline")
+
+  ranked <- readRDS(file.path(dir_analysis, str_glue("ranked_errors_{granularity}.rds")))
+
+  ranked_df <- Paper_Renames(ranked$ranked_errors_best_signatures) %>%
+    subset(type != "best_mean") # drop mean_rank
+
+  best_dt <- Get_BestDataTransform(ranked_df)
+
+  items <- list(best_errors, best_errors_top, baselines, baselines_top,
+    ranked_df, best_dt, quality_stats, quality_stats_top)
+  names(items) <- paste(c("best_errors", "best_errors_top", "baselines",
+                          "baselines_top","ranked_df", "best_dt",
+                          "quality_stats", "quality_stats_top"),
+                        str_replace(granularity, "_class", ""),
+                        sep = "_")
+
+  return(items)
+}
