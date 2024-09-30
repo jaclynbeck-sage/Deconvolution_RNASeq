@@ -139,7 +139,8 @@ for (bulk_dataset in bulk_datasets) {
 
       best_param_ids <- unique(errs_sub_all$param_id)
 
-      file_id <- str_replace(best_param_ids[1], "_[0-9].*", "")
+      file_id <- str_replace(basename(EF), "errors_", "") %>%
+        str_replace(".rds", "")
 
       err_stats <- melt(errs_sub_all, variable.name = "metric",
                         id.vars = c("param_id", "tissue", "solve_type",
