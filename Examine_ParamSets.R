@@ -120,7 +120,7 @@ for (bulk_dataset in bulk_datasets) {
           next
         }
 
-        errs_all <- err_list$means$all_signature
+        errs_all <- err_list$means
         errs_all <- merge(errs_all, err_list$params,
                           by.x = "param_id", by.y = "row.names")
 
@@ -161,7 +161,7 @@ for (bulk_dataset in bulk_datasets) {
               width=24, height = 24)
 
           errs_tmp = errs_all %>%
-            group_by(tissue, solve_type, marker_combo, marker_order,
+            group_by(tissue, marker_combo, marker_order,
                      n_marker_type, total_markers_used) %>%
             dplyr::summarize(cor = max(cor),
                              rMSE = min(rMSE),
@@ -239,11 +239,11 @@ for (bulk_dataset in bulk_datasets) {
         # Stats on the top 20 parameters for each error metric
         best_params <- lapply(error_cols, function(error_metric) {
           if (grepl("cor", error_metric)) {
-            errs_all %>% group_by(tissue, solve_type) %>%
+            errs_all %>% group_by(tissue) %>%
               slice_max(order_by = .data[[error_metric]], n = 20)
           }
           else {
-            errs_all %>% group_by(tissue, solve_type) %>%
+            errs_all %>% group_by(tissue) %>%
               slice_min(order_by = .data[[error_metric]], n = 20)
           }
         })
@@ -258,7 +258,7 @@ for (bulk_dataset in bulk_datasets) {
           bp <- best_params[[error_metric]]
           best_totals <- lapply(fields, function(field) {
             df <- if (is.numeric(bp[[field]])) {
-              bp %>% group_by(tissue, solve_type) %>%
+              bp %>% group_by(tissue) %>%
                 dplyr::summarize("best" = .data[[field]][1],
                                  "min" = min(.data[[field]]),
                                  "max" = max(.data[[field]]),
@@ -266,10 +266,10 @@ for (bulk_dataset in bulk_datasets) {
                                  "sd" = sd(.data[[field]]),
                                  .groups = "drop")
             } else {
-              tab <- table(bp$tissue, bp$solve_type, bp[[field]],
-                           dnn = c("tissue", "solve_type", field))
+              tab <- table(bp$tissue, bp[[field]],
+                           dnn = c("tissue", field))
               tab <- dcast(as.data.frame(tab, stringsAsFactors = FALSE),
-                           as.formula(paste("tissue + solve_type ~", field)),
+                           as.formula(paste("tissue ~", field)),
                            value.var = "Freq", stringsAsFactors = FALSE,
                            drop = FALSE)
               tab
@@ -279,7 +279,7 @@ for (bulk_dataset in bulk_datasets) {
           })
           names(best_totals) <- fields
           return(Reduce(function(d1, d2) {
-            merge(d1, d2, by = c("tissue", "solve_type"))
+            merge(d1, d2, by = c("tissue"))
           }, best_totals))
         })
         names(summary_stats) <- error_cols

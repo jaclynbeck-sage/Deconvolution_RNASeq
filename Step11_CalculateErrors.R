@@ -51,16 +51,10 @@ common_genes <- purrr::reduce(common_genes, intersect)
 
 
 for (bulk_dataset in bulk_datasets) {
-  # The data that will be used in the LM (needs unadjusted log2(cpm))
+  # Get metadata for the bulk data set
   bulk_se <- Load_BulkData(bulk_dataset,
                            output_type = "log_cpm",
                            regression_method = "none")
-
-  meas_expr_log <- as.matrix(assay(bulk_se, "counts"))[common_genes, ]
-
-  # Get highly variable genes
-  # var_genes <- rowVars(meas_expr_log, useNames = TRUE)
-  # var_genes <- sort(var_genes, decreasing = TRUE)
 
   bulk_metadata <- colData(bulk_se)
 
@@ -83,8 +77,6 @@ for (bulk_dataset in bulk_datasets) {
   filtered_signatures_tmm <- lapply(all_signatures_tmm, function(X) {
     X[genes_use, ]
   })
-
-  meas_expr_log <- meas_expr_log[genes_use, ]
 
   # Loop over each algorithm's results
   for (algorithm in algorithms) {
@@ -272,7 +264,7 @@ for (bulk_dataset in bulk_datasets) {
 
         pct_bad_inhibitory_ratio <- bad_ests %>%
           group_by(tissue) %>%
-          summarize(n_bad = sum(is_bad_estimate),
+          dplyr::summarize(n_bad = sum(is_bad_estimate),
                     count = n(),
                     pct_bad_inhibitory_ratio = n_bad / count,
                     param_id = param_id) %>%
@@ -280,7 +272,7 @@ for (bulk_dataset in bulk_datasets) {
 
         mean_exc_inh_ratio <- bad_ests %>%
           group_by(tissue) %>%
-          summarize(mean_ratio = mean(ratio, na.rm = TRUE),
+          dplyr::summarize(mean_ratio = mean(ratio, na.rm = TRUE),
                     param_id = param_id)
 
         params <- deconv_list[[param_id]]$params
@@ -294,7 +286,6 @@ for (bulk_dataset in bulk_datasets) {
 
           gof <- CalcGOF_BySample(bulk_cpm_filt, est_expr, param_id)
           gof$signature <- N
-          gof$solve_type <- "signature"
           return(gof)
         })
         names(gof_by_sample) <- names(filtered_signatures)
@@ -304,18 +295,8 @@ for (bulk_dataset in bulk_datasets) {
         })
         gof_means <- do.call(rbind, gof_means)
 
-        # Calculate error using signature-less lm
-        # gof_by_sample_lm <- CalcGOF_BySample_LM(bulk_dataset, covariates,
-        #                                        meas_expr_log, est_pct, param_id)
-        # gof_by_sample_lm$signature <- "none"
-        # gof_by_sample_lm$solve_type <- "lm"
-
-        # gof_means_lm <- CalcGOF_Means(gof_by_sample_lm, bulk_metadata, param_id)
-
         decon_new <- list("gof_by_sample" = do.call(rbind, gof_by_sample),
                           "gof_means" = gof_means,
-                          # "gof_by_sample_lm" = gof_by_sample_lm,
-                          # "gof_means_lm" = gof_means_lm,
                           "params" = deconv_list[[param_id]]$params,
                           "pct_bad_inhibitory_ratio" = pct_bad_inhibitory_ratio,
                           "mean_exc_inh_ratio" = mean_exc_inh_ratio,
@@ -336,33 +317,38 @@ for (bulk_dataset in bulk_datasets) {
       deconv_list <- deconv_list[lengths(deconv_list) > 0]
       all_valid <- all_valid + length(deconv_list)
 
+      # If there are no valid parameter sets, all of the code below will run but
+      # most things will be NULL. We save the error list regardless so we can
+      # keep stats on number of failures.
       if (length(deconv_list) == 0) {
         print(paste("No valid parameter sets for", algorithm,
                     paste(params_data, collapse = " ")))
-        next
       }
 
       # Combine all the separate results into single data frames (or vectors)
       gof_means_all <- do.call(rbind, lapply(deconv_list, "[[", "gof_means"))
-      gof_means_all_lm <- do.call(rbind, lapply(deconv_list, "[[", "gof_means_lm"))
       params <- do.call(rbind, lapply(deconv_list, "[[", "params"))
 
       pct_inh <- do.call(rbind, lapply(deconv_list, "[[", "pct_bad_inhibitory_ratio"))
       mean_ratio <- do.call(rbind, lapply(deconv_list, "[[", "mean_exc_inh_ratio"))
 
       all_ests <- do.call(rbind, lapply(deconv_list, "[[", "estimates"))
-      all_ests <- melt(all_ests,
-                       variable.name = "celltype",
-                       value.name = "percent",
-                       id.vars = c("param_id", "sample"))
 
-      est_stats <- CalcEstimateStats(all_ests, bulk_metadata, gof_means_all)
+      # If there were any valid results, format as needed. Otherwise leave as NULL.
+      if (!is.null(all_ests)) {
+        all_ests <- melt(all_ests,
+                         variable.name = "celltype",
+                         value.name = "percent",
+                         id.vars = c("param_id", "sample"))
 
-      err_list <- list("means" = list("all_signature" = gof_means_all,
-                                      "all_lm" = gof_means_all_lm),
+        est_stats <- CalcEstimateStats(all_ests, bulk_metadata, gof_means_all)
+      } else {
+        est_stats <- NULL
+      }
+
+      err_list <- list("means" = gof_means_all,
                        "params" = params,
                        "by_sample" = lapply(deconv_list, "[[", "gof_by_sample"),
-                       "by_sample_lm" = lapply(deconv_list, "[[", "gof_by_sample_lm"),
                        "estimate_stats" = est_stats,
                        "pct_bad_inhibitory_ratio" = pct_inh,
                        "mean_exc_inh_ratio" = mean_ratio,
@@ -371,22 +357,11 @@ for (bulk_dataset in bulk_datasets) {
                        "estimates" = all_ests)
 
       names(err_list$by_sample) <- rownames(err_list$params)
-      names(err_list$by_sample_lm) <- rownames(err_list$params)
-
-      # Carry over some general stats from the top parameters object that can't
-      # be calculated here
-      if (use_top_estimates) {
-        top_params <- Load_TopParams(algorithm, params[1, ])
-        err_list$n_possible_results <- top_params$n_possible_results
-        err_list$n_valid_results <- top_params$n_valid_results
-        err_list$pct_bad_inh_ratio_all <- top_params$pct_bad_inhibitory_ratio_all
-        err_list$mean_exc_inh_ratio_all <- top_params$mean_exc_inh_ratio_all
-      }
 
       Save_ErrorList(bulk_dataset, err_list, algorithm, params_data,
                      top_params = use_top_estimates)
 
-      print(paste("Errors calculated for", nrow(err_list$params), "of",
+      print(paste("Errors calculated for", length(deconv_list), "of",
                   total_length, "parameter sets."))
     }
     print(str_glue("{all_valid} of {all_possible}"))

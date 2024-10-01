@@ -31,7 +31,6 @@ Plot_ErrsByAlgorithm <- function(errors_df, params, error_names,
                                  facet_var = "algorithm",
                                  fill_colors = NULL, ...) {
   errs <- subset(errors_df, error_type %in% error_names &
-                   solve_type %in% params[["solve_type"]] &
                    normalization %in% params[["normalization"]] &
                    regression_method %in% params[["regression_method"]])
 
@@ -53,7 +52,6 @@ Plot_ErrsByDataset <- function(errors_df, params, error_names,
                                facet_var = "reference_data_name",
                                fill_colors = NULL, ...) {
   errs <- subset(errors_df, error_type %in% error_names &
-                   solve_type %in% params[["solve_type"]] &
                    normalization %in% params[["normalization"]] &
                    regression_method %in% params[["regression_method"]])
 

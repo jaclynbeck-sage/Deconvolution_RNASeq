@@ -66,6 +66,11 @@ for (P in 1:nrow(params_loop1)) {
                   paste(params_loop1[P, ], collapse = "_"),
                   "doesn't exist! Skipping..."))
     next
+  } else if (top_params$n_valid_results == 0) {
+    message(paste(algorithm,
+                  paste(params_loop1[P, ], collapse = "_"),
+                  "had no valid parameters. Skipping..."))
+    next
   }
 
   # Use all the parameter sets in the file. We remove columns that also exist

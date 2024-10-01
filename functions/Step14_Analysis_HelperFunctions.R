@@ -26,7 +26,7 @@ Get_AllBestErrorsAsDf <- function(bulk_datasets, granularity, n_cores = 2) {
 
     # Merge a subset of the parameters into the mean errors data frame. These
     # parameters exist in every error file for every algorithm
-    errs_df <- merge(data$means$all_signature,
+    errs_df <- merge(data$means,
                      dplyr::select(data$params, reference_data_name,
                                    test_data_name, reference_input_type,
                                    normalization, regression_method),

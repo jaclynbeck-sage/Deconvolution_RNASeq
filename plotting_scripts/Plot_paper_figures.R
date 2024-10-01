@@ -55,9 +55,8 @@ best_errs_filt$algorithm[baselines] <- paste0(best_errs_filt$algorithm[baselines
                                               ")")
 
 errs_melt <- best_errs_filt  %>%
-  group_by(tissue, solve_type, reference_data_name,
-           test_data_name, algorithm, normalization,
-           regression_method) %>%
+  group_by(tissue, reference_data_name, test_data_name, algorithm,
+           normalization, regression_method) %>%
   summarize(cor = max(cor),
             rMSE = min(rMSE),
             mAPE = min(mAPE),
@@ -111,8 +110,7 @@ names(tissue_fill_colors) <- names(tissue_colors)
 bulk_colors <- tissue_fill_colors[c(1, 4, 9)]
 names(bulk_colors) <- sort(bulk_datasets)
 
-params <- list(solve_type = "signature",
-               normalization = unique(errs_melt$normalization),
+params <- list(normalization = unique(errs_melt$normalization),
                regression_method = unique(errs_melt$regression_method))
 
 plt1 <- Plot_ErrsByAlgorithm(errs_melt, params, "cor", fill = "tissue",
@@ -166,8 +164,7 @@ plt5 <- ggplot(subset(box_stats, error_type == "mAPE" & algorithm != "Baseline (
 ########### Normalization vs regression ##################
 
 errs_melt2 <- melt(best_errs_filt, variable.name = "error_type")  %>%
-  group_by(tissue, solve_type, test_data_name, algorithm, error_type,
-           normalization, regression_method) %>%
+  group_by(tissue, test_data_name, algorithm, error_type, normalization, regression_method) %>%
   summarize(max_val = max(value),
             min_val = min(value),
             median_val = median(value),
@@ -208,8 +205,9 @@ plt8 <- ggplot(subset(errs_melt2, error_type == "mAPE" & algorithm != "Baseline 
 
 for (err_metric in c("cor", "rMSE", "mAPE")) {
   errs_sub <- subset(melt(best_errors, variable.name = "error_type"),
-                     solve_type == "signature" & signature == best_signature &
-                       error_type == err_metric & tissue == "All")# &
+                     signature == best_signature &
+                       error_type == err_metric &
+                       tissue == "All")# &
                        #grepl(err_metric, metrics))
   errs_sub$normalization <- str_replace(errs_sub$normalization, "log_", "")
   errs_sub$normalization <- str_replace(errs_sub$normalization, "counts", "cpm")
@@ -221,7 +219,7 @@ for (err_metric in c("cor", "rMSE", "mAPE")) {
 
   errs_sub2 <- subset(melt(best_errors, variable.name = "error_type"),
                       test_data_name == "Mayo" &
-                        solve_type == "signature" & error_type == err_metric &
+                        error_type == err_metric &
                         signature == best_signature & tissue != "All") # & grepl(err_metric, metrics))
   errs_sub2$normalization <- str_replace(errs_sub2$normalization, "log_", "")
   errs_sub2$normalization <- str_replace(errs_sub2$normalization, "counts", "cpm")
@@ -233,7 +231,7 @@ for (err_metric in c("cor", "rMSE", "mAPE")) {
 
   errs_sub3 <- subset(melt(best_errors, variable.name = "error_type"),
                       test_data_name == "MSBB" &
-                        solve_type == "signature" & error_type == err_metric &
+                        error_type == err_metric &
                         signature == best_signature & tissue != "All") #& grepl(err_metric, metrics))
   errs_sub3$normalization <- str_replace(errs_sub3$normalization, "log_", "")
   errs_sub3$normalization <- str_replace(errs_sub3$normalization, "counts", "cpm")
@@ -245,7 +243,7 @@ for (err_metric in c("cor", "rMSE", "mAPE")) {
 
   errs_sub4 <- subset(melt(best_errors, variable.name = "error_type"),
                       test_data_name == "ROSMAP" &
-                        solve_type == "signature" & error_type == err_metric &
+                        error_type == err_metric &
                         signature == best_signature & tissue != "All")# & grepl(err_metric, metrics))
   errs_sub4$normalization <- str_replace(errs_sub4$normalization, "log_", "")
   errs_sub4$normalization <- str_replace(errs_sub4$normalization, "counts", "cpm")
@@ -353,7 +351,7 @@ for (dataset in datasets) {
 
     # TODO other tissues and lm?
     best_errors_sub <- subset(best_errors, tissue == "All" & #tissue == "DLPFC" &
-                                solve_type == "signature" & signature == best_signature &
+                                signature == best_signature &
                                 regression_method == "lme" &
                                 normalization %in% c("counts", "cpm", "log_cpm") &
                                 test_data_name == bulk_dataset &

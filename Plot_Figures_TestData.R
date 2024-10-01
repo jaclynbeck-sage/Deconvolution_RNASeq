@@ -97,8 +97,7 @@ other_errs <- setdiff(errs_total$error_type, c(cor_names, ros_names))
 
 pdf(file.path(dir_figures, str_glue("error_plots_summary_{granularity}.pdf")), width=12, height = 12)
 
-params <- list(solve_type = "signature",
-               normalization = c("counts", "cpm", "log_cpm"),
+params <- list(normalization = c("counts", "cpm", "log_cpm"),
                regression_method = "none")
 plt1 <- Plot_ErrsByAlgorithm(errs_total, params, cor_names, fill = "test_data_name", fill_colors = bulk_colors)
 plt2 <- Plot_ErrsByDataset(errs_total, params, cor_names, fill = "test_data_name", fill_colors = bulk_colors)
@@ -138,8 +137,7 @@ print(plt8 + plot_annotation(title = "Correlation by dataset (counts/cpm, by tis
 
 # Compare different normalization / regression schemes
 
-params2 <- list(solve_type = "signature",
-                normalization = norms,
+params2 <- list(normalization = norms,
                 regression_method = regs)
 errs_total_mod <- errs_total
 errs_total_mod$normalization <- str_replace(errs_total_mod$normalization, "log_", "")
@@ -299,8 +297,9 @@ for (dataset in datasets) {
 
     # TODO other tissues and lm?
     # TODO temporary - tmm none
-    best_errors_sub <- subset(best_errors$errors, tissue == "All" & solve_type == "signature" &
-                                normalization %in% c("tmm", "log_tmm", "counts") & regression_method == "none")
+    best_errors_sub <- subset(best_errors$errors, tissue == "All" &
+                                normalization %in% c("tmm", "log_tmm", "counts") &
+                                regression_method == "none")
 
     best_ests <- Get_AllEstimatesAsDf(dataset, bulk_dataset, algorithms,
                                       granularity, best_errors_sub, est_fields)
