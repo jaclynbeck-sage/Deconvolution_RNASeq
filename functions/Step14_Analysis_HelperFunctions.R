@@ -31,11 +31,11 @@ Get_AllBestErrorsAsDf <- function(bulk_datasets, granularity, n_cores = 2) {
                                    test_data_name, reference_input_type,
                                    normalization, regression_method),
                      by.x = "param_id", by.y = "row.names") %>%
-      dplyr::mutate(algorithm = str_replace(param_id, "_.*", ""),
-                    pct_valid_results = data$n_valid_results / data$n_possible_results)
-
-    errs_df <- merge(errs_df, data$pct_bad_inhibitory_ratio,
-                     by = c("tissue", "param_id"), all = TRUE)
+      dplyr::mutate(algorithm = str_replace(param_id, "_.*", "")) %>%
+      merge(data$pct_bad_inhibitory_ratio,
+            by = c("tissue", "param_id"), all = TRUE) %>%
+      merge(data$mean_exc_inh_ratio,
+            by = c("tissue", "param_id"), all = TRUE)
 
     return(errs_df)
   }, mc.cores = n_cores)
@@ -87,6 +87,60 @@ Get_AllBestEstimatesAsDf <- function(bulk_datasets, granularity, metadata,
   }, mc.cores = n_cores)
 
   return(do.call(rbind, lapply(best_ests_list, "[[", "estimates")))
+}
+
+
+# Extracts general quality stats from the top parameters objects. Currently,
+# we're only interested in n_valid_results and n_possible_results, though this
+# function could be expanded.
+Get_AllQualityStatsAsDf <- function(bulk_datasets, granularity, n_cores = 2) {
+  file_list <- list.files(dir_top_parameters,
+                          pattern = paste0("(",
+                                           paste(bulk_datasets, collapse = "|"),
+                                           ").*", granularity),
+                          full.names = TRUE,
+                          recursive = TRUE)
+
+  qstats_list <- mclapply(file_list, function(file) {
+    data <- readRDS(file)
+    print(basename(file))
+
+    file_id <- str_replace(basename(file), "top_parameters_", "") %>%
+      str_replace(".rds", "")
+
+    n_valid <- data.frame(n_valid_results = data$n_valid_results,
+                          n_possible_results = data$n_possible_results,
+                          algorithm = str_replace(file_id, "_.*", ""))
+
+    # Add file parameters to the data frame
+    if ("params" %in% names(data)) {
+      params <- data$params %>%
+        select(reference_data_name, test_data_name, granularity,
+               reference_input_type, normalization, regression_method) %>%
+        distinct()
+    } else {
+      # Extract parameters from the file_id string. These str_replaces are so
+      # that normalizations like "log_cpm" and the granularity don't get split
+      # up by str_split.
+      file_id <- str_replace(file_id, "log_", "log.") %>%
+        str_replace("_class", ".class")
+
+      params <- as.data.frame(str_split(file_id, "_", simplify = TRUE))
+      colnames(params) <- c("algorithm", "reference_data_name", "test_data_name",
+                            "granularity", "reference_input_type", "normalization",
+                            "regression_method")
+      params$granularity <- str_replace(params$granularity, "\\.", "_")
+      params$normalization <- str_replace(params$normalization, "\\.", "_")
+
+      params <- params[, -1]
+    }
+
+    n_valid <- cbind(n_valid, params)
+
+    return(n_valid)
+  }, mc.cores = n_cores)
+
+  return(do.call(rbind, qstats_list))
 }
 
 

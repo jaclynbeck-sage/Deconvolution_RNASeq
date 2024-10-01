@@ -19,8 +19,9 @@ combined_metadata <- lapply(bulk_datasets, function(B) {
 })
 combined_metadata <- do.call(rbind, combined_metadata)
 
-# Get the full set of all best errors
+# Get the full set of all best errors and quality stats
 best_errors <- Get_AllBestErrorsAsDf(bulk_datasets, granularity, n_cores)
+qstats <- Get_AllQualityStatsAsDf(bulk_datasets, granularity, n_cores)
 
 # We are analyzing each tissue separately, so we will use the best parameter
 # sets for each tissue instead of the best overall
@@ -104,8 +105,8 @@ best_errors <- merge(best_params, best_errors, by = c("tissue", "param_id"),
                      all.y = FALSE)
 
 saveRDS(list("best_errors_all" = best_errors,
-             "best_errors_toplevel" = best_errors_toplevel),#,
-             #"best_signatures" = best_signatures),
+             "best_errors_toplevel" = best_errors_toplevel,
+             "quality_stats" = qstats),
         file.path(dir_analysis, paste0("best_errors_", granularity, ".rds")))
 
 # Get the estimates associated with each parameter ID left in the errors df.

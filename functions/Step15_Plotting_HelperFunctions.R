@@ -293,9 +293,6 @@ Paper_Renames <- function(df) {
                           "lme" = "LME", "dream" = "dream")
 
   df <- df %>% mutate(
-    tissue_full = paste(test_data_name, tissue),
-    tissue = factor(tissue, levels = c("CBE", "TCX", "FP", "IFG", "PHG",
-                                       "STG", "ACC", "DLPFC", "PCC")),
     regression_method = regression_renames[regression_method],
     normalization = str_replace(normalization, "counts", "cpm"),
     normalization = str_replace(normalization, "log_", ""),
@@ -303,6 +300,14 @@ Paper_Renames <- function(df) {
     algorithm = str_replace(algorithm, "Music", "MuSiC"),
     data_transform = paste(normalization, "+", regression_method),
   )
+
+  if ("tissue" %in% colnames(df)) {
+    df <- df %>% mutate(
+      tissue_full = paste(test_data_name, tissue),
+      tissue = factor(tissue, levels = c("CBE", "TCX", "FP", "IFG", "PHG",
+                                         "STG", "ACC", "DLPFC", "PCC"))
+    )
+  }
 
   if ("cor" %in% colnames(df)) {
     df <- df %>% dplyr::rename(Correlation = cor, RMSE = rMSE, MAPE = mAPE)
@@ -366,6 +371,8 @@ Load_BestErrors <- function(granularity) {
   quality_stats_top <- subset(best_errors_top, algorithm != "Baseline") %>%
     select(-Correlation, -RMSE, -MAPE)
 
+  quality_stats_all <- Paper_Renames(best_errors_list$quality_stats)
+
   # There are up to 3 param_ids per set of input parameters. Get the best of each
   # error metric for each set
   best_errors <- best_errors  %>%
@@ -400,10 +407,10 @@ Load_BestErrors <- function(granularity) {
   best_dt <- Get_BestDataTransform(ranked_df)
 
   items <- list(best_errors, best_errors_top, baselines, baselines_top,
-    ranked_df, best_dt, quality_stats, quality_stats_top)
+    ranked_df, best_dt, quality_stats, quality_stats_top, quality_stats_all)
   names(items) <- paste(c("best_errors", "best_errors_top", "baselines",
                           "baselines_top","ranked_df", "best_dt",
-                          "quality_stats", "quality_stats_top"),
+                          "quality_stats", "quality_stats_top", "quality_stats_all"),
                         str_replace(granularity, "_class", ""),
                         sep = "_")
 
