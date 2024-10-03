@@ -416,3 +416,48 @@ Load_BestErrors <- function(granularity) {
 
   return(items)
 }
+
+
+Load_Significance <- function(granularity, p_sig = 0.01, log2_cap = 1) {
+  significance <- readRDS(file.path(dir_analysis,
+                                    str_glue("significance_lists_{granularity}.rds")))
+
+  sig_toplevel <- Paper_Renames(do.call(rbind, significance$significance_props_toplevel))
+
+  # Fill in missing data with NA
+  params <- expand.grid(celltype = unique(sig_toplevel$celltype),
+                        tissue = unique(sig_toplevel$tissue),
+                        algorithm = unique(sig_toplevel$algorithm),
+                        normalization = unique(sig_toplevel$normalization),
+                        regression_method = unique(sig_toplevel$regression_method))
+
+  sig_toplevel <- merge(sig_toplevel, params,
+                        by = colnames(params),
+                        all = TRUE)
+  sig_toplevel$p_adj_thresh[is.na(sig_toplevel$p_adj_thresh)] <- 1
+
+  sig_toplevel$data_transform <- paste(sig_toplevel$normalization, "+",
+                                       sig_toplevel$regression_method)
+
+  if (granularity == "sub_class") {
+    ct_order <- c("Astrocyte", "Endothelial", paste0("Exc.", 1:10),
+                  paste0("Inh.", 1:7), "Microglia", "Oligodendrocyte", "OPC",
+                  "Pericyte", "VLMC")
+    sig_toplevel$celltype <- factor(sig_toplevel$celltype, levels = ct_order)
+  }
+
+  sig_final <- merge(sig_toplevel, best_dt_broad,
+                     by = c("tissue", "algorithm", "data_transform"),
+                     all.x = FALSE)
+
+  # Cap log2_fc values to +/- 1 so color scaling is better. Need to account for
+  # Inf and -Inf values. Set non-significant log2 values to NA.
+  sig_final$log2_fc[sig_final$fc == 0] <- NA
+  sig_final$log2_fc[is.infinite(sig_final$log2_fc)] <- log2_cap
+  sig_final$log2_fc[sig_final$log2_fc > 1] <- log2_cap
+  sig_final$log2_fc[sig_final$log2_fc < -1] <- -log2_cap
+
+  sig_final$log2_fc[sig_final$p_adj_thresh >= p_sig] <- NA
+
+  return(sig_final)
+}

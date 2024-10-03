@@ -40,29 +40,12 @@ err_ranks <- best_errors %>%
   Rank_Errors(group_cols = "tissue") %>%
   Get_TopRanked(n_top = 3)
 
-# Select a single signature per tissue/data transform against which errors were
-# calculated, so all errors for that tissue/transform are directly comparable
-#best_signatures <- Find_BestSignature(best_errors)
-
-# Only keep the error information for scores from the top signature
-#best_errors <- merge(best_errors, best_signatures,
-#                     by = c("tissue", "data_transform"))
-#best_errors <- subset(best_errors, signature == best_signature) %>%
-#  select(-best_signature)
 best_baselines <- subset(best_errors, algorithm == "Baseline" &
                            reference_data_name != "zeros") %>%
   Rank_Errors(group_cols = c("tissue", "data_transform")) %>%
   Get_TopRanked(n_top = 1) %>%
   select(-cor_rank, -rMSE_rank, -mAPE_rank, -mean_rank, -type) %>%
   distinct()
-
-# The same param_id can appear in a grouping with multiple signatures, so this
-# selects a single item with the best mean rank per grouping (tissue + data transform)
-#best_baselines <- best_baselines %>%
-#  select(-cor_rank, -rMSE_rank, -mAPE_rank, -type) %>%
-#  slice_min(order_by = mean_rank, n = 1) %>%
-#  select(-mean_rank) %>%
-#  distinct()
 
 # The signature doesn't matter when all percentages are zeros, so we just subset
 # to have one unique param_id per tissue/data transform

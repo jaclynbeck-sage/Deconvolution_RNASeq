@@ -32,9 +32,7 @@ Get_AllBestErrorsAsDf <- function(bulk_datasets, granularity, n_cores = 2) {
                                    normalization, regression_method),
                      by.x = "param_id", by.y = "row.names") %>%
       dplyr::mutate(algorithm = str_replace(param_id, "_.*", "")) %>%
-      merge(data$pct_bad_inhibitory_ratio,
-            by = c("tissue", "param_id"), all = TRUE) %>%
-      merge(data$mean_exc_inh_ratio,
+      merge(data$exc_inh_ratio,
             by = c("tissue", "param_id"), all = TRUE)
 
     return(errs_df)
@@ -178,22 +176,30 @@ Rank_Errors <- function(errs_df, group_cols) {
 
 Get_TopRanked <- function(df, n_top = 1) {
   top_ranked <- do.call(rbind, list(
-    mutate(dplyr::slice_min(df, order_by = cor_rank, n = n_top), type = "best_cor"),
-    mutate(dplyr::slice_min(df, order_by = rMSE_rank, n = n_top), type = "best_rMSE"),
-    mutate(dplyr::slice_min(df, order_by = mAPE_rank, n = n_top), type = "best_mAPE"),
-    mutate(dplyr::slice_min(df, order_by = mean_rank, n = n_top), type = "best_mean")
+    mutate(dplyr::slice_min(df, order_by = cor_rank, n = n_top, with_ties = FALSE),
+           type = "best_cor"),
+    mutate(dplyr::slice_min(df, order_by = rMSE_rank, n = n_top, with_ties = FALSE),
+           type = "best_rMSE"),
+    mutate(dplyr::slice_min(df, order_by = mAPE_rank, n = n_top, with_ties = FALSE),
+           type = "best_mAPE"),
+    mutate(dplyr::slice_min(df, order_by = mean_rank, n = n_top, with_ties = FALSE),
+           type = "best_mean")
   ))
 
   return(top_ranked)
 }
 
 
-Find_BestParameters <- function(errs_df, group_cols) {
+Find_BestParameters <- function(errs_df, group_cols, with_mean_rank = TRUE) {
   ranks <- errs_df %>%
     Rank_Errors(group_cols) %>%
     group_by_at(group_cols) %>%
     Get_TopRanked(n_top = 1) %>%
     ungroup()
+
+  if (!with_mean_rank) {
+    ranks <- subset(ranks, type != "best_mean")
+  }
 
   # Some parameter IDs will be duplicated across multiple error metrics, this
   # creates a data frame with the list of unique parameter IDs associated with

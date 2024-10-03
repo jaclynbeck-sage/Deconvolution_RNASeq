@@ -17,11 +17,11 @@ for (param_file in top_param_files) {
   params <- top_params$params
 
   file_info <- params %>%
-    select(algorithm, reference_data_name, test_data_name, granularity,
+    select(reference_data_name, test_data_name, granularity,
            reference_input_type, normalization, regression_method) %>%
     distinct()
 
-  prev_res <- Load_AlgorithmOutputList(file_info$algorithm,
+  prev_res <- Load_AlgorithmOutputList("Baseline",
                                        file_info$reference_data_name,
                                        file_info$test_data_name,
                                        file_info$granularity,
@@ -29,16 +29,16 @@ for (param_file in top_param_files) {
                                        file_info$normalization,
                                        file_info$regression_method)
 
-  results_list <- prev_res[rownames(params)]
+  results_list <- prev_res[top_params$param_ids]
 
   message(paste("Found Baseline results containing",
                 nrow(results_list[[1]]$estimates),
                 "samples."))
 
   # Save the completed list
-  name_base <- paste(select(file_info, -algorithm), collapse = "_")
+  name_base <- paste(file_info, collapse = "_")
   print(str_glue("Saving final list for {name_base}..."))
-  Save_AlgorithmOutputList(results_list, file_info$algorithm,
+  Save_AlgorithmOutputList(results_list, "Baseline",
                            test_dataset = file_info$test_data_name,
                            name_base = name_base,
                            top_params = TRUE)

@@ -10,7 +10,7 @@ source(file.path("functions", "Step09_Deconvolution_HelperFunctions.R"))
 
 # Parameter setup --------------------------------------------------------------
 
-# options: "CibersortX", "DWLS", "DeconRNASeq", "Dtangle", "HSPE", "Music", "Scaden"
+# options: "CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "HSPE", "Music", "Scaden"
 # Note that if an algorithm was run in Step09 with "ct_ad_only" = FALSE, all this
 # script will do is subset the existing output to the results from the top
 # parameter sets and save those as a new file.
@@ -27,7 +27,7 @@ params_loop1 <- expand_grid(reference_data_name = datasets,
                             reference_input_type = alg_config$reference_input_types,
                             normalization = alg_config$normalizations,
                             regression_method = c("none", "edger", "lme", "dream"),
-                            samples = "all_samples") %>%
+                            mode = "best_estimates") %>%
   arrange(normalization)
 
 
@@ -60,29 +60,17 @@ for (P in 1:nrow(params_loop1)) {
   # Check if there is a file of top parameters -- if there isn't, either errors
   # haven't been calculated for this set of data or there were no valid estimates
   # for this set of data, so we can skip running this one.
-  top_params <- Load_TopParams(algorithm, params_loop1[P, ])
+  file_params <- params_loop1[P, ]
+  top_params <- Load_TopParams(algorithm, file_params)
   if (is.null(top_params)) {
-    message(paste(algorithm,
-                  paste(params_loop1[P, ], collapse = "_"),
+    message(paste("Top params file for", algorithm,
+                  paste(file_params, collapse = "_"),
                   "doesn't exist! Skipping..."))
-    next
-  } else if (top_params$n_valid_results == 0) {
-    message(paste(algorithm,
-                  paste(params_loop1[P, ], collapse = "_"),
-                  "had no valid parameters. Skipping..."))
     next
   }
 
-  # Use all the parameter sets in the file. We remove columns that also exist
-  # in params_loop1 and also remove unused columns "total_markers_used" and
-  # "algorithm".
-  params_loop2 <- top_params$params %>%
-    select(-reference_data_name, -test_data_name, -granularity,
-           -reference_input_type, -normalization, -regression_method,
-           -total_markers_used, -algorithm)
-
   # Load input data
-  data <- Load_AlgorithmInputData_FromParams(params_loop1[P, ])
+  data <- Load_AlgorithmInputData_FromParams(file_params)
 
   bulk_metadata <- colData(data$test)
   data$test <- as.matrix(assay(data$test, "counts"))
@@ -106,65 +94,63 @@ for (P in 1:nrow(params_loop1)) {
     data$bulk_metadata <- bulk_metadata
   }
 
+  # By the time we run this script, we have already run Step09 and there may be
+  # a saved estimates file containing results for all samples or CT/AD samples
+  # only. If this is the case, we only need to re-run the algorithm on the
+  # samples not in the file, and concatenate the results together, instead of
+  # re-running all samples. We load the previous output here and decide in the
+  # inner loop whether more samples need to be run.
+  prev_output <- Load_AlgorithmOutputList(algorithm,
+                                          file_params$reference_data_name,
+                                          file_params$test_data_name,
+                                          file_params$granularity,
+                                          file_params$reference_input_type,
+                                          file_params$normalization,
+                                          file_params$regression_method)
+
+  if (!is.null(prev_output)) {
+    message(str_glue("Found Step09 result for {top_params$file_id}"))
+  }
+
   ## Loop through algorithm-specific arguments ---------------------------------
   # Inner loop - each row of params_loop2 represents a single/unique call to
   # the algorithm with specific parameters like which markers to use, how many
   # from each cell type, and any changes to arguments in the function call.
 
-  results_list <- foreach(R = 1:nrow(params_loop2), .packages = required_libraries) %dopar% {
+  results_list <- foreach(R = 1:nrow(top_params$params), .packages = required_libraries) %dopar% {
     source(file.path("functions", "General_HelperFunctions.R"))
     source(file.path("functions", "Step09_ArgumentChecking_HelperFunctions.R"))
     source(alg_config$inner_loop_file) # defined in the config
 
-    params <- cbind(params_loop1[P, ], params_loop2[R, ])
+    params <- top_params$params[R, ] %>%
+      mutate(mode = "best_estimates", .after = regression_method) %>%
+      select(-total_markers_used)
+
+    param_id <- rownames(params)
+
+    stopifnot(nchar(param_id) > 1)
 
     # Not very memory efficient but we don't want to alter "data" and affect
     # other threads using it
     data_filt <- data
 
     # If we've already run this script on this parameter set, the intermediate
-    # file will have "all_samples" at the end of the filename to differentiate
-    # it from Step09 results that don't have all samples.
+    # file will have "best_estimates" at the end of the filename to differentiate
+    # it from Step09 results that have all estimate output.
     prev_res <- Load_AlgorithmIntermediate(algorithm, params)
     if (!is.null(prev_res)) {
       message(paste0("Using previously-run result for ",
                      paste(params, collapse = " ")))
 
-      prev_res$param_id <- paste(algorithm,
-                                 paste(params_loop1[P, ], collapse = "_"),
-                                 R, sep = "_")
-
       return(prev_res)
     }
 
-    # If we haven't already run this script, in most cases we have already run
-    # Step09 and there may be a saved estimates file containing results for
-    # all samples or CT/AD samples only. If this is the case, we only need to
-    # re-run the algorithm on the samples not in the file, and concatenate the
-    # results together, instead of re-running all samples.
-    prev_res <- Load_AlgorithmOutputList(algorithm,
-                                         params$reference_data_name,
-                                         params$test_data_name,
-                                         params$granularity,
-                                         params$reference_input_type,
-                                         params$normalization,
-                                         params$regression_method)
-    if (!is.null(prev_res)) {
-      message(paste0("Found Step09 result for ",
-                     paste(params, collapse = " ")))
-
-      # Find which result matches these parameters
-      prev_params <- do.call(rbind, lapply(prev_res, "[[", "params"))
-      prev_params <- prev_params[, colnames(params_loop2)]
-      match_params <- plyr::match_df(prev_params, params_loop2[R, ],
-                                     on = intersect(colnames(prev_params),
-                                                    colnames(params_loop2)))
-
-      if (nrow(match_params) != 1) {
+    if (!is.null(prev_output)) {
+      if (!(param_id %in% names(prev_output))) {
         stop("Step09 results do not contain this parameter set.")
       }
 
-      prev_res <- prev_res[[rownames(match_params)]]
+      prev_res <- prev_output[[param_id]]
       gc()
 
       message(paste("Found Step09 result containing", nrow(prev_res$estimates),
@@ -191,9 +177,6 @@ for (P in 1:nrow(params_loop1)) {
       # If this file already has all samples in it, no need to re-run
       if (length(missing_samples) == 0) {
         message("No additional samples need to be run.")
-        prev_res$param_id <- paste(algorithm,
-                                   paste(params_loop1[P, ], collapse = "_"),
-                                   R, sep = "_")
         return(prev_res)
       }
 
@@ -207,9 +190,7 @@ for (P in 1:nrow(params_loop1)) {
     res <- inner_loop_func(data_filt, params, algorithm)
 
     if (!is.null(res)) {
-      res$param_id <- paste(algorithm,
-                            paste(params_loop1[P, ], collapse = "_"),
-                            R, sep = "_")
+      res$param_id <- param_id
 
       # Add CT/AD samples back to the result, if applicable
       if (!is.null(prev_res)) {
@@ -233,10 +214,10 @@ for (P in 1:nrow(params_loop1)) {
   results_list <- results_list[sort(names(results_list))]
 
   # Save the completed list
-  name_base <- paste(params_loop1[P, ], collapse = "_")
+  name_base <- paste(file_params, collapse = "_")
   print(str_glue("Saving final list for {name_base}..."))
   Save_AlgorithmOutputList(results_list, algorithm,
-                           test_dataset = params_loop1$test_data_name[P],
+                           test_dataset = file_params$test_data_name,
                            name_base = name_base,
                            top_params = TRUE)
 

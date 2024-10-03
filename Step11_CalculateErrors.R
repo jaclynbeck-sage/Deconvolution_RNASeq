@@ -1,14 +1,7 @@
 # Loops through estimate files for each bulk data set and calculates the error
 # (correlation, rMSE, and mAPE) between [signature * estimated_percents] and the
 # actual bulk data, for each estimate in the file. Estimates with too many zero
-# values for major cell types are discarded. This script also calculates some
-# statistics about the estimates in each file:
-#   - how many samples in each estimate have a "bad" inhibitory:excitatory ratio
-#   - the mean and SD of estimated percentages for each cell type for a given
-#     sample across all estimates in the file
-#   - the same mean and SD except only across the top 10-scoring estimates in
-#     the file
-#   - the mean of these means across all samples
+# values for major cell types are discarded.
 library(Matrix)
 library(dplyr)
 library(stringr)
@@ -49,35 +42,17 @@ common_genes <- lapply(bulk_datasets, function(X) {
 common_genes <- append(common_genes, lapply(all_signatures_cpm, rownames))
 common_genes <- purrr::reduce(common_genes, intersect)
 
+# Filter the signatures to only the genes being used
+filtered_signatures_cpm <- lapply(all_signatures_cpm, function(X) {
+  X[common_genes, ]
+})
+filtered_signatures_tmm <- lapply(all_signatures_tmm, function(X) {
+  X[common_genes, ]
+})
+
+gc()
 
 for (bulk_dataset in bulk_datasets) {
-  # Get metadata for the bulk data set
-  bulk_se <- Load_BulkData(bulk_dataset,
-                           output_type = "log_cpm",
-                           regression_method = "none")
-
-  bulk_metadata <- colData(bulk_se)
-
-  covariates <- Load_Covariates(bulk_dataset)
-  covariates <- Clean_BulkCovariates(bulk_dataset, bulk_metadata,
-                                     covariates, scale_numeric = TRUE)
-
-  rm(bulk_se)
-  gc()
-
-  # Get the top 5000 most variable genes that exist in all signatures and in
-  # the bulk dataset
-  # genes_use <- names(var_genes)[1:5000]
-  genes_use <- common_genes
-
-  # Filter the signatures to only the genes being used
-  filtered_signatures_cpm <- lapply(all_signatures_cpm, function(X) {
-    X[genes_use, ]
-  })
-  filtered_signatures_tmm <- lapply(all_signatures_tmm, function(X) {
-    X[genes_use, ]
-  })
-
   # Loop over each algorithm's results
   for (algorithm in algorithms) {
     print(str_glue("Calculating errors for {bulk_dataset}: {algorithm}"))
@@ -117,7 +92,7 @@ for (bulk_dataset in bulk_datasets) {
         distinct()
 
       if (use_top_estimates) {
-        params_data$samples <- "all_samples"
+        params_data$mode <- "best_estimates"
       }
 
       # If the error file already exists, don't re-process
@@ -148,17 +123,19 @@ for (bulk_dataset in bulk_datasets) {
                             output_type = params_mod$normalization,
                             regression_method = params_mod$regression_method)
 
-      if (params_mod$normalization == "tmm") {
-        filtered_signatures <- filtered_signatures_tmm
-      } else {
-        filtered_signatures <- filtered_signatures_cpm
-      }
+      bulk_metadata <- colData(data)
 
       # The "counts" assay is actually CPM, TMM, or TPM-normalized data
       bulk_cpm <- assay(data, "counts")
 
       rm(data)
       gc()
+
+      if (params_mod$normalization == "tmm") {
+        filtered_signatures <- filtered_signatures_tmm
+      } else {
+        filtered_signatures <- filtered_signatures_cpm
+      }
 
       # Needed for print output at the end
       total_length <- length(deconv_list)
@@ -173,7 +150,7 @@ for (bulk_dataset in bulk_datasets) {
         param_id <- names(deconv_list)[[P]]
 
         if (use_top_estimates) {
-          deconv_list[[param_id]]$params$samples <- "all_samples"
+          deconv_list[[param_id]]$params$mode <- "best_estimates"
         }
 
         # If the error calculation for this param_id exists, don't re-calculate
@@ -195,89 +172,29 @@ for (bulk_dataset in bulk_datasets) {
         # abundant cell types (>10% of the population in the Cain dataset). We
         # assume that if more than 25% of estimates for a supposedly-abundant
         # cell type are *exactly* 0, that estimate is not reliable.
-        if (algorithm != "Baseline") {
-          if (granularity == "broad_class") {
-            major_celltypes <- c("Astrocyte", "Excitatory", "Inhibitory", "Oligodendrocyte")
-          }
+        if (granularity == "broad_class") {
+          major_celltypes <- c("Astrocyte", "Excitatory", "Inhibitory", "Oligodendrocyte")
+
+        } else {
           # sub_class uses cell types >5% of the population, plus the most abundant
           # excitatory and inhibitory subclasses
-          else {
-            major_celltypes <- c("Astrocyte", "Exc.1", "Inh.1", "Oligodendrocyte")
-            excitatory_cols <- grepl("Exc", colnames(est_pct))
-            inhibitory_cols <- grepl("Inh", colnames(est_pct))
-
-            summed_estimates <- data.frame(
-              Excitatory = rowSums(est_pct[, excitatory_cols]),
-              Inhibitory = rowSums(est_pct[, inhibitory_cols])
-            )
-            summed_zeros <- colSums(summed_estimates == 0)
-          }
-
-          zeros <- colSums(est_pct == 0)[major_celltypes]
-          zero_thresh <- 0.25 * nrow(est_pct) # 25% can be zeros
-
-          if (any(zeros > zero_thresh)) {
-            cts <- paste(names(which(zeros > zero_thresh)), collapse = ", ")
-            msg <- str_glue(paste("Param set '{param_id}' has too many 0 estimates",
-                                  "for cell type(s) [{cts}]. Skipping..."))
-            # message(msg)
-            return(NULL)
-          }
-
-          # Make sure there are not too many zeros when summing over all
-          # excitatory or all inhibitory neuron estimates for each sample
-          if (granularity == "sub_class" && any(summed_zeros > zero_thresh)) {
-            msg <- str_glue(paste("Param set '{param_id}' has all 0 estimates",
-                                  "for excitatory or inhibitory subtypes.",
-                                  "Skipping..."))
-            # message(msg)
-            return(NULL)
-          }
+          major_celltypes <- c("Astrocyte", "Exc.1", "Inh.1", "Oligodendrocyte")
         }
 
-        # Check for if the algorithm estimated more inhibitory than excitatory
-        # neurons, which generally means the estimate is bad
-        if (granularity == "broad_class") {
-          bad_ests <- data.frame(sample = rownames(est_pct),
-                                 Excitatory = est_pct[, "Excitatory"],
-                                 Inhibitory = est_pct[, "Inhibitory"]) %>%
-            mutate(is_bad_estimate = Inhibitory > Excitatory,
-                   ratio = Excitatory / Inhibitory)
+        zeros <- colSums(est_pct == 0)[major_celltypes]
+        zero_thresh <- 0.25 * nrow(est_pct) # 25% can be zeros
 
-        } else if (granularity == "sub_class") {
-          excitatory_cols <- grepl("Exc", colnames(est_pct))
-          inhibitory_cols <- grepl("Inh", colnames(est_pct))
-
-          bad_ests <- data.frame(
-            sample = rownames(est_pct),
-            Excitatory = rowSums(est_pct[, excitatory_cols]),
-            Inhibitory = rowSums(est_pct[, inhibitory_cols])
-          ) %>% mutate(is_bad_estimate = Inhibitory > Excitatory,
-                       ratio = Excitatory / Inhibitory)
+        if (algorithm != "Baseline" && any(zeros > zero_thresh)) {
+          cts <- paste(names(which(zeros > zero_thresh)), collapse = ", ")
+          msg <- str_glue(paste("Param set '{param_id}' has too many 0 estimates",
+                                "for cell type(s) [{cts}]. Skipping..."))
+          # message(msg)
+          return(NULL)
         }
-
-        bad_ests <- bulk_metadata %>%
-          as.data.frame() %>%
-          select(sample, tissue) %>%
-          merge(bad_ests, by = "sample", all.x = FALSE)
-        bad_ests$ratio[is.infinite(bad_ests$ratio)] <- NA
-
-        pct_bad_inhibitory_ratio <- bad_ests %>%
-          group_by(tissue) %>%
-          dplyr::summarize(n_bad = sum(is_bad_estimate),
-                    count = n(),
-                    pct_bad_inhibitory_ratio = n_bad / count,
-                    param_id = param_id) %>%
-          select(tissue, pct_bad_inhibitory_ratio, param_id)
-
-        mean_exc_inh_ratio <- bad_ests %>%
-          group_by(tissue) %>%
-          dplyr::summarize(mean_ratio = mean(ratio, na.rm = TRUE),
-                    param_id = param_id)
 
         params <- deconv_list[[param_id]]$params
 
-        bulk_cpm_filt <- bulk_cpm[genes_use, rownames(est_pct)]
+        bulk_cpm_filt <- bulk_cpm[common_genes, rownames(est_pct)]
 
         # Calculate error using each signature, since we don't know which, if
         # any, are more accurate
@@ -298,15 +215,10 @@ for (bulk_dataset in bulk_datasets) {
         decon_new <- list("gof_by_sample" = do.call(rbind, gof_by_sample),
                           "gof_means" = gof_means,
                           "params" = deconv_list[[param_id]]$params,
-                          "pct_bad_inhibitory_ratio" = pct_bad_inhibitory_ratio,
-                          "mean_exc_inh_ratio" = mean_exc_inh_ratio,
-                          "estimates" = as.data.frame(est_pct))
+                          "param_id" = param_id)
 
         decon_new$params$total_markers_used <- length(deconv_list[[param_id]]$markers)
         rownames(decon_new$params) <- param_id
-
-        decon_new$estimates$sample <- rownames(decon_new$estimates)
-        decon_new$estimates$param_id <- param_id
 
         Save_ErrorIntermediate(decon_new, algorithm)
         # print(param_id)
@@ -317,44 +229,21 @@ for (bulk_dataset in bulk_datasets) {
       deconv_list <- deconv_list[lengths(deconv_list) > 0]
       all_valid <- all_valid + length(deconv_list)
 
-      # If there are no valid parameter sets, all of the code below will run but
-      # most things will be NULL. We save the error list regardless so we can
-      # keep stats on number of failures.
+      # If there are no valid parameter sets, we just skip this file
       if (length(deconv_list) == 0) {
         print(paste("No valid parameter sets for", algorithm,
                     paste(params_data, collapse = " ")))
+        next
       }
 
       # Combine all the separate results into single data frames (or vectors)
       gof_means_all <- do.call(rbind, lapply(deconv_list, "[[", "gof_means"))
       params <- do.call(rbind, lapply(deconv_list, "[[", "params"))
 
-      pct_inh <- do.call(rbind, lapply(deconv_list, "[[", "pct_bad_inhibitory_ratio"))
-      mean_ratio <- do.call(rbind, lapply(deconv_list, "[[", "mean_exc_inh_ratio"))
-
-      all_ests <- do.call(rbind, lapply(deconv_list, "[[", "estimates"))
-
-      # If there were any valid results, format as needed. Otherwise leave as NULL.
-      if (!is.null(all_ests)) {
-        all_ests <- melt(all_ests,
-                         variable.name = "celltype",
-                         value.name = "percent",
-                         id.vars = c("param_id", "sample"))
-
-        est_stats <- CalcEstimateStats(all_ests, bulk_metadata, gof_means_all)
-      } else {
-        est_stats <- NULL
-      }
-
       err_list <- list("means" = gof_means_all,
-                       "params" = params,
                        "by_sample" = lapply(deconv_list, "[[", "gof_by_sample"),
-                       "estimate_stats" = est_stats,
-                       "pct_bad_inhibitory_ratio" = pct_inh,
-                       "mean_exc_inh_ratio" = mean_ratio,
-                       "n_valid_results" = length(deconv_list),
-                       "n_possible_results" = total_length,
-                       "estimates" = all_ests)
+                       "params" = params,
+                       "param_ids" = sapply(deconv_list, "[[", "param_id"))
 
       names(err_list$by_sample) <- rownames(err_list$params)
 
