@@ -69,10 +69,13 @@ SignatureBased_InnerLoop <- function(data, params, algorithm) {
                                                  dwls_submethod = solver_type,
                                                  verbose = FALSE)
 
-        if (any(is.na(res_pcts)) || any(res_pcts < 0)) {
-          message(paste("NA or negative numbers in",
-                        paste(params, collapse = "_")))
+        if (any(is.na(res_pcts))) {
+          message(paste("NA values in", paste(params, collapse = "_")))
+        } else if (any(res_pcts < 0)) {
+          message(paste0("Negative values in ", paste(params, collapse = "_"),
+                        ", min: ", min(res_pcts)))
         }
+
         res_pcts[res_pcts < 0] <- 0
         res_pcts <- sweep(res_pcts, 1, rowSums(res_pcts), "/")
 

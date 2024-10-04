@@ -5,7 +5,7 @@ library(tidyr)
 library(reshape2)
 library(Hmisc)
 
-source(file.path("functions", "Step14_Analysis_HelperFunctions.R"))
+source(file.path("functions", "Analysis_HelperFunctions.R"))
 
 n_cores <- parallel::detectCores() - 2
 

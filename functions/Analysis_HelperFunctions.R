@@ -390,3 +390,110 @@ Get_MeanProps_Significance <- function(avg_list, n_cores = 2) {
 
   return(mean_props_all)
 }
+
+
+# TODO outdated
+# Calculates statistics about goodness-of-fit data:
+#   - the mean and SD of estimated percentages for each cell type for a given
+#     sample across all estimates in the file
+#   - the same mean and SD except only across the top 10-scoring estimates in
+#     the file
+#   - the mean of these means across all samples
+#
+# Arguments:
+#   all_ests - a melted data frame with columns "param_id", "sample", "celltype",
+#              and "percent", representing the estimates for each cell type for
+#              each sample
+#   bulk_metadata - a data frame of metadata, where rows are bulk samples and
+#                   one column is "tissue"
+#   gof_means_all - a data frame with N rows per parameter set (where N = [1 +
+#                   the number of tissues] * [the number of signatures]), and
+#                   columns are the mean error metrics as returned by CalcGOF_Means
+#
+# Returns:
+#   a list of statistics, containing items "by_sample", "all_tissue",
+#   "by_tissue" (all data frames), and "top_10_stats" (a list, one entry for
+#   each error metric)
+CalcEstimateStats <- function(all_ests, bulk_metadata, gof_means_all) {
+  # Mean of each cell type percentage over all estimates in the file, per
+  # celltype per sample
+  estimate_stats_sample <- all_ests %>%
+    group_by(celltype, sample) %>%
+    summarize(mean_pct = mean(percent),
+              sd_pct = sd(percent),
+              rel_sd_pct = sd_pct / mean_pct,
+              .groups = "drop_last")
+
+  estimate_stats_sample$tissue <- bulk_metadata[estimate_stats_sample$sample, "tissue"]
+
+  # Top 10 scoring parameter sets per tissue, per signature used to
+  # calculate the error. Each error metric may have different top 10 lists. If
+  # there are less than 10 parameter sets, this just selects all of them.
+  top_cor <- gof_means_all %>% group_by(tissue, signature) %>% top_n(10, wt = cor)
+  top_rMSE <- gof_means_all %>% group_by(tissue, signature) %>% top_n(10, wt = -rMSE)
+  top_mAPE <- gof_means_all %>% group_by(tissue, signature) %>% top_n(10, wt = -mAPE)
+
+  top_10 <- list(cor = top_cor,
+                 rMSE = top_rMSE,
+                 mAPE = top_mAPE)
+
+  ests_tmp <- all_ests
+  ests_tmp$tissue <- bulk_metadata[ests_tmp$sample, "tissue"]
+
+  # Stats for each of the error metrics on the top 10 scoring parameter sets
+  # for each tissue
+  top_10_stats <- lapply(top_10, function(top_errs) {
+    # Calculate stats for each tissue (which may be a specific tissue or "All")
+    ests_top_10 <- lapply(unique(top_errs$tissue), function(tiss) {
+      top_tmp <- subset(top_errs, tissue == tiss)
+
+      top_stats <- lapply(unique(top_tmp$signature), function(sig) {
+        top_sub <- subset(top_tmp, signature == sig)
+        ests_filt <- subset(ests_tmp, param_id %in% top_sub$param_id)
+
+        if (tiss != "All") {
+          ests_filt <- subset(ests_filt, tissue == tiss)
+        }
+
+        # Mean cell type percent for each cell type for each sample, across the
+        # top 10 scoring parameter sets
+        ests_stats <- ests_filt %>%
+          group_by(celltype, sample) %>%
+          summarize(mean_pct = mean(percent),
+                    sd_pct = sd(percent),
+                    rel_sd_pct = sd_pct / mean_pct,
+                    .groups = "drop_last")
+
+        ests_stats$tissue <- tiss
+        ests_stats$signature <- sig
+        return(ests_stats)
+      })
+
+      top_stats <- do.call(rbind, top_stats)
+    })
+
+    ests_top_10 <- do.call(rbind, ests_top_10)
+    return(ests_top_10)
+  })
+
+  # average and sd of the *mean* values for each sample, per cell type
+  estimate_stats_all <- estimate_stats_sample %>%
+    group_by(celltype) %>%
+    summarize(mean_pct = mean(mean_pct),
+              mean_sd_pct = mean(sd_pct),
+              mean_rel_sd_pct = mean(rel_sd_pct),
+              .groups = "drop_last")
+
+  # Same but broken down by tissue
+  estimate_stats_tissue <- estimate_stats_sample %>%
+    group_by(tissue, celltype) %>%
+    summarize(mean_pct = mean(mean_pct),
+              mean_sd_pct = mean(sd_pct),
+              mean_rel_sd_pct = mean(rel_sd_pct),
+              .groups = "drop_last")
+
+  return(list("by_sample" = estimate_stats_sample,
+              "all_tissue" = estimate_stats_all,
+              "by_tissue" = estimate_stats_tissue,
+              "top_10_stats" = top_10_stats))
+}

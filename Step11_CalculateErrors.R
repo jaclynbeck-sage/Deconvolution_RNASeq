@@ -27,28 +27,14 @@ algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "Music",
                 "Scaden", "Baseline")
 
 # Pre-load all signature matrices
-all_signatures_cpm <- sapply(singlecell_datasets, function(X) {
-  Load_SignatureMatrix(X, granularity, "cpm")
-})
-all_signatures_tmm <- sapply(singlecell_datasets, function(X) {
-  Load_SignatureMatrix(X, granularity, "tmm")
-})
+signatures <- Get_Signatures(singlecell_datasets, granularity)
 
 # Get all genes shared by all data sets so everything is judged on the same criteria
-common_genes <- lapply(bulk_datasets, function(X) {
-  bulk_se <- Load_BulkData(X, output_type = "log_cpm", regression_method = "none")
-  rownames(bulk_se)
-})
-common_genes <- append(common_genes, lapply(all_signatures_cpm, rownames))
-common_genes <- purrr::reduce(common_genes, intersect)
+common_genes <- Get_CommonGenes(bulk_datasets, signatures)
 
 # Filter the signatures to only the genes being used
-filtered_signatures_cpm <- lapply(all_signatures_cpm, function(X) {
-  X[common_genes, ]
-})
-filtered_signatures_tmm <- lapply(all_signatures_tmm, function(X) {
-  X[common_genes, ]
-})
+filtered_signatures_list <- Get_FilteredSignatures(signatures, common_genes)
+rm(signatures)
 
 gc()
 
@@ -82,37 +68,34 @@ for (bulk_dataset in bulk_datasets) {
         next
       }
 
-      params <- do.call(rbind, lapply(deconv_list, "[[", "params"))
-
       # All entries in this file should have the same values for these parameters,
       # so we end up with a 1-row data frame
-      params_data <- params %>%
+      file_params <- do.call(rbind, lapply(deconv_list, "[[", "params")) %>%
         select(reference_data_name, test_data_name, granularity,
                reference_input_type, normalization, regression_method) %>%
         distinct()
 
       if (use_top_estimates) {
-        params_data$mode <- "best_estimates"
+        file_params$mode <- "best_estimates"
       }
 
       # If the error file already exists, don't re-process
-      tmp <- Load_ErrorList(algorithm, params_data, top_params = use_top_estimates)
+      tmp <- Load_ErrorList(algorithm, file_params, top_params = use_top_estimates)
       if (!is.null(tmp)) {
         msg <- paste("Error file for", algorithm,
-                     paste(params_data, collapse = " "),
+                     paste(file_params, collapse = " "),
                      "found. Skipping...")
         message(msg)
         next
       }
 
-      msg <- paste("Calculating errors for", algorithm,
-                   paste(params_data, collapse = " "))
-      message(msg)
+      message(paste("Calculating errors for", algorithm,
+                    paste(file_params, collapse = " ")))
 
       # Input data needs to be normalized by depth (cpm, tmm, or tpm). If the
       # original input was 'counts', normalize to CPM. If the original input was
       # on the log scale, normalize to linear scale.
-      params_mod <- params_data
+      params_mod <- file_params
       if (params_mod$normalization == "counts") {
         params_mod$normalization <- "cpm"
       }
@@ -123,7 +106,7 @@ for (bulk_dataset in bulk_datasets) {
                             output_type = params_mod$normalization,
                             regression_method = params_mod$regression_method)
 
-      bulk_metadata <- colData(data)
+      bulk_metadata <- as.data.frame(colData(data))
 
       # The "counts" assay is actually CPM, TMM, or TPM-normalized data
       bulk_cpm <- assay(data, "counts")
@@ -132,9 +115,9 @@ for (bulk_dataset in bulk_datasets) {
       gc()
 
       if (params_mod$normalization == "tmm") {
-        filtered_signatures <- filtered_signatures_tmm
+        filtered_signatures <- filtered_signatures_list$all_signatures_tmm
       } else {
-        filtered_signatures <- filtered_signatures_cpm
+        filtered_signatures <- filtered_signatures_list$all_signatures_cpm
       }
 
       # Needed for print output at the end
@@ -148,19 +131,7 @@ for (bulk_dataset in bulk_datasets) {
         source(file.path("functions", "Step11_Error_HelperFunctions.R"))
 
         param_id <- names(deconv_list)[[P]]
-
-        if (use_top_estimates) {
-          deconv_list[[param_id]]$params$mode <- "best_estimates"
-        }
-
-        # If the error calculation for this param_id exists, don't re-calculate
-        tmp <- Load_ErrorIntermediate(algorithm, deconv_list[[param_id]]$params)
-        if (!is.null(tmp)) {
-          message(paste("Using previously-calculated errors for", algorithm, "/",
-                        paste(deconv_list[[param_id]]$params, collapse = " ")))
-          return(tmp)
-        }
-
+        params <- deconv_list[[param_id]]$params
         est_pct <- deconv_list[[param_id]]$estimates
 
         if (any(is.na(est_pct))) {
@@ -168,31 +139,25 @@ for (bulk_dataset in bulk_datasets) {
           return(NULL)
         }
 
-        # At least 75% of the samples need a non-zero estimate for the most
-        # abundant cell types (>10% of the population in the Cain dataset). We
-        # assume that if more than 25% of estimates for a supposedly-abundant
-        # cell type are *exactly* 0, that estimate is not reliable.
-        if (granularity == "broad_class") {
-          major_celltypes <- c("Astrocyte", "Excitatory", "Inhibitory", "Oligodendrocyte")
-
-        } else {
-          # sub_class uses cell types >5% of the population, plus the most abundant
-          # excitatory and inhibitory subclasses
-          major_celltypes <- c("Astrocyte", "Exc.1", "Inh.1", "Oligodendrocyte")
+        if (use_top_estimates) {
+          params$mode <- "best_estimates"
         }
 
-        zeros <- colSums(est_pct == 0)[major_celltypes]
-        zero_thresh <- 0.25 * nrow(est_pct) # 25% can be zeros
+        # If the error calculation for this param_id exists, don't re-calculate
+        tmp <- Load_ErrorIntermediate(algorithm, params)
+        if (!is.null(tmp)) {
+          message(paste("Using previously-calculated errors for", algorithm, "/",
+                        paste(params, collapse = " ")))
+          return(tmp)
+        }
 
-        if (algorithm != "Baseline" && any(zeros > zero_thresh)) {
-          cts <- paste(names(which(zeros > zero_thresh)), collapse = ", ")
-          msg <- str_glue(paste("Param set '{param_id}' has too many 0 estimates",
-                                "for cell type(s) [{cts}]. Skipping..."))
-          # message(msg)
+        # At least 75% of the samples need a non-zero estimate for the most
+        # abundant cell types. We assume that if more than 25% of estimates for
+        # a supposedly-abundant cell type are *exactly* 0, that estimate is not
+        # reliable.
+        if (Too_Many_Zeros(est_pct, granularity, zero_thresh = 0.25)) {
           return(NULL)
         }
-
-        params <- deconv_list[[param_id]]$params
 
         bulk_cpm_filt <- bulk_cpm[common_genes, rownames(est_pct)]
 
@@ -214,7 +179,7 @@ for (bulk_dataset in bulk_datasets) {
 
         decon_new <- list("gof_by_sample" = do.call(rbind, gof_by_sample),
                           "gof_means" = gof_means,
-                          "params" = deconv_list[[param_id]]$params,
+                          "params" = params,
                           "param_id" = param_id)
 
         decon_new$params$total_markers_used <- length(deconv_list[[param_id]]$markers)
@@ -232,7 +197,7 @@ for (bulk_dataset in bulk_datasets) {
       # If there are no valid parameter sets, we just skip this file
       if (length(deconv_list) == 0) {
         print(paste("No valid parameter sets for", algorithm,
-                    paste(params_data, collapse = " ")))
+                    paste(file_params, collapse = " ")))
         next
       }
 
@@ -247,7 +212,7 @@ for (bulk_dataset in bulk_datasets) {
 
       names(err_list$by_sample) <- rownames(err_list$params)
 
-      Save_ErrorList(bulk_dataset, err_list, algorithm, params_data,
+      Save_ErrorList(bulk_dataset, err_list, algorithm, file_params,
                      top_params = use_top_estimates)
 
       print(paste("Errors calculated for", length(deconv_list), "of",
