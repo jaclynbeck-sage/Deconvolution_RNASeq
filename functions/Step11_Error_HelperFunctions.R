@@ -38,7 +38,13 @@ Get_FilteredSignatures <- function(signatures, common_genes) {
     })
   })
 
-  return(filtered_sigs)
+  # Make a list that can be indexed by normalization. TPM normalization uses the
+  # CPM signature matrix since single cell data is not normalized to TPM.
+  filtered_sigs_final <- list("cpm" = filtered_sigs$all_signatures_cpm,
+                              "tmm" = filtered_sigs$all_signatures_tmm,
+                              "tpm" = filtered_sigs$all_signatures_cpm)
+
+  return(filtered_sigs_final)
 }
 
 

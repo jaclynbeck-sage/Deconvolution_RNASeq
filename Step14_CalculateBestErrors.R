@@ -1,7 +1,9 @@
-# Loops through estimate files for each bulk data set and calculates the error
+# Loops through estimate files for the top estimates and calculates the error
 # (correlation, rMSE, and mAPE) between [signature * estimated_percents] and the
 # actual bulk data, for each estimate in the file. Estimates with too many zero
-# values for major cell types are discarded.
+# values for major cell types are discarded. This script is nearly identical to
+# Step11_CalculateErrors.R but has been copied here with minor edits to make the
+# pipeline steps clearer.
 library(Matrix)
 library(dplyr)
 library(stringr)
@@ -21,7 +23,7 @@ cl <- makeCluster(cores, type = "FORK", outfile = "errors_output.txt")
 registerDoParallel(cl)
 
 # Which algorithms to calculate errors for
-algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "Music",
+algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", #"DWLS", "Music",
                 "Scaden", "Baseline")
 
 # Pre-load all signature matrices
@@ -39,7 +41,7 @@ gc()
 for (bulk_dataset in bulk_datasets) {
   # Loop over each algorithm's results
   for (algorithm in algorithms) {
-    res_files <- list.files(file.path(dir_estimates, bulk_dataset, algorithm),
+    res_files <- list.files(file.path(dir_top_estimates, bulk_dataset, algorithm),
                             pattern = granularity, full.names = TRUE)
 
     if (length(res_files) == 0) {
@@ -62,10 +64,11 @@ for (bulk_dataset in bulk_datasets) {
       # All entries in this file should have the same values for these parameters,
       # so we end up with a 1-row data frame
       file_params <- List_to_DF(deconv_list, "params") %>%
-        FileParams_FromParams()
+        FileParams_FromParams() %>%
+        mutate(mode = "best_estimates")
 
       # If the error file already exists, don't re-process
-      tmp <- Load_ErrorList(algorithm, file_params, top_params = FALSE)
+      tmp <- Load_ErrorList(algorithm, file_params, top_params = TRUE)
       if (!is.null(tmp)) {
         msg <- paste("Error file for", algorithm,
                      paste(file_params, collapse = " "),
@@ -110,7 +113,7 @@ for (bulk_dataset in bulk_datasets) {
         source(file.path("functions", "Step11_Error_HelperFunctions.R"))
 
         param_id <- deconv_result$param_id
-        params <- deconv_result$params
+        params <- deconv_result$params %>% mutate(mode = "best_estimates")
         est_pct <- deconv_result$estimates
 
         if (any(is.na(est_pct))) {
@@ -182,7 +185,7 @@ for (bulk_dataset in bulk_datasets) {
       names(errs_all$by_sample) <- rownames(errs_all$params)
 
       Save_ErrorList(bulk_dataset, errs_all, algorithm, file_params,
-                     top_params = FALSE)
+                     top_params = TRUE)
 
       print(paste("Errors calculated for", length(error_list), "of",
                   total_length, "parameter sets."))
