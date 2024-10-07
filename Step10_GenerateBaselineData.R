@@ -198,9 +198,7 @@ for (granularity in c("broad_class", "sub_class")) {
         names(err_list_copy) <- sapply(err_list_copy, "[[", "param_id")
 
         # Create the same naming scheme as other algorithm output
-        params_base <- err_list_copy[[1]]$params %>%
-          select(reference_data_name, test_data_name, granularity,
-                 reference_input_type, normalization, regression_method)
+        params_base <- FileParams_FromParams(err_list_copy[[1]]$params)
         name_base <- paste(params_base, collapse = "_")
 
         Save_AlgorithmOutputList(err_list_copy,

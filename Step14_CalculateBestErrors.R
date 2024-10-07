@@ -23,7 +23,7 @@ cl <- makeCluster(cores, type = "FORK", outfile = "errors_output.txt")
 registerDoParallel(cl)
 
 # Which algorithms to calculate errors for
-algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", #"DWLS", "Music",
+algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "Music",
                 "Scaden", "Baseline")
 
 # Pre-load all signature matrices

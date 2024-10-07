@@ -6,6 +6,7 @@ library(plyr)
 library(dplyr)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
+source(file.path("functions", "General_HelperFunctions.R"))
 
 top_param_files <- list.files(dir_top_parameters, recursive = TRUE,
                               full.names = TRUE)
@@ -16,10 +17,7 @@ for (param_file in top_param_files) {
 
   params <- top_params$params
 
-  file_info <- params %>%
-    select(reference_data_name, test_data_name, granularity,
-           reference_input_type, normalization, regression_method) %>%
-    distinct()
+  file_info <- FileParams_FromParams(params)
 
   prev_res <- Load_AlgorithmOutputList("Baseline",
                                        file_info$reference_data_name,
