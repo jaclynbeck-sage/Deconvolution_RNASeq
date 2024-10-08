@@ -31,10 +31,7 @@ Get_AllBestErrorsAsDf <- function(bulk_datasets, granularity, n_cores = 2) {
                                    test_data_name, reference_input_type,
                                    normalization, regression_method),
                      by.x = "param_id", by.y = "row.names") %>%
-      dplyr::mutate(algorithm = str_replace(param_id, "_.*", "")) %>%
-      merge(data$exc_inh_ratio,
-            by = c("tissue", "param_id"), all = TRUE)
-
+      dplyr::mutate(algorithm = str_replace(param_id, "_.*", ""))
     return(errs_df)
   }, mc.cores = n_cores)
 
@@ -163,6 +160,29 @@ Find_BestSignature <- function(errs_df) {
 }
 
 
+Get_BestDataTransform <- function(ranked_df) {
+  best_dt <- Count_ParamFrequency(ranked_df, c("tissue", "data_transform")) %>%
+    group_by(tissue) %>%
+    slice_max(order_by = count, with_ties = FALSE) %>%
+    mutate(normalization = str_replace(data_transform, " \\+.*", ""),
+           regression_method = str_replace(data_transform, ".*\\+ ", "")) %>%
+    as.data.frame()
+
+  best_dt <- tidyr::expand_grid(best_dt,
+                                algorithm = c(unique(ranked_df$algorithm), "Baseline"))
+  best_dt$normalization[best_dt$algorithm == "MuSiC"] <- "CPM"
+  best_dt$normalization[best_dt$normalization == "TMM" &
+                          best_dt$algorithm == "CibersortX"] <- "CPM"
+
+  best_dt <- best_dt %>%
+    mutate(data_transform = paste(normalization, "+", regression_method)) %>%
+    select(tissue, algorithm, data_transform) %>%
+    distinct()
+
+  return(best_dt)
+}
+
+
 Rank_Errors <- function(errs_df, group_cols) {
   ranks <- errs_df %>%
     dplyr::group_by_at(group_cols) %>%
@@ -174,32 +194,33 @@ Rank_Errors <- function(errs_df, group_cols) {
 }
 
 
-Get_TopRanked <- function(df, n_top = 1) {
+Get_TopRanked <- function(df, group_cols, n_top = 1, with_mean_rank = TRUE) {
+  df_ranked <- Rank_Errors(df, group_cols) %>%
+    group_by_at(group_cols)
+
   top_ranked <- do.call(rbind, list(
-    mutate(dplyr::slice_min(df, order_by = cor_rank, n = n_top, with_ties = FALSE),
+    mutate(dplyr::slice_min(df_ranked, order_by = cor_rank, n = n_top, with_ties = FALSE),
            type = "best_cor"),
-    mutate(dplyr::slice_min(df, order_by = rMSE_rank, n = n_top, with_ties = FALSE),
+    mutate(dplyr::slice_min(df_ranked, order_by = rMSE_rank, n = n_top, with_ties = FALSE),
            type = "best_rMSE"),
-    mutate(dplyr::slice_min(df, order_by = mAPE_rank, n = n_top, with_ties = FALSE),
-           type = "best_mAPE"),
-    mutate(dplyr::slice_min(df, order_by = mean_rank, n = n_top, with_ties = FALSE),
-           type = "best_mean")
+    mutate(dplyr::slice_min(df_ranked, order_by = mAPE_rank, n = n_top, with_ties = FALSE),
+           type = "best_mAPE")
   ))
 
-  return(top_ranked)
+  if (with_mean_rank) {
+    top_ranked <- rbind(
+      top_ranked,
+      mutate(dplyr::slice_min(df_ranked, order_by = mean_rank, n = n_top, with_ties = FALSE),
+             type = "best_mean"))
+  }
+
+  return(ungroup(top_ranked))
 }
 
 
 Find_BestParameters <- function(errs_df, group_cols, with_mean_rank = TRUE) {
-  ranks <- errs_df %>%
-    Rank_Errors(group_cols) %>%
-    group_by_at(group_cols) %>%
-    Get_TopRanked(n_top = 1) %>%
-    ungroup()
-
-  if (!with_mean_rank) {
-    ranks <- subset(ranks, type != "best_mean")
-  }
+  ranks <- Get_TopRanked(errs_df, group_cols, n_top = 1,
+                         with_mean_rank = with_mean_rank)
 
   # Some parameter IDs will be duplicated across multiple error metrics, this
   # creates a data frame with the list of unique parameter IDs associated with
@@ -212,7 +233,47 @@ Find_BestParameters <- function(errs_df, group_cols, with_mean_rank = TRUE) {
 }
 
 
-Get_AverageStats <- function(errs_df, ests_df) {
+Calculate_ErrorStats <- function(errs_df, group_cols) {
+  err_stats <- errs_df %>%
+    melt(variable.name = "metric",
+         id.vars = c("param_id", group_cols),
+         measure.vars = c("cor", "rMSE", "mAPE")) %>%
+    group_by_at(c(group_cols, "metric")) %>%
+    summarize(mean_err = mean(value),
+              sd_err = sd(value),
+              rel_sd_err = sd_err / mean_err,
+              .groups = "drop")
+
+  return(err_stats)
+}
+
+
+Calculate_EstimateStats <- function(est_pcts, group_cols) {
+  est_stats <- est_pcts %>%
+    melt(variable.name = "celltype",
+         value.name = "percent",
+         id.vars = c("param_id", group_cols)) %>%
+    group_by_at(c(group_cols, "celltype")) %>%
+    summarize(mean_pct = mean(percent),
+              sd_pct = sd(percent),
+              rel_sd_pct = sd_pct / mean_pct,
+              .groups = "drop")
+
+  return(est_stats)
+}
+
+
+Count_ParamFrequency <- function(df, groups, pivot_column, algorithm_specific = FALSE) {
+  df %>%
+    group_by_at(groups) %>%
+    dplyr::summarize(count = n(), .groups = "drop") %>%
+    pivot_longer(cols = all_of(pivot_column), names_to = "parameter_name",
+                 values_to = "parameter_value") %>%
+    mutate(algorithm_specific = algorithm_specific)
+}
+
+
+Get_AverageStats <- function(errs_df, ests_df, group_cols) {
   # There can be up to 4 parameter sets per combination of data input
   # parameters, but sometimes a single parameter set was the best for multiple
   # error metrics and is only represented once in the df. When this happens, it
@@ -225,8 +286,7 @@ Get_AverageStats <- function(errs_df, ests_df) {
   # Ensures that param_ids that are the best for multiple error metrics are
   # represented that many times in the data frame. We also don't include the
   # param set with the top mean_rank here
-  ranked <- Get_TopRanked(errs_df, n_top = 1) %>%
-    subset(cor_rank == 1 | mAPE_rank == 1 | rMSE_rank == 1)
+  ranked <- Get_TopRanked(errs_df, group_cols, n_top = 1, with_mean_rank = FALSE)
 
   avg_err <- ranked %>%
     dplyr::summarize(across(c(cor, rMSE, mAPE),
@@ -279,7 +339,7 @@ Get_AverageStats <- function(errs_df, ests_df) {
 }
 
 
-Create_AveragesList <- function(errs_df, ests_df, n_cores = 2) {
+Create_AveragesList <- function(errs_df, ests_df, group_cols, n_cores = 2) {
   # Although we could do this in one lapply statement, subsetting best_errors
   # takes a non-trivial amount of time because it's so large, so we do this to
   # break it into smaller pieces before having to call subset every time
@@ -290,7 +350,7 @@ Create_AveragesList <- function(errs_df, ests_df, n_cores = 2) {
     avg_tmp <- mclapply(unique(errs_tmp$avg_id), function(a_id) {
       print(a_id)
       errs_filt <- subset(errs_tmp, avg_id == a_id)
-      return(Get_AverageStats(errs_filt, ests_tmp))
+      return(Get_AverageStats(errs_filt, ests_tmp, group_cols))
     }, mc.cores = n_cores)
 
     return(list("avg_errors" = do.call(rbind, lapply(avg_tmp, "[[", "avg_error")),

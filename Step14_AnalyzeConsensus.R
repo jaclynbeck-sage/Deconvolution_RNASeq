@@ -37,13 +37,12 @@ best_errors <- subset(best_errors, tissue != "All") %>%
 # else for rMSE.
 err_ranks <- best_errors %>%
   subset(algorithm != "Baseline") %>%
-  Rank_Errors(group_cols = "tissue") %>%
-  Get_TopRanked(n_top = 3)
+  Get_TopRanked(group_cols = "tissue", n_top = 3, with_mean_rank = TRUE)
 
 best_baselines <- subset(best_errors, algorithm == "Baseline" &
                            reference_data_name != "zeros") %>%
-  Rank_Errors(group_cols = c("tissue", "data_transform")) %>%
-  Get_TopRanked(n_top = 1) %>%
+  Get_TopRanked(group_cols = c("tissue", "data_transform"), n_top = 1,
+                with_mean_rank = TRUE) %>%
   select(-cor_rank, -rMSE_rank, -mAPE_rank, -mean_rank, -type) %>%
   distinct()
 
@@ -62,8 +61,7 @@ best_errors <- do.call(rbind, list(best_errors, best_baselines, best_zeros))
 # Top 3 results again, limited to only errors from the best signatures
 err_ranks_best <- best_errors %>%
   subset(algorithm != "Baseline") %>%
-  Rank_Errors(group_cols = "tissue") %>%
-  Get_TopRanked(n_top = 3)
+  Get_TopRanked(group_cols = "tissue", n_top = 3, with_mean_rank = TRUE)
 
 saveRDS(list("ranked_errors_all" = err_ranks,
              "ranked_errors_best_signatures" = err_ranks_best),
@@ -119,9 +117,10 @@ best_errors_toplevel$avg_id <- unlist(apply(best_errors_toplevel, 1, function(ro
 
 # Average the estimates corresponding to best correlation, best rMSE, and best
 # mAPE together for each data input type
-avg_list <- Create_AveragesList(best_errors, best_estimates, 2) #round(n_cores/3))
+avg_list <- Create_AveragesList(best_errors, best_estimates, group_cols, 2) #round(n_cores/3))
 avg_list_toplevel <- Create_AveragesList(best_errors_toplevel,
                                          best_estimates_toplevel,
+                                         group_cols_toplevel,
                                          2)
 
 saveRDS(list("average_list_all" = avg_list,

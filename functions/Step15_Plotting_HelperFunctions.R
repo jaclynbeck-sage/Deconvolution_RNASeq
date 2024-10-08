@@ -330,34 +330,6 @@ Paper_Renames <- function(df) {
   return(df)
 }
 
-Count_Grouped <- function(df, groups) {
-  df %>%
-    group_by_at(groups) %>%
-    dplyr::summarize(count = n(), .groups = "drop")
-}
-
-
-Get_BestDataTransform <- function(ranked_df) {
-  best_dt <- Count_Grouped(ranked_df, c("tissue", "data_transform")) %>%
-    group_by(tissue) %>%
-    slice_max(order_by = count, with_ties = FALSE) %>%
-    mutate(normalization = str_replace(data_transform, " \\+.*", ""),
-           regression_method = str_replace(data_transform, ".*\\+ ", "")) %>%
-    as.data.frame()
-
-  best_dt <- tidyr::expand_grid(best_dt,
-                                algorithm = c(unique(ranked_df$algorithm), "Baseline"))
-  best_dt$normalization[best_dt$algorithm == "MuSiC"] <- "CPM"
-  best_dt$normalization[best_dt$normalization == "TMM" &
-                          best_dt$algorithm == "CibersortX"] <- "CPM"
-
-  best_dt <- best_dt %>%
-    mutate(data_transform = paste(normalization, "+", regression_method)) %>%
-    select(tissue, algorithm, data_transform) %>%
-    distinct()
-
-  return(best_dt)
-}
 
 Load_BestErrors <- function(granularity) {
   best_errors_list <- readRDS(file.path(dir_analysis,
