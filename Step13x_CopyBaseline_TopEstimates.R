@@ -2,10 +2,8 @@
 # estimates directory, as if they were run through step 13. We don't run step 13
 # on Baseline estimates directly because we don't use a Baseline config file
 # or an inner loop script on Baseline data.
-library(plyr)
 library(dplyr)
 
-source(file.path("functions", "FileIO_HelperFunctions.R"))
 source(file.path("functions", "General_HelperFunctions.R"))
 
 top_param_files <- list.files(dir_top_parameters, recursive = TRUE,

@@ -32,7 +32,8 @@ bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
 # do this without duplicating error calculation code or other downstream
 # processing is to make copies of each of the estimates, one file for each
 # combination, even though the files are all the same.
-params_permute <- expand.grid(normalization = c("cpm", "tmm", "tpm"),
+params_permute <- expand.grid(algorithm = "Baseline",
+                              normalization = c("cpm", "tmm", "tpm"),
                               regression_method = c("none", "edger", "lme", "dream"),
                               reference_input_type = c("signature"),
                               stringsAsFactors = FALSE)
@@ -179,29 +180,29 @@ for (granularity in c("broad_class", "sub_class")) {
 
     for (R in 1:nrow(params_permute)) {
       # Add one row of params_permute to all the params in the list
-      for (err_set in full_dataset) {
-        err_list_copy <- err_set
+      for (bl_dataset in full_dataset) {
+        bl_list_copy <- bl_dataset
 
-        err_list_copy <- lapply(err_list_copy, function(err_item) {
-          err_item$params <- cbind(err_item$params, params_permute[R, ])
-          cols_keep <- c("reference_data_name", "test_data_name", "granularity",
-                         "normalization", "regression_method", "trial")
+        bl_list_copy <- lapply(bl_list_copy, function(bl_item) {
+          bl_item$params <- cbind(bl_item$params, params_permute[R, ])
+          cols_keep <- c(colnames(FileParams_FromParams(bl_item$params)),
+                         "trial")
+          bl_item$params <- bl_item$params[, cols_keep]
 
-          name_base <- paste0("Baseline_",
-                              paste(err_item$params[cols_keep], collapse = "_"))
-          rownames(err_item$params) <- name_base
-          err_item$param_id <- name_base
+          name_base <- paste(bl_item$params, collapse = "_")
+          rownames(bl_item$params) <- name_base
+          bl_item$param_id <- name_base
 
-          return(err_item)
+          return(bl_item)
         })
 
-        names(err_list_copy) <- sapply(err_list_copy, "[[", "param_id")
+        names(bl_list_copy) <- sapply(bl_list_copy, "[[", "param_id")
 
         # Create the same naming scheme as other algorithm output
-        params_base <- FileParams_FromParams(err_list_copy[[1]]$params)
+        params_base <- FileParams_FromParams(bl_list_copy[[1]]$params)
         name_base <- paste(params_base, collapse = "_")
 
-        Save_AlgorithmOutputList(err_list_copy,
+        Save_AlgorithmOutputList(bl_list_copy,
                                  algorithm = "Baseline",
                                  test_dataset = bulk_dataset,
                                  name_base = name_base)

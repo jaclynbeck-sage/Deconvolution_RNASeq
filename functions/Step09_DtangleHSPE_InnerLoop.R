@@ -10,17 +10,15 @@
 #                    "Y" that correspond to that cell type, from the single cell
 #                    data.
 #   params = a single-row data frame or a named vector/list of parameters
-#            containing the following variables: reference_data_name,
+#            containing the following variables: algorithm, reference_data_name,
 #            test_data_name, granularity, filter_level, n_markers, marker_type,
 #            marker_subtype, marker_input_type.
-#   algorithm = the name of the algorithm being run (options are "Dtangle"
-#               and "HSPE")
 #
 # Returns:
 #   a list containing entries for the celltype percentage estimates (name varies
 #   between algorithms), "params", which is the parameter set used for this run,
 #   and "markers", which is the list of genes used as markers for this run
-DtangleHSPE_InnerLoop <- function(data, params, algorithm) {
+DtangleHSPE_InnerLoop <- function(data, params) {
   markers <- FilterMarkers_FromParams(available_genes = colnames(data$Y),
                                       params)
 
@@ -32,7 +30,7 @@ DtangleHSPE_InnerLoop <- function(data, params, algorithm) {
   }
 
   # Dtangle-specific function call ---------------------------------------------
-  if (algorithm == "Dtangle") {
+  if (params$algorithm == "Dtangle") {
     result <- dtangle(Y = data$Y[, unlist(markers)],
                       pure_samples = data$pure_samples,
                       data_type = "rna-seq",
@@ -44,7 +42,7 @@ DtangleHSPE_InnerLoop <- function(data, params, algorithm) {
     result$estimates <- result$estimates[test_samples, ]
   }
   # HSPE-specific function call ------------------------------------------------
-  else if (algorithm == "HSPE") {
+  else if (params$algorithm == "HSPE") {
     result <- hspe(Y = data$Y[, unlist(markers)],
                    pure_samples = data$pure_samples,
                    n_markers = lengths(markers), # pass the actual number of markers we have after filtering

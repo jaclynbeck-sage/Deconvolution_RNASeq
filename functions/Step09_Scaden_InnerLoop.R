@@ -11,18 +11,17 @@
 #     test = a matrix (genes x samples) of bulk data. Must be a dense matrix.
 #     metadata = a data frame with columns for "sample" and "tissue"
 #   params = a single-row data frame or a named vector/list of parameters
-#            containing the following variables: reference_data_name,
+#            containing the following variables: algorithm, reference_data_name,
 #            test_data_name, granularity, filter_level, n_markers, marker_type,
 #            marker_subtype, marker_input_type. This variable is unused except
 #            to get added to the results object.
-#   algorithm = the name of the algorithm being run. This value is unused.
 #
 # Returns:
 #   a list containing entries for the celltype percentage estimates ("estimates"),
 #   "params", which is the parameter set used for this run, and "markers", which
 #   is the list of genes shared by the single cell and bulk data sets (since
 #   Scaden doesn't actually use markers).
-Scaden_InnerLoop <- function(data, params, algorithm = NULL) {
+Scaden_InnerLoop <- function(data, params) {
   # Run each tissue separately
   res_pcts_tissue <- lapply(levels(data$bulk_metadata$tissue), function(tiss) {
     meta_sub <- subset(data$bulk_metadata, tissue == tiss)

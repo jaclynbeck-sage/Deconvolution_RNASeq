@@ -1,6 +1,5 @@
 library(foreach)
 library(doParallel)
-library(plyr)
 library(dplyr)
 library(tidyr)
 library(stringr)
@@ -21,13 +20,16 @@ datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
 source(file.path("algorithm_configs", str_glue("{algorithm}_Config.R")))
 
 # datasets and normalization parameters
-params_loop1 <- expand_grid(reference_data_name = datasets,
-                            test_data_name = c("Mayo", "MSBB", "ROSMAP"),
-                            granularity = c("broad_class", "sub_class"),
-                            reference_input_type = alg_config$reference_input_types,
-                            normalization = alg_config$normalizations,
-                            regression_method = c("none", "edger", "lme", "dream"),
-                            mode = "best_estimates") %>%
+params_loop1 <- tidyr::expand_grid(
+  algorithm = algorithm,
+  reference_data_name = datasets,
+  test_data_name = c("Mayo", "MSBB", "ROSMAP"),
+  granularity = c("broad_class", "sub_class"),
+  reference_input_type = alg_config$reference_input_types,
+  normalization = alg_config$normalizations,
+  regression_method = c("none", "edger", "lme", "dream"),
+  mode = "best_estimates"
+) %>%
   arrange(normalization)
 
 
@@ -61,7 +63,7 @@ for (P in 1:nrow(params_loop1)) {
   # haven't been calculated for this set of data or there were no valid estimates
   # for this set of data, so we can skip running this one.
   file_params <- params_loop1[P, ]
-  top_params <- Load_TopParams(algorithm, file_params)
+  top_params <- Load_TopParams(file_params)
   if (is.null(top_params)) {
     message(paste("Top params file for", algorithm,
                   paste(file_params, collapse = "_"),
@@ -100,7 +102,7 @@ for (P in 1:nrow(params_loop1)) {
   # samples not in the file, and concatenate the results together, instead of
   # re-running all samples. We load the previous output here and decide in the
   # inner loop whether more samples need to be run.
-  prev_output <- Load_AlgorithmOutputList(algorithm,
+  prev_output <- Load_AlgorithmOutputList(file_params$algorithm,
                                           file_params$reference_data_name,
                                           file_params$test_data_name,
                                           file_params$granularity,
@@ -123,8 +125,8 @@ for (P in 1:nrow(params_loop1)) {
     source(alg_config$inner_loop_file) # defined in the config
 
     params <- top_params$params[R, ] %>%
-      mutate(mode = "best_estimates", .after = regression_method) %>%
-      select(-total_markers_used)
+      dplyr::mutate(mode = "best_estimates", .after = regression_method) %>%
+      dplyr::select(-total_markers_used)
 
     param_id <- rownames(params)
 
@@ -137,7 +139,7 @@ for (P in 1:nrow(params_loop1)) {
     # If we've already run this script on this parameter set, the intermediate
     # file will have "best_estimates" at the end of the filename to differentiate
     # it from Step09 results that have all estimate output.
-    prev_res <- Load_AlgorithmIntermediate(algorithm, params)
+    prev_res <- Load_AlgorithmIntermediate(params)
     if (!is.null(prev_res)) {
       message(paste0("Using previously-run result for ",
                      paste(params, collapse = " ")))
@@ -187,7 +189,7 @@ for (P in 1:nrow(params_loop1)) {
     set.seed(12345)
     inner_loop_func <- match.fun(alg_config$inner_loop_func)
 
-    res <- inner_loop_func(data_filt, params, algorithm)
+    res <- inner_loop_func(data_filt, params)
 
     if (!is.null(res)) {
       res$param_id <- param_id

@@ -8,18 +8,16 @@
 #                 gene (in cpm) for each cell type (rows = genes, columns = cell types).
 #     test = a matrix of bulk expression (rows = genes, columns = samples).
 #   params = a single-row data frame or a named vector/list of parameters
-#            containing the following variables: reference_data_name,
+#            containing the following variables: algorithm, reference_data_name,
 #            test_data_name, granularity, filter_level, n_markers, marker_type,
 #            marker_subtype, marker_input_type, and any algorithm-specific
 #            variables.
-#   algorithm = the name of the algorithm being run (options are "DeconRNASeq"
-#               and "DWLS")
 #
 # Returns:
 #   a list containing entries for the celltype percentage estimates (name varies
 #   between algorithms), "params", which is the parameter set used for this run,
 #   and "markers", which is the list of genes used as markers for this run
-SignatureBased_InnerLoop <- function(data, params, algorithm) {
+SignatureBased_InnerLoop <- function(data, params) {
   # Ensure signature is a matrix
   signature <- as.matrix(data$reference)
 
@@ -40,7 +38,7 @@ SignatureBased_InnerLoop <- function(data, params, algorithm) {
   tryCatch(
     {
       # Run DeconRNASeq --------------------------------------------------------
-      if (algorithm == "DeconRNASeq") {
+      if (params$algorithm == "DeconRNASeq") {
         # DeconRNASeq-specific argument
         use_scale <- as.logical(params$use_scale)
 
@@ -60,7 +58,7 @@ SignatureBased_InnerLoop <- function(data, params, algorithm) {
       } # end DeconRNASeq
 
       # Run DWLS ---------------------------------------------------------------
-      else if (algorithm == "DWLS") {
+      else if (params$algorithm == "DWLS") {
         # DWLS-specific argument
         solver_type <- params$solver_type
 
@@ -82,7 +80,7 @@ SignatureBased_InnerLoop <- function(data, params, algorithm) {
         res <- list("estimates" = res_pcts)
       } # End DWLS
       else {
-        stop(str_glue("Unsupported algorithm name '{algorithm}'."))
+        stop(str_glue("Unsupported algorithm name '{params$algorithm}'."))
       }
 
       res$params <- params

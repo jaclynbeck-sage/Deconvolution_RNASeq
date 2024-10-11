@@ -1,6 +1,5 @@
 library(foreach)
 library(doParallel)
-library(plyr)
 library(dplyr)
 library(tidyr)
 library(stringr)
@@ -10,7 +9,7 @@ source(file.path("functions", "Step09_Deconvolution_HelperFunctions.R"))
 
 # Parameter setup --------------------------------------------------------------
 
-# options: "CibersortX", "DWLS", "DeconRNASeq", "Dtangle", "HSPE", "Music", "Scaden"
+# options: "CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "Music", "Scaden"
 algorithm <- "CibersortX"
 
 datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
@@ -26,18 +25,22 @@ if ((algorithm %in% c("CibersortX", "HSPE", "Scaden"))) {
 source(file.path("algorithm_configs", str_glue("{algorithm}_Config.R")))
 
 # datasets and normalization parameters
-params_loop1 <- expand_grid(reference_data_name = datasets,
-                            test_data_name = c("Mayo", "MSBB", "ROSMAP"),
-                            granularity = c("broad_class", "sub_class"),
-                            reference_input_type = alg_config$reference_input_types,
-                            normalization = alg_config$normalizations,
-                            regression_method = c("none", "edger", "lme", "dream")) %>%
+params_loop1 <- tidyr::expand_grid(
+  algorithm = algorithm,
+  reference_data_name = datasets,
+  test_data_name = c("Mayo", "MSBB", "ROSMAP"),
+  granularity = c("broad_class", "sub_class"),
+  reference_input_type = alg_config$reference_input_types,
+  normalization = alg_config$normalizations,
+  regression_method = c("none", "edger", "lme", "dream")
+) %>%
   arrange(normalization)
 
 # Algorithm-specific parameters -- marker types, number of markers, plus any
-# additional arguments to the algorithm itself
-params_loop2 <- expand_grid(alg_config$params_markers,
-                            alg_config$additional_args) # this value can be NULL if no other additional args
+# additional arguments to the algorithm itself. alg_config$additional_args can
+# be NULL if no other additional args.
+params_loop2 <- tidyr::expand_grid(alg_config$params_markers,
+                                   alg_config$additional_args)
 
 
 # Parallel execution setup -----------------------------------------------------
@@ -87,22 +90,6 @@ for (P in 1:nrow(params_loop1)) {
     # Extra pre-processing needed for Dtangle/HSPE -- reformat the input
     data <- Modify_DtangleHSPE_Input(data, params_loop1[P, ])
 
-    # Load the subset of parameters for HSPE that were determined by Dtangle
-    if (algorithm == "HSPE") {
-      params_filename <- paste0("hspe_params_",
-                                paste(params_loop1[P, ], collapse = "_"),
-                                ".rds")
-      params_filename <- file.path(dir_hspe_params, params_filename)
-
-      if (file.exists(params_filename)) {
-        params_subset <- readRDS(params_filename)
-        params_subset$string_id <- apply(params_subset, 1, paste, collapse = "_")
-      } else {
-        message(str_glue("WARNING: {params_filename} does not exist. Skipping..."))
-        next # We have to skip this file
-      }
-    }
-
   } else if (algorithm == "Music") {
     # Extra pre-processing needed for MuSiC -- calculate or load sc_basis
     data <- Modify_Music_Input(data, params_loop1[P,])
@@ -125,35 +112,26 @@ for (P in 1:nrow(params_loop1)) {
 
     params <- cbind(params_loop1[P, ], params_loop2[R, ])
 
-    # For HSPE, skip this parameter set if it isn't in the specified subset of
-    # parameters to run
-    if (algorithm == "HSPE") {
-      if (nrow(plyr::match_df(params, params_subset, on = colnames(params))) == 0) {
-        return(NULL)
-      }
-    }
-
     # There are some invalid parameter combinations for CibersortX: if the
     # reference_input_type = cibersortx, only use filter_level = 0 because
     # CibersortX already filtered its signature. If reference_input_type =
     # signature, only use filter_level = 3 because CibersortX expects a filtered
     # signature.
     if (algorithm == "CibersortX") {
-      if ((params$reference_input_type == "cibersortx") & (params$filter_level != 0)) {
+      if ((params$reference_input_type == "cibersortx") && (params$filter_level != 0)) {
         return(NULL)
-      } else if ((params$reference_input_type == "signature") & (params$filter_level != 3)) {
+      } else if ((params$reference_input_type == "signature") && (params$filter_level != 3)) {
         return(NULL)
       }
     }
 
     # If we are picking up from a failed/crashed run, and we've already run
     # this parameter set, load the result instead of re-running the algorithm
-    prev_res <- Load_AlgorithmIntermediate(algorithm, params)
+    prev_res <- Load_AlgorithmIntermediate(params)
     if (!is.null(prev_res)) {
       message(paste0("Using previously-run result for ",
-                     paste(params, collapse = " ")))
-      prev_res$param_id <- paste(algorithm,
-                                 paste(params_loop1[P, ], collapse = "_"),
+                     paste(params, collapse = "_")))
+      prev_res$param_id <- paste(paste(params_loop1[P, ], collapse = "_"),
                                  R, sep = "_")
       return(prev_res)
     }
@@ -163,16 +141,15 @@ for (P in 1:nrow(params_loop1)) {
     set.seed(12345)
     inner_loop_func <- match.fun(alg_config$inner_loop_func)
 
-    res <- inner_loop_func(data, params, algorithm)
+    res <- inner_loop_func(data, params)
 
     if (!is.null(res)) {
-      res$param_id <- paste(algorithm,
-                            paste(params_loop1[P, ], collapse = "_"),
+      res$param_id <- paste(paste(params_loop1[P, ], collapse = "_"),
                             R, sep = "_")
     }
 
     # Save each result in case of crashing
-    Save_AlgorithmIntermediate(res, algorithm)
+    Save_AlgorithmIntermediate(res)
     return(res)
   } # end foreach loop
 

@@ -10,11 +10,10 @@
 #            Must be a matrix, not a data.frame.
 #     sc_basis = pre-computed list output from music_basis()
 #   params = a single-row data frame or a named vector/list of parameters
-#            containing the following variables: reference_data_name,
+#            containing the following variables: algorithm, reference_data_name,
 #            test_data_name, granularity, filter_level, n_markers, marker_type,
 #            marker_subtype, marker_input_type, and algorithm-specific
 #            variables ct_cov, centered, normalize
-#   algorithm = the name of the algorithm being run. This value is unused.
 #   verbose = whether Music should have verbose output
 #
 # Returns:
@@ -23,7 +22,7 @@
 #   which are calculated based on the "M.S" matrix from sc_basis, "params",
 #   which is the parameter set used for this run, and "markers", which is the
 #   list of genes used as markers for this run
-Music_InnerLoop <- function(data, params, algorithm = NULL, verbose = FALSE) {
+Music_InnerLoop <- function(data, params, verbose = FALSE) {
   # Unpack variables for readability, enforce they are the correct types
   ct_cov <- as.logical(params$ct.cov)
   centered <- as.logical(params$centered)

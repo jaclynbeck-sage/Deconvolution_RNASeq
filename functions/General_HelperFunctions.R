@@ -345,7 +345,7 @@ CalculateSignature <- function(dataset, granularity, output_type, geom_mean = FA
       log_means <- rowMeans(log(pb_cpm[, cols] + 1), na.rm = TRUE)
       cpm_means <- exp(log_means) - 1
       cpm_means[cpm_means < 0] <- 0
-      #sig <- scuttle::calculateCPM(sig) # TODO is this necessary?
+
     } else {
       cpm_means <- rowMeans(pb_cpm[, cols], na.rm = TRUE)
     }
@@ -770,9 +770,9 @@ Clean_BulkCovariates <- function(bulk_dataset_name, metadata, covariates,
 #   a data frame
 FileParams_FromParams <- function(params_df) {
   params_df %>%
-    select(reference_data_name, test_data_name, granularity,
-           reference_input_type, normalization, regression_method) %>%
-    distinct()
+    dplyr::select(algorithm, reference_data_name, test_data_name, granularity,
+                  reference_input_type, normalization, regression_method) %>%
+    dplyr::distinct()
 }
 
 

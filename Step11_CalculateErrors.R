@@ -65,17 +65,15 @@ for (bulk_dataset in bulk_datasets) {
         FileParams_FromParams()
 
       # If the error file already exists, don't re-process
-      tmp <- Load_ErrorList(algorithm, file_params, top_params = FALSE)
+      tmp <- Load_ErrorList(file_params, top_params = FALSE)
       if (!is.null(tmp)) {
-        msg <- paste("Error file for", algorithm,
-                     paste(file_params, collapse = " "),
+        msg <- paste("Error file for", paste(file_params, collapse = " "),
                      "found. Skipping...")
         message(msg)
         next
       }
 
-      message(paste("Calculating errors for", algorithm,
-                    paste(file_params, collapse = " ")))
+      message(paste("Calculating errors for", paste(file_params, collapse = " ")))
 
       # Input data needs to be normalized by depth (cpm, tmm, or tpm). If the
       # original input was 'counts', normalize to CPM. If the original input was
@@ -119,9 +117,9 @@ for (bulk_dataset in bulk_datasets) {
         }
 
         # If the error calculation for this param_id exists, don't re-calculate
-        tmp <- Load_ErrorIntermediate(algorithm, params)
+        tmp <- Load_ErrorIntermediate(params)
         if (!is.null(tmp)) {
-          message(paste("Using previously-calculated errors for", algorithm, "/",
+          message(paste("Using previously-calculated errors for",
                         paste(params, collapse = " ")))
           return(tmp)
         }
@@ -158,7 +156,7 @@ for (bulk_dataset in bulk_datasets) {
         errors$params$total_markers_used <- length(deconv_result$markers)
         rownames(errors$params) <- param_id
 
-        Save_ErrorIntermediate(errors, algorithm)
+        Save_ErrorIntermediate(errors)
         return(errors)
       }
 
@@ -168,8 +166,7 @@ for (bulk_dataset in bulk_datasets) {
 
       # If there are no valid parameter sets, we just skip this file
       if (length(error_list) == 0) {
-        print(paste("No valid parameter sets for", algorithm,
-                    paste(file_params, collapse = " ")))
+        print(paste("No valid parameter sets for", paste(file_params, collapse = " ")))
         next
       }
 

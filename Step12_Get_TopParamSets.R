@@ -36,7 +36,7 @@ for (bulk_dataset in bulk_datasets) {
 
       best_params <- Find_BestParameters(errs_all,
                                          group_cols = c("tissue", "signature"),
-                                         with_mean_rank = TRUE)
+                                         with_mean_rank = FALSE)
 
       best_param_ids <- unique(best_params$param_id)
 

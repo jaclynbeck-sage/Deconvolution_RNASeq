@@ -71,7 +71,7 @@ Modify_DtangleHSPE_Input <- function(data, params) {
 # between the two languages), we also change all cell type names to lower case.
 Modify_CibersortX_Input <- function(data, params) {
   # Copy adjusted signature file to cibersort directory if the file exists
-  sig_params <- params %>% select(-reference_input_type)
+  sig_params <- params %>% dplyr::select(-algorithm, -reference_input_type)
   sig_filename <- list.files(dir_cibersort_corrected_signatures,
                              pattern = paste(sig_params, collapse = "_"),
                              full.names = TRUE)
