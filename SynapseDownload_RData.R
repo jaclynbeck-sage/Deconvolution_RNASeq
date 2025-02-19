@@ -17,7 +17,8 @@ folders <- list("metadata" = list("synID" = "syn58803307", "downloadLocation" = 
                 "estimates" = list("synID" = "syn59489760", "downloadLocation" = dir_estimates),
                 "errors" = list("synID" = "syn60969684", "downloadLocation" = dir_errors),
                 "top_parameters" = list("synID" = "syn61917690", "downloadLocation" = dir_top_parameters),
-                "top_estimates" = list("synID" = "syn61922322", "downloadLocation" = dir_top_estimates)
+                "top_estimates" = list("synID" = "syn61922322", "downloadLocation" = dir_top_estimates),
+                "top_errors" = list("synID" = "syn63660315", "downloadLocation" = dir_best_errors)
                 # uncomment only if these files are needed
                 #"hspe_params" = list("synID" = "syn61709305", "downloadLocation" = dir_hspe_params),
                 #"music_basis" = list("synID" = "syn59500238", "downloadLocation" = dir_music_basis),

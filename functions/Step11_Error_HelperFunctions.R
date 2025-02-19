@@ -135,7 +135,8 @@ CalcGOF_BySample <- function(meas_expr_cpm, est_expr, param_id) {
 CalcGOF_Means <- function(gof_by_sample, bulk_metadata, param_id) {
   gof_by_sample <- merge(gof_by_sample,
                          select(bulk_metadata, sample, tissue),
-                         by = "sample")
+                         by = "sample") %>%
+    mutate(tissue = as.character(tissue))
 
   # Add duplicate rows and label the duplicates with tissue = "All" so we can
   # get means for all samples plus samples from each tissue separately
@@ -143,11 +144,10 @@ CalcGOF_Means <- function(gof_by_sample, bulk_metadata, param_id) {
                          mutate(gof_by_sample, tissue = "All"))
 
   gof_means <- gof_by_sample %>%
-    group_by(tissue) %>%
-    summarise(across(where(is.numeric), mean),
-              param_id = unique(param_id),
-              signature = unique(signature),
-              .groups = "drop")
+    group_by(param_id, tissue, signature) %>%
+    summarize(across(where(is.numeric), mean),
+              .groups = "drop") %>%
+    as.data.frame()
 
   return(gof_means)
 }
