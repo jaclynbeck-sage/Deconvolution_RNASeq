@@ -8,7 +8,7 @@ errors_folder <- Folder("11_error_calculations", parent = "syn58802522")
 errors_folder <- synStore(errors_folder, forceVersion = FALSE)
 
 # Get provenance IDs from algorithm output folder TODO
-bulk_folders <- as.list(synGetChildren("syn52245555"))
+bulk_folders <- as.list(synGetChildren("syn59489760"))
 
 # Folder structure on Synapse is <bulk_dataset>/<algorithm>/<params_file>
 params_list_df <- lapply(bulk_folders, function(B) {

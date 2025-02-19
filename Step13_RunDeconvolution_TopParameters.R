@@ -202,7 +202,7 @@ for (P in 1:nrow(params_loop1)) {
     }
 
     # Save each result in case of crashing
-    Save_AlgorithmIntermediate(res, algorithm)
+    Save_AlgorithmIntermediate(res)
     gc()
     return(res)
   } # end foreach loop
