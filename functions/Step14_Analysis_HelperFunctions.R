@@ -1,5 +1,6 @@
 library(parallel)
 source(file.path("functions", "FileIO_HelperFunctions.R"))
+source(file.path("functions", "General_HelperFunctions.R"))
 
 # Loads all the "best_errors" files matching specific parameters into one big
 # list.
@@ -26,12 +27,7 @@ Get_AllBestErrorsAsDf <- function(bulk_datasets, granularity, n_cores = 2) {
 
     # Merge a subset of the parameters into the mean errors data frame. These
     # parameters exist in every error file for every algorithm
-    errs_df <- merge(data$means,
-                     dplyr::select(data$params, reference_data_name,
-                                   test_data_name, reference_input_type,
-                                   normalization, regression_method),
-                     by.x = "param_id", by.y = "row.names") %>%
-      dplyr::mutate(algorithm = str_replace(param_id, "_.*", ""))
+    errs_df <- cbind(data$means, FileParams_FromParams(data$params))
     return(errs_df)
   }, mc.cores = n_cores)
 
@@ -69,7 +65,7 @@ Get_AllBestEstimatesAsDf <- function(bulk_datasets, granularity, metadata,
         merge(metadata, by = "sample", all.y = FALSE)
 
       new_ests$param_id <- N
-      new_ests$algorithm <- str_replace(N, "_.*", "")
+      new_ests$algorithm <- data[[N]]$params$algorithm
 
       data[[N]]$estimates <- new_ests
     }
@@ -109,10 +105,7 @@ Get_AllQualityStatsAsDf <- function(bulk_datasets, granularity, n_cores = 2) {
 
     # Add file parameters to the data frame
     if ("params" %in% names(data)) {
-      params <- data$params %>%
-        select(reference_data_name, test_data_name, granularity,
-               reference_input_type, normalization, regression_method) %>%
-        distinct()
+      params <- FileParams_FromParams(data$params)
     } else {
       # Extract parameters from the file_id string. These str_replaces are so
       # that normalizations like "log_cpm" and the granularity don't get split
@@ -121,13 +114,9 @@ Get_AllQualityStatsAsDf <- function(bulk_datasets, granularity, n_cores = 2) {
         str_replace("_class", ".class")
 
       params <- as.data.frame(str_split(file_id, "_", simplify = TRUE))
-      colnames(params) <- c("algorithm", "reference_data_name", "test_data_name",
-                            "granularity", "reference_input_type", "normalization",
-                            "regression_method")
+      colnames(params) <- Get_ParameterColumnNames()
       params$granularity <- str_replace(params$granularity, "\\.", "_")
       params$normalization <- str_replace(params$normalization, "\\.", "_")
-
-      params <- params[, -1]
     }
 
     n_valid <- cbind(n_valid, params)
@@ -188,7 +177,8 @@ Rank_Errors <- function(errs_df, group_cols) {
     dplyr::group_by_at(group_cols) %>%
     dplyr::mutate(cor_rank = rank(-cor),
                   rMSE_rank = rank(rMSE),
-                  mAPE_rank = rank(mAPE))
+                  mAPE_rank = rank(mAPE)) %>%
+    dplyr::ungroup()
   ranks$mean_rank <- rowMeans(ranks[, c("cor_rank", "rMSE_rank", "mAPE_rank")])
   return(ranks)
 }
@@ -289,12 +279,12 @@ Get_AverageStats <- function(errs_df, ests_df, group_cols) {
   ranked <- Get_TopRanked(errs_df, group_cols, n_top = 1, with_mean_rank = FALSE)
 
   avg_err <- ranked %>%
+    group_by_at(c(group_cols, "avg_id")) %>%
     dplyr::summarize(across(c(cor, rMSE, mAPE),
                             list("mean" = ~ mean(.x),
                                  "sd" = ~ sd(.x))),
                      .groups = "drop") %>%
-    mutate(avg_id = avg_id)
-  #cbind(errs_df[1, cols_keep_errs])
+    as.data.frame()
 
   weights <- as.data.frame(table(ranked$param_id))
   colnames(weights) <- c("param_id", "weight")
@@ -303,12 +293,7 @@ Get_AverageStats <- function(errs_df, ests_df, group_cols) {
                       tissue == unique(ranked$tissue)) %>%
     dplyr::mutate(avg_id = avg_id)
 
-  #cols_keep_errs <- setdiff(colnames(errs_df),
-  #                          c("param_id", "cor", "rMSE", "mAPE"))
-
-  data_keep_ests <- ests_df %>%
-    dplyr::select(-percent, -param_id) %>%
-    dplyr::distinct()
+  cols_keep_ests <- setdiff(colnames(ests_df), c("percent", "param_id"))
 
   ests_df <- merge(ests_df, weights, by = "param_id")
 
@@ -329,11 +314,11 @@ Get_AverageStats <- function(errs_df, ests_df, group_cols) {
   }
 
   avg_est <- ests_df %>%
-    group_by(sample, celltype) %>%
+    group_by_at(cols_keep_ests) %>%
     dplyr::summarize(percent_mean = mean_fun(percent, weight),
                      percent_sd = sd_fun(percent, weight),
                      .groups = "drop") %>%
-    merge(data_keep_ests, by = c("sample", "celltype"))
+    as.data.frame()
 
   return(list("avg_error" = avg_err, "avg_estimates" = avg_est))
 }
@@ -350,6 +335,7 @@ Create_AveragesList <- function(errs_df, ests_df, group_cols, n_cores = 2) {
     avg_tmp <- mclapply(unique(errs_tmp$avg_id), function(a_id) {
       print(a_id)
       errs_filt <- subset(errs_tmp, avg_id == a_id)
+
       return(Get_AverageStats(errs_filt, ests_tmp, group_cols))
     }, mc.cores = n_cores)
 
@@ -400,55 +386,51 @@ Calculate_Significance <- function(ests_df, tissue) {
 }
 
 
-Get_MeanProps_Significance <- function(avg_list, n_cores = 2) {
-  mean_props_all <- mclapply(avg_list, function(avg_item) {
-    errs_tmp <- avg_item$avg_errors
-    tissue <- unique(errs_tmp$tissue)
-    bulk_dataset <- unique(errs_tmp$test_data_name) # Tissues are unique to a single bulk dataset so this works
+Get_MeanProps_Significance <- function(avg_item, group_cols) {
+  errs_tmp <- avg_item$avg_errors
+  tissue <- unique(errs_tmp$tissue)
+  bulk_dataset <- unique(errs_tmp$test_data_name) # Tissues are unique to a single bulk dataset so this works
 
-    print(paste(bulk_dataset, tissue))
+  print(paste(bulk_dataset, tissue))
 
-    ests_ad <- avg_item$avg_estimates
+  ests_ad <- avg_item$avg_estimates
 
-    # Calculate significance for estimates from each parameter ID separately
-    significant <- Calculate_Significance(ests_ad, tissue)
+  # Calculate significance for estimates from each parameter ID separately
+  significant <- Calculate_Significance(ests_ad, tissue)
 
-    # Average cell type percentages across all AD or all CT samples in a given
-    # parameter set
-    mean_props <- ests_ad %>% subset(diagnosis %in% c("CT", "AD")) %>%
-      group_by(avg_id, diagnosis, tissue, celltype, algorithm) %>%
-      dplyr::summarize(mean_pct = mean(percent_mean),
-                       sd_pct = sd(percent_mean),
-                       rel_sd_pct = sd_pct / mean_pct,
-                       count = n(),
-                       .groups = "drop")
+  # Average cell type percentages across all AD or all CT samples in a given
+  # parameter set
+  mean_props <- ests_ad %>% subset(diagnosis %in% c("CT", "AD")) %>%
+    group_by(avg_id, diagnosis, tissue, celltype, algorithm) %>%
+    dplyr::summarize(mean_pct = mean(percent_mean),
+                     sd_pct = sd(percent_mean),
+                     rel_sd_pct = sd_pct / mean_pct,
+                     count = n(),
+                     .groups = "drop")
 
-    # Make one column for AD and one for CT for each of mean_pct, sd_pct,
-    # rel_sd_pct, and count, calculate fold-change between AD and CT means
-    mean_props <- pivot_wider(mean_props, names_from = "diagnosis",
-                              values_from = c("mean_pct", "sd_pct",
-                                              "rel_sd_pct", "count")) %>%
-      dplyr::mutate(fc = mean_pct_AD / mean_pct_CT,
-                    log2_fc = log2(fc)) # equivalent to log2(AD)-log2(CT)
+  # Make one column for AD and one for CT for each of mean_pct, sd_pct,
+  # rel_sd_pct, and count, calculate fold-change between AD and CT means
+  mean_props <- pivot_wider(mean_props, names_from = "diagnosis",
+                            values_from = c("mean_pct", "sd_pct",
+                                            "rel_sd_pct", "count")) %>%
+    dplyr::mutate(fc = mean_pct_AD / mean_pct_CT,
+                  log2_fc = log2(fc)) # equivalent to log2(AD)-log2(CT)
 
-    # If one or both of the means is 0, rel_sd_pct values and the FC would be NA
-    # due to divide by zero, so they need to be changed to 0
-    mean_props$fc[is.na(mean_props$fc)] <- 0
-    mean_props$log2_fc[is.na(mean_props$log2_fc)] <- 0
-    mean_props$rel_sd_pct_AD[is.na(mean_props$rel_sd_pct_AD)] <- 0
-    mean_props$rel_sd_pct_CT[is.na(mean_props$rel_sd_pct_CT)] <- 0
+  # If one or both of the means is 0, rel_sd_pct values and the FC would be NA
+  # due to divide by zero, so they need to be changed to 0
+  mean_props$fc[is.na(mean_props$fc)] <- 0
+  mean_props$log2_fc[is.na(mean_props$log2_fc)] <- 0
+  mean_props$rel_sd_pct_AD[is.na(mean_props$rel_sd_pct_AD)] <- 0
+  mean_props$rel_sd_pct_CT[is.na(mean_props$rel_sd_pct_CT)] <- 0
 
-    mean_props <- merge(mean_props, significant,
-                        by = c("avg_id", "celltype", "tissue")) %>%
-      dplyr::mutate(log_p = log(p_adj_thresh)) %>%
-      # pull in missing parameter fields from errs_tmp
-      merge(select(errs_tmp, test_data_name, normalization, regression_method, avg_id),
-            by = "avg_id")
+  mean_props <- merge(mean_props, significant,
+                      by = c("avg_id", "celltype", "tissue")) %>%
+    dplyr::mutate(log_p = log(p_adj_thresh)) %>%
+    # pull in missing parameter fields from errs_tmp
+    merge(errs_tmp[, c("avg_id", group_cols)]) %>%
+    as.data.frame()
 
-    return(mean_props)
-  }, mc.cores = n_cores)
-
-  return(mean_props_all)
+  return(mean_props)
 }
 
 

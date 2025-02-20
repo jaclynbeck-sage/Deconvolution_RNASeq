@@ -5,7 +5,7 @@ library(tidyr)
 library(reshape2)
 library(Hmisc)
 
-source(file.path("functions", "Analysis_HelperFunctions.R"))
+source(file.path("functions", "Step14_Analysis_HelperFunctions.R"))
 
 n_cores <- parallel::detectCores() - 2
 
@@ -19,9 +19,8 @@ combined_metadata <- lapply(bulk_datasets, function(B) {
 })
 combined_metadata <- do.call(rbind, combined_metadata)
 
-# Get the full set of all best errors and quality stats
+# Get the full set of all best errors
 best_errors <- Get_AllBestErrorsAsDf(bulk_datasets, granularity, n_cores)
-qstats <- Get_AllQualityStatsAsDf(bulk_datasets, granularity, n_cores)
 
 # We are analyzing each tissue separately, so we will use the best parameter
 # sets for each tissue instead of the best overall
@@ -65,10 +64,10 @@ err_ranks_best <- best_errors %>%
 
 saveRDS(list("ranked_errors_all" = err_ranks,
              "ranked_errors_best_signatures" = err_ranks_best),
-        file.path(dir_analysis, paste0("ranked_errors_", granularity, ".rds")))
+        file.path(dir_analysis, str_glue("ranked_errors_{granularity}.rds")))
 
-group_cols <- c("tissue", "reference_data_name", "test_data_name",
-                "normalization", "regression_method", "algorithm")
+group_cols <- c("tissue", Get_ParameterColumnNames())  %>%
+  setdiff("reference_input_type") # Ignore input type
 group_cols_toplevel <- setdiff(group_cols, "reference_data_name")
 
 # Best parameters for each reference_data_name for each possible data input
@@ -86,9 +85,8 @@ best_errors <- merge(best_params, best_errors, by = c("tissue", "param_id"),
                      all.y = FALSE)
 
 saveRDS(list("best_errors_all" = best_errors,
-             "best_errors_toplevel" = best_errors_toplevel,
-             "quality_stats" = qstats),
-        file.path(dir_analysis, paste0("best_errors_", granularity, ".rds")))
+             "best_errors_toplevel" = best_errors_toplevel),
+        file.path(dir_analysis, str_glue("best_errors_{granularity}.rds")))
 
 # Get the estimates associated with each parameter ID left in the errors df.
 # best_params and best_params_toplevel may not have 100% overlap so we call
@@ -117,54 +115,31 @@ best_errors_toplevel$avg_id <- unlist(apply(best_errors_toplevel, 1, function(ro
 
 # Average the estimates corresponding to best correlation, best rMSE, and best
 # mAPE together for each data input type
-avg_list <- Create_AveragesList(best_errors, best_estimates, group_cols, 2) #round(n_cores/3))
+avg_list <- Create_AveragesList(best_errors,
+                                best_estimates,
+                                group_cols,
+                                n_cores)
 avg_list_toplevel <- Create_AveragesList(best_errors_toplevel,
                                          best_estimates_toplevel,
                                          group_cols_toplevel,
-                                         2)
+                                         n_cores)
 
 saveRDS(list("average_list_all" = avg_list,
              "average_list_toplevel" = avg_list_toplevel),
-        file.path(dir_analysis, paste0("averages_lists_", granularity, ".rds")))
+        file.path(dir_analysis,
+                  str_glue("averages_lists_{granularity}.rds")))
 
 # Calculate significance of cell type differences on a tissue-by-tissue basis
-mean_props_all <- Get_MeanProps_Significance(avg_list, 2)
-mean_props_toplevel <- Get_MeanProps_Significance(avg_list_toplevel, 2)
+mean_props_all <- mclapply(avg_list,
+                           Get_MeanProps_Significance,
+                           group_cols = group_cols,
+                           mc.cores = n_cores)
+mean_props_toplevel <- mclapply(avg_list_toplevel,
+                                Get_MeanProps_Significance,
+                                group_cols = group_cols_toplevel,
+                                mc.cores = n_cores)
 
 saveRDS(list("significance_props_all" = mean_props_all,
              "significance_props_toplevel" = mean_props_toplevel),
-        file.path(dir_analysis, paste0("significance_lists_", granularity, ".rds")))
-
-gc()
-
-# This is really slow so we do it last
-best_errors_single <- best_errors %>% ungroup()
-
-# Mimic the structure of avg_list as returned from Create_AverageList
-best_errors_single$avg_id <- paste(best_errors_single$tissue,
-                                   best_errors_single$param_id,
-                                   sep = "_")
-best_estimates_single <- best_estimates %>%
-  dplyr::rename(percent_mean = percent) %>%
-  mutate(avg_id = paste(tissue, param_id, sep = "_")) %>%
-  select(-param_id)
-
-rm(best_errors, best_errors_toplevel, best_estimates, best_estimates_toplevel)
-gc()
-
-avg_list_single <- lapply(unique(best_errors_single$tissue), function(tiss) {
-  return(list("avg_errors" = subset(best_errors_single, tissue == tiss),
-              "avg_estimates" = subset(best_estimates_single, tissue == tiss)))
-})
-names(avg_list_single) <- unique(best_errors_single$tissue)
-
-rm(best_estimates_single)
-gc()
-
-# Significance of each individual parameter set
-mean_props_single <- Get_MeanProps_Significance(avg_list_single, 2)
-
-saveRDS(list("significance_props_all" = mean_props_all,
-             "significance_props_toplevel" = mean_props_toplevel,
-             "significance_props_single" = mean_props_single),
-        file.path(dir_analysis, paste0("significance_lists_", granularity, ".rds")))
+        file.path(dir_analysis,
+                  str_glue("significance_lists_{granularity}.rds")))

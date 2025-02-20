@@ -770,9 +770,21 @@ Clean_BulkCovariates <- function(bulk_dataset_name, metadata, covariates,
 #   a data frame
 FileParams_FromParams <- function(params_df) {
   params_df %>%
-    dplyr::select(algorithm, reference_data_name, test_data_name, granularity,
-                  reference_input_type, normalization, regression_method) %>%
-    dplyr::distinct()
+    dplyr::select_at(Get_ParameterColumnNames()) %>%
+    dplyr::distinct() %>%
+    as.data.frame()
+}
+
+
+# Get_ParameterColumns - Helper function to get the names of the parameters that
+# exist across all deconvolution trials. These are used all over the code so
+# this avoids hard-coding the list in multiple places.
+#
+# Arguments: none
+# Returns: a vector of column names
+Get_ParameterColumnNames <- function() {
+  return(c("algorithm", "reference_data_name", "test_data_name", "granularity",
+           "reference_input_type", "normalization", "regression_method"))
 }
 
 
