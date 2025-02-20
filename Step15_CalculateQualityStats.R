@@ -18,8 +18,6 @@ granularity <- "broad_class"
 bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
 
 cores <- 12
-#cl <- makeCluster(cores, type = "FORK", outfile = "qstats_output.txt")
-#registerDoParallel(cl)
 
 # Which algorithms to calculate stats for
 algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "Music",
@@ -76,7 +74,6 @@ for (bulk_dataset in bulk_datasets) {
 
         n_valid_results <- data.frame(n_valid = 0,
                                       n_possible = length(est_list),
-                                      algorithm = algorithm,
                                       file_id = file_id)
         n_valid_results <- cbind(n_valid_results, file_params)
 
@@ -93,7 +90,6 @@ for (bulk_dataset in bulk_datasets) {
       # Must be calculated before subsetting to valid results
       n_valid_results <- data.frame(n_valid = length(err_list$param_ids),
                                     n_possible = length(est_list),
-                                    algorithm = algorithm,
                                     file_id = file_id)
       n_valid_results <- cbind(n_valid_results, file_params)
 
@@ -142,14 +138,12 @@ for (bulk_dataset in bulk_datasets) {
       # only want top cor, RMSE, or MAPE
       errors_weighted <- best_err_list$means %>%
         subset(tissue != "All") %>%
-        Get_TopRanked("tissue", n_top = 1, with_mean_rank = FALSE) %>%
-        mutate(algorithm = algorithm)
+        Get_TopRanked("tissue", n_top = 1, with_mean_rank = FALSE)
 
       best_param_ids <- intersect(best_err_list$param_ids,
-                             errors_weighted$param_id)
+                                  errors_weighted$param_id)
       best_params <- best_err_list$params[best_param_ids, ] %>%
-        mutate(param_id = best_param_ids,
-               algorithm = algorithm)
+        mutate(param_id = best_param_ids)
 
       # Subset to valid estimates only. For the "best estimates", we got rid of
       # any best errors that were for mean_rank only, so we need to subset the
@@ -163,8 +157,7 @@ for (bulk_dataset in bulk_datasets) {
         estimates$sample <- rownames(estimates)
 
         estimates %>% merge(bulk_metadata, by = "sample", all = FALSE) %>%
-          mutate(param_id = est_item$param_id,
-                 algorithm = algorithm)
+          mutate(param_id = est_item$param_id)
       })
       est_pcts <- List_to_DF(est_pcts)
 
@@ -205,7 +198,6 @@ for (bulk_dataset in bulk_datasets) {
                          mean_exh_inh_ratio = mean(exc_inh_ratio, na.rm = TRUE),
                          median_exh_inh_ratio = median(exc_inh_ratio, na.rm = TRUE),
                          param_id = unique(param_id),
-                         algorithm = algorithm,
                          .groups = "drop") %>%
         select(-n_bad, -count)
 
@@ -215,20 +207,21 @@ for (bulk_dataset in bulk_datasets) {
 
       num_zeros <- est_pcts %>%
         group_by(tissue, param_id) %>%
-        summarize(across(where(is.numeric), ~ sum(.x == 0)), .groups = "drop") %>%
-        mutate(algorithm = algorithm)
+        summarize(across(where(is.numeric), ~ sum(.x == 0)), .groups = "drop")
 
 
       ## Error and estimate stats ----------------------------------------------
       # For best errors/estimates
 
       err_stats <- errors_weighted %>%
-        Calculate_ErrorStats(group_cols = c("tissue", "algorithm")) %>%
-        mutate(file_id = file_id)
+        Calculate_ErrorStats(group_cols = "tissue") %>%
+        mutate(file_id = file_id) %>%
+        cbind(file_params)
 
       est_stats <- est_pcts_weighted %>%
-        Calculate_EstimateStats(group_cols = c("sample", "tissue", "algorithm")) %>%
-        mutate(file_id = file_id)
+        Calculate_EstimateStats(group_cols = c("sample", "tissue")) %>%
+        mutate(file_id = file_id) %>%
+        cbind(file_params)
 
 
       # Remove duplication for top level analysis
@@ -253,12 +246,11 @@ for (bulk_dataset in bulk_datasets) {
 
     # Merge some params in for top-level analysis
     best_errors <- merge(best_errors,
-                         select(best_params, param_id, algorithm,
-                                reference_data_name:regression_method),
-                         by = c("param_id", "algorithm"))
+                         best_params[, c("param_id", Get_ParameterColumnNames())],
+                         by = "param_id")
 
-    group_cols <- c("algorithm", "tissue", "test_data_name", "normalization",
-                    "regression_method")
+    group_cols <- c("tissue", Get_ParameterColumnNames()) %>%
+      setdiff(c("reference_data_name", "reference_input_type"))
 
     # Only keep error information for the best parameters. Calling this function
     # may produce duplicated rows where a param_id is the best for multiple
@@ -270,8 +262,8 @@ for (bulk_dataset in bulk_datasets) {
 
     # Create the same kind of duplication in the estimates df. Also pull in
     # parameters listed in group_cols for this calculation
-    weights <- select(best_errs_toplevel, param_id, tissue, test_data_name,
-                      normalization, regression_method, type)
+    weights <- best_errs_toplevel %>%
+      select_at(c("param_id", group_cols, "type"))
 
     best_ests_toplevel <- merge(best_ests, weights,
                                 by = c("tissue", "param_id"), all = FALSE)
@@ -287,9 +279,10 @@ for (bulk_dataset in bulk_datasets) {
     # Check for algorithm-specific parameters and if they exist calculate how
     # many times each value for those parameters shows up in the top 3 errors
     # for each error metric
-      alg_specific <- select(best_params, param_id, # keep param_id
-                             !reference_data_name:marker_order, # remove general params
-                             -mode, -total_markers_used, -algorithm)
+      alg_specific <- select(best_params,
+                             -all_of(Get_ParameterColumnNames()), # remove file params
+                             -contains("filter_level"), -contains("marker"), # remove general marker params
+                             -mode)
       if (ncol(alg_specific) > 1) {
         top3 <- Get_TopRanked(best_errors, "tissue", n_top = 3, with_mean_rank = FALSE)
         top3 <- merge(top3, alg_specific, by = "param_id")
@@ -319,8 +312,10 @@ for (bulk_dataset in bulk_datasets) {
     })
     names(alg_qstats) <- items_save
 
-    alg_qstats$best_errors_toplevel <- best_errs_toplevel
-    alg_qstats$best_estimates_toplevel <- best_ests_toplevel
+    alg_qstats$best_errors_toplevel <- select(best_errs_toplevel, -type,
+                                              -all_of(Get_ParameterColumnNames()))
+    alg_qstats$best_estimates_toplevel <- select(best_ests_toplevel, -type,
+                                                 -any_of(Get_ParameterColumnNames()))
     alg_qstats$best_params_toplevel <- best_params_toplevel
 
     alg_qstats$param_frequency <- param_frequency
@@ -369,9 +364,8 @@ for (bulk_dataset in bulk_datasets) {
     List_to_DF()
 
   top3 <- best_errors %>%
-    subset(algorithm != "Baseline") %>%
+    merge(best_params, by = "param_id") %>%
     Get_TopRanked(group_cols = "tissue", n_top = 3, with_mean_rank = FALSE) %>%
-    merge(best_params, by = c("param_id", "algorithm")) %>%
     # These three marker specifications are not independent of each other so we
     # combine them into one variable
     mutate(marker_algorithm = paste(marker_type, marker_subtype, marker_input_type),
@@ -398,10 +392,16 @@ for (bulk_dataset in bulk_datasets) {
   # Using top-level data
 
   best_errors_toplevel <- List_to_DF(alg_qstats_all, "best_errors_toplevel") %>%
-    select(-type) %>% distinct()
+    distinct()
+
+  best_params_toplevel <- lapply(alg_qstats_all[setdiff(algorithms, "Baseline")],
+                                 "[[", "best_params_toplevel") %>%
+    lapply(select_at, cols_keep) %>%  # subset to only cols_keep columns
+    List_to_DF()
 
   baseline_bests <- best_errors_toplevel %>%
-    subset(algorithm == "Baseline" & reference_data_name != "zeros") %>%
+    merge(alg_qstats_all$Baseline$best_params_toplevel) %>%
+    subset(reference_data_name != "zeros") %>%
     group_by(tissue, normalization, regression_method) %>%
     summarize(cor = max(cor),
               rMSE = min(rMSE),
@@ -413,13 +413,13 @@ for (bulk_dataset in bulk_datasets) {
 
   # TODO this isn't the same calculation being done in Step 16 ?
   better_than_baseline <- best_errors_toplevel %>%
-    subset(algorithm != "Baseline") %>%
+    merge(best_params_toplevel) %>%
     pivot_longer(cols = c(cor, rMSE, mAPE), names_to = "error_metric") %>%
     # "counts" should be in the same category as "cpm", all "log_X" normalizations
     # should be in the same category as their linear counterparts
     mutate(normalization = str_replace(normalization, "counts", "cpm"),
            normalization = str_replace(normalization, "log_", "")) %>%
-    merge(baseline_bests, by = c("tissue", "normalization", "regression_method", "error_metric")) %>%
+    merge(baseline_bests) %>%
     group_by(error_metric) %>%
     mutate(better = if(unique(error_metric) == "cor")
       (value > baseline_value) else (value < baseline_value)) %>%
@@ -435,4 +435,18 @@ for (bulk_dataset in bulk_datasets) {
   # Get ranked errors that will be used in analysis
   # best data transform
   # N markers vs error
+
+  saveRDS(list("n_valid" = n_valid,
+               "n_valid_by_norm" = n_valid_by_norm,
+               "n_valid_by_algorithm" = n_valid_by_algorithm,
+               "best_errors_all" = best_errors,
+               "best_errors_toplevel" = best_errors_toplevel,
+               "best_params" = best_params,
+               "best_params_toplevel" = best_params_toplevel,
+               "top3_errors" = top3,
+               "parameter_frequency" = param_frequency,
+               "best_baselines" = baseline_bests,
+               "better_than_baseline" = better_than_baseline),
+          file.path(dir_analysis,
+                    str_glue("quality_stats_all_{bulk_dataset}_{granularity}.rds")))
 }

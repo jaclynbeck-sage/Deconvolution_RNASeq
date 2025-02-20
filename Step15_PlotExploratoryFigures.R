@@ -28,22 +28,16 @@ best_errors_list <- readRDS(file.path(dir_analysis,
                                       str_glue("best_errors_{granularity}.rds")))
 best_errors <- best_errors_list$best_errors_all
 
-best_errs_plot <- best_errors %>%
-  mutate(tissue = paste(test_data_name, tissue),
-         regression_method = str_replace(regression_method, "none", "no regression"),
-         normalization = str_replace(normalization, "counts", "cpm"),
-         normalization = str_replace(normalization, "cpm", "counts/cpm"),
-         normalization = str_replace(normalization, "log_", ""),
-         data_transform = paste(normalization, "+", regression_method))
+best_errs_plot <- Paper_Renames(best_errors) %>%
+  mutate(tissue = tissue_full)
 
 # There are up to 3 param_ids per set of input parameters. Get the best of each
 # error metric for each set
 errs_melt <- best_errs_plot  %>%
-  group_by(tissue, reference_data_name, test_data_name, algorithm,
-           normalization, regression_method) %>%
-  dplyr::summarize(cor = max(cor),
-                   rMSE = min(rMSE),
-                   mAPE = min(mAPE),
+  group_by_at(c("tissue", Get_ParameterColumnNames())) %>%
+  dplyr::summarize(Correlation = max(Correlation),
+                   RMSE = min(RMSE),
+                   MAPE = min(MAPE),
                    .groups = "drop") %>%
   melt(variable.name = "error_type")
 
@@ -72,7 +66,7 @@ normalization_colors <- RColorBrewer::brewer.pal(length(norms), "Set1")
 regression_colors <- viridis::turbo(length(regs), begin = 0.1, end = 0.9)#RColorBrewer::brewer.pal(length(regs), "Accent")
 
 # Tissues (modified viridis turbo color scheme)
-tiss <- colSums(table(errs_melt$tissue, errs_melt$test_data_name) > 1)
+tiss <- colSums(table(errs_melt$tissue, errs_melt$test_data_name) > 0)
 tissue_colors <- c(viridis::turbo(tiss[["Mayo"]], begin = 0.1, end = 0.2),
                    viridis::turbo(tiss[["MSBB"]], begin = 0.35, end = 0.6),
                    viridis::turbo(tiss[["ROSMAP"]], begin = 0.7, end = 0.9))
@@ -91,15 +85,16 @@ names(tissue_fill_colors) <- names(tissue_colors)
 bulk_colors <- tissue_fill_colors[c(1, 4, 9)]
 names(bulk_colors) <- sort(bulk_datasets)
 
-baselines_random <- subset(baselines_melt, reference_data_name != "zeros")
-baselines_zeros <- subset(baselines_melt, reference_data_name == "zeros" & error_type == "rMSE")
+baselines_random <- subset(baselines_melt, reference_data_name != "All zeros")
+baselines_zeros <- subset(baselines_melt,
+                          reference_data_name == "All zeros" & error_type == "RMSE")
 
 # Best baseline scores for each bulk data set, regardless of normalization / regression
 baselines_plot <- baselines_random %>%
   Create_BoxStats(c("test_data_name", "error_type"))
 
 zeros_plot <- baselines_zeros %>%
-  Create_BoxStats(c("test_data_name"))
+  Create_BoxStats(c("test_data_name", "error_type"))
 
 pdf(file.path(dir_figures,
               str_glue("error_plots_{granularity}_summary.pdf")),
@@ -117,23 +112,23 @@ errs_box_noref <- Create_BoxStats(errs_melt,
                                     "error_type"))
 
 # correlation
-plt1 <- Plot_FacetBoxPlot(subset(errs_box, error_type == "cor"),
+plt1 <- Plot_FacetBoxPlot(subset(errs_box, error_type == "Correlation"),
                           fill = "tissue",
                           x_axis = "reference_data_name",
                           fill_colors = tissue_colors,
                           facet_vars = c("test_data_name", "algorithm")) +
   geom_hline(aes(yintercept = max_val),
-             data = subset(baselines_plot, error_type == "cor"),
+             data = subset(baselines_plot, error_type == "Correlation"),
              linetype = "twodash")
 print(plt1 + plot_annotation(title = "Spread of correlation regardless of normalization / regression"))
 
-plt2 <- Plot_FacetBoxPlot(subset(errs_box_noref, error_type == "cor"),
+plt2 <- Plot_FacetBoxPlot(subset(errs_box_noref, error_type == "Correlation"),
                           fill = "tissue",
                           x_axis = "algorithm",
                           fill_colors = tissue_colors,
                           facet_vars = "test_data_name") +
   geom_hline(aes(yintercept = max_val),
-             data = subset(baselines_plot, error_type == "cor"),
+             data = subset(baselines_plot, error_type == "Correlation"),
              linetype = "twodash")
 print(plt2 + plot_annotation(title = "Spread of correlation regardless of reference, normalization, or regression"))
 
@@ -142,90 +137,90 @@ print(plt2 + plot_annotation(title = "Spread of correlation regardless of refere
 baselines_plot_tissue <- baselines_random %>%
   Create_BoxStats(c("tissue", "error_type"))
 
-plt3 <- Plot_FacetBoxPlot(subset(errs_box, error_type == "cor"),
+plt3 <- Plot_FacetBoxPlot(subset(errs_box, error_type == "Correlation"),
                           fill = "tissue",
                           x_axis = "reference_data_name",
                           fill_colors = tissue_colors,
                           facet_vars = c("tissue", "algorithm")) +
   geom_hline(aes(yintercept = max_val),
-             data = subset(baselines_plot_tissue, error_type == "cor"),
+             data = subset(baselines_plot_tissue, error_type == "Correlation"),
              linetype = "twodash")
 print(plt3 + plot_annotation(title = "Spread of correlation by tissue, regardless of normalization, or regression"))
 
 
 # rMSE -- this is the only one where the "zeros" baseline is relevant
-plt4a <- Plot_FacetBoxPlot(subset(errs_box, error_type == "rMSE"),
+plt4a <- Plot_FacetBoxPlot(subset(errs_box, error_type == "RMSE"),
                            fill = "tissue",
                            x_axis = "reference_data_name",
                            fill_colors = tissue_colors,
                            facet_vars = c("test_data_name", "algorithm")) +
   geom_hline(aes(yintercept = min_val),
-             data = subset(baselines_plot, error_type == "rMSE"),
+             data = subset(baselines_plot, error_type == "RMSE"),
              linetype = "twodash") +
   geom_hline(aes(yintercept = min_val), data = zeros_plot, color = "red",
              linetype = "twodash")
 
-print(plt4a + plot_annotation(title = "Spread of rMSE regardless of normalization, or regression"))
+print(plt4a + plot_annotation(title = "Spread of RMSE regardless of normalization, or regression"))
 
-plt4b <- Plot_FacetBoxPlot(subset(errs_box_noref, error_type == "rMSE"),
+plt4b <- Plot_FacetBoxPlot(subset(errs_box_noref, error_type == "RMSE"),
                            fill = "tissue",
                            x_axis = "algorithm",
                            fill_colors = tissue_colors,
                            facet_vars = "test_data_name") +
   geom_hline(aes(yintercept = min_val),
-             data = subset(baselines_plot, error_type == "rMSE"),
+             data = subset(baselines_plot, error_type == "RMSE"),
              linetype = "twodash") +
   geom_hline(aes(yintercept = min_val), data = zeros_plot, color = "red",
              linetype = "twodash")
 
-print(plt4b + plot_annotation(title = "Spread of rMSE regardless of reference, normalization, or regression"))
+print(plt4b + plot_annotation(title = "Spread of RMSE regardless of reference, normalization, or regression"))
 
 # Plt 4a but divided by tissue so there is a baseline line for each tissue
 # separately.
-plt4c <- Plot_FacetBoxPlot(subset(errs_box, error_type == "rMSE"),
+plt4c <- Plot_FacetBoxPlot(subset(errs_box, error_type == "RMSE"),
                            fill = "tissue",
                            x_axis = "reference_data_name",
                            fill_colors = tissue_colors,
                            facet_vars = c("tissue", "algorithm")) +
   geom_hline(aes(yintercept = min_val),
-             data = subset(baselines_plot_tissue, error_type == "rMSE"),
+             data = subset(baselines_plot_tissue, error_type == "RMSE"),
              linetype = "twodash")
-print(plt4c + plot_annotation(title = "Spread of rMSE by tissue, regardless of normalization, or regression"))
+print(plt4c + plot_annotation(title = "Spread of RMSE by tissue, regardless of normalization, or regression"))
 
 
 # mAPE
-plt5a <- Plot_FacetBoxPlot(subset(errs_box, error_type == "mAPE"),
+plt5a <- Plot_FacetBoxPlot(subset(errs_box, error_type == "MAPE"),
                            fill = "tissue",
                            x_axis = "reference_data_name",
                            fill_colors = tissue_colors,
                            facet_vars = c("test_data_name", "algorithm")) +
   geom_hline(aes(yintercept = min_val),
-             data = subset(baselines_plot, error_type == "mAPE"),
+             data = subset(baselines_plot, error_type == "MAPE"),
              linetype = "twodash")
 
-print(plt5a + plot_annotation(title = "Spread of mAPE regardless of normalization, or regression"))
+print(plt5a + plot_annotation(title = "Spread of MAPE regardless of normalization, or regression"))
 
-plt5b <- Plot_FacetBoxPlot(subset(errs_box_noref, error_type == "mAPE"),
+plt5b <- Plot_FacetBoxPlot(subset(errs_box_noref, error_type == "MAPE"),
                            fill = "tissue",
                            x_axis = "algorithm",
                            fill_colors = tissue_colors,
                            facet_vars = "test_data_name") +
   geom_hline(aes(yintercept = min_val),
-             data = subset(baselines_plot, error_type == "mAPE"),
+             data = subset(baselines_plot, error_type == "MAPE"),
              linetype = "twodash")
-print(plt5b + plot_annotation(title = "Spread of mAPE regardless of reference, normalization, or regression"))
+print(plt5b + plot_annotation(title = "Spread of MAPE regardless of reference, normalization, or regression"))
 
 # Plt 5a but divided by tissue so there is a baseline line for each tissue
 # separately.
-plt5c <- Plot_FacetBoxPlot(subset(errs_box, error_type == "mAPE"),
+plt5c <- Plot_FacetBoxPlot(subset(errs_box, error_type == "MAPE"),
                            fill = "tissue",
                            x_axis = "reference_data_name",
                            fill_colors = tissue_colors,
                            facet_vars = c("tissue", "algorithm")) +
   geom_hline(aes(yintercept = min_val),
-             data = subset(baselines_plot_tissue, error_type == "mAPE"),
+             data = subset(baselines_plot_tissue, error_type == "MAPE"),
              linetype = "twodash")
-print(plt5c + plot_annotation(title = "Spread of mAPE by tissue, regardless of normalization, or regression"))
+print(plt5c + plot_annotation(title = "Spread of MAPE by tissue, regardless of normalization, or regression"))
 
 
 # Normalization vs regression --------------------------------------------------
@@ -239,72 +234,72 @@ baselines_plot_norm <- baselines_random %>%
 
 # TODO these plots are kind of large, need to figure out how to collapse into
 # meaningful information
-plt6 <- Plot_FacetBoxPlot(subset(errs_box_norm, error_type == "cor"),
+plt6 <- Plot_FacetBoxPlot(subset(errs_box_norm, error_type == "Correlation"),
                           x_axis = "normalization",
                           fill = "regression_method",
                           fill_colors = regression_colors,
                           facet_vars = c("tissue", "algorithm")) +
   geom_hline(aes(yintercept = max_val, color = normalization),
-             data = subset(baselines_plot_norm, error_type == "cor"),
+             data = subset(baselines_plot_norm, error_type == "Correlation"),
              linetype = "twodash")
 print(plt6 + plot_annotation(title = "Correlation: normalization vs regression"))
 
-plt7 <- Plot_FacetBoxPlot(subset(errs_box_norm, error_type == "rMSE"),
+plt7 <- Plot_FacetBoxPlot(subset(errs_box_norm, error_type == "RMSE"),
                           x_axis = "normalization",
                           fill = "regression_method",
                           fill_colors = regression_colors,
                           facet_vars = c("tissue", "algorithm")) +
   geom_hline(aes(yintercept = min_val, color = normalization),
-             data = subset(baselines_plot_norm, error_type == "rMSE"),
+             data = subset(baselines_plot_norm, error_type == "RMSE"),
              linetype = "twodash")
-print(plt7 + plot_annotation(title = "rMSE: normalization vs regression"))
+print(plt7 + plot_annotation(title = "RMSE: normalization vs regression"))
 
-plt8 <- Plot_FacetBoxPlot(subset(errs_box_norm, error_type == "mAPE"),
+plt8 <- Plot_FacetBoxPlot(subset(errs_box_norm, error_type == "MAPE"),
                           x_axis = "normalization",
                           fill = "regression_method",
                           fill_colors = regression_colors,
                           facet_vars = c("tissue", "algorithm")) +
   geom_hline(aes(yintercept = min_val, color = normalization),
-             data = subset(baselines_plot_norm, error_type == "mAPE"),
+             data = subset(baselines_plot_norm, error_type == "MAPE"),
              linetype = "twodash")
-print(plt8 + plot_annotation(title = "mAPE: normalization vs regression"))
+print(plt8 + plot_annotation(title = "MAPE: normalization vs regression"))
 
 # Algorithms collapsed
 errs_box_noalg <- errs_melt %>%
   Create_BoxStats(c("tissue", "error_type",
                     "normalization", "regression_method"))
 
-plt12 <- Plot_FacetBoxPlot(subset(errs_box_noalg, error_type == "cor"),
+plt12 <- Plot_FacetBoxPlot(subset(errs_box_noalg, error_type == "Correlation"),
                            x_axis = "normalization",
                            fill = "regression_method",
                            fill_colors = regression_colors,
                            facet_vars = c("tissue")) +
   geom_hline(aes(yintercept = max_val, color = normalization),
-             data = subset(baselines_plot_norm, error_type == "cor"),
+             data = subset(baselines_plot_norm, error_type == "Correlation"),
              linetype = "twodash")
 print(plt12 + plot_annotation(title = "Correlation: normalization vs regression"))
 
-plt13 <- Plot_FacetBoxPlot(subset(errs_box_noalg, error_type == "rMSE"),
+plt13 <- Plot_FacetBoxPlot(subset(errs_box_noalg, error_type == "RMSE"),
                            x_axis = "normalization",
                            fill = "regression_method",
                            fill_colors = regression_colors,
                            facet_vars = c("tissue")) +
   geom_hline(aes(yintercept = min_val, color = normalization),
-             data = subset(baselines_plot_norm, error_type == "rMSE"),
+             data = subset(baselines_plot_norm, error_type == "RMSE"),
              linetype = "twodash")
-print(plt13 + plot_annotation(title = "rMSE: normalization vs regression"))
+print(plt13 + plot_annotation(title = "RMSE: normalization vs regression"))
 
-plt14 <- Plot_FacetBoxPlot(subset(errs_box_noalg, error_type == "mAPE"),
+plt14 <- Plot_FacetBoxPlot(subset(errs_box_noalg, error_type == "MAPE"),
                            x_axis = "normalization",
                            fill = "regression_method",
                            fill_colors = regression_colors,
                            facet_vars = c("tissue")) +
   geom_hline(aes(yintercept = min_val, color = normalization),
-             data = subset(baselines_plot_norm, error_type == "mAPE"),
+             data = subset(baselines_plot_norm, error_type == "MAPE"),
              linetype = "twodash")
-print(plt14 + plot_annotation(title = "mAPE: normalization vs regression"))
+print(plt14 + plot_annotation(title = "MAPE: normalization vs regression"))
 
-for (err_metric in c("cor", "rMSE", "mAPE")) {
+for (err_metric in c("Correlation", "RMSE", "MAPE")) {
   errs_sub <- subset(errs_melt, error_type == err_metric) %>%
     Create_BoxStats(c("test_data_name", "normalization", "regression_method"))
 
@@ -340,7 +335,7 @@ baselines_plot <- Create_BoxStats(baselines_random,
                                                     "regression_method",
                                                     "error_type"))
 
-plt12 <- Plot_FacetBoxPlot(subset(baselines_plot, error_type == "cor"),
+plt12 <- Plot_FacetBoxPlot(subset(baselines_plot, error_type == "Correlation"),
                            x_axis = "normalization",
                            fill = NULL, #"regression_method",
                            fill_colors = NULL,#regression_colors,
@@ -349,23 +344,23 @@ plt12 <- Plot_FacetBoxPlot(subset(baselines_plot, error_type == "cor"),
   scale_color_manual(values = regression_colors)
 print(plt12 + plot_annotation(title = "Baseline correlation: normalization vs regression"))
 
-plt13 <- Plot_FacetBoxPlot(subset(baselines_plot, error_type == "rMSE"),
+plt13 <- Plot_FacetBoxPlot(subset(baselines_plot, error_type == "RMSE"),
                            x_axis = "normalization",
                            fill = NULL, #"regression_method",
                            fill_colors = NULL, #regression_colors,
                            facet_vars = "tissue",
                            color = "regression_method") +
   scale_color_manual(values = regression_colors)
-print(plt13 + plot_annotation(title = "Baseline rMSE: normalization vs regression"))
+print(plt13 + plot_annotation(title = "Baseline RMSE: normalization vs regression"))
 
-plt14 <- Plot_FacetBoxPlot(subset(baselines_plot, error_type == "mAPE"),
+plt14 <- Plot_FacetBoxPlot(subset(baselines_plot, error_type == "MAPE"),
                            x_axis = "normalization",
                            fill = NULL, #"regression_method",
                            fill_colors = NULL, #regression_colors,
                            facet_vars = "tissue",
                            color = "regression_method") +
   scale_color_manual(values = regression_colors)
-print(plt14 + plot_annotation(title = "Baseline mAPE: normalization vs regression"))
+print(plt14 + plot_annotation(title = "Baseline MAPE: normalization vs regression"))
 
 
 # Errors better than baseline only ---------------------------------------------
@@ -373,7 +368,7 @@ print(plt14 + plot_annotation(title = "Baseline mAPE: normalization vs regressio
 errs_better <- merge(errs_melt, baselines_plot,
                      by = c("tissue", "normalization", "regression_method", "error_type")) %>%
   group_by(error_type) %>%
-  mutate(better = if(unique(error_type) == "cor") (value >= max_val) else (value <= min_val)) #%>%
+  mutate(better = if(unique(error_type) == "Correlation") (value >= max_val) else (value <= min_val)) #%>%
 #subset(better == TRUE) %>%
 #select(-better, -median_val, -upper_quartile, -lower_quartile)
 
@@ -393,8 +388,10 @@ print(plt + plot_annotation(title = "Percent of parameters better than baseline"
 
 # Quality stats ----------------------------------------------------------------
 
+# TODO these fields don't exist in best_errs_plot, they need to come from the
+# quality stats script
 quality_stats <- subset(best_errs_plot, algorithm != "Baseline") %>%
-  select(-cor, -rMSE, -mAPE) %>%
+  select(-Correlation, -RMSE, -MAPE) %>%
   distinct()
 
 ## Bad inhibitory ratio, norm vs regression ------------------------------------
