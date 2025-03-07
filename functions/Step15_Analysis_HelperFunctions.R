@@ -85,41 +85,24 @@ Get_AllBestEstimatesAsDf <- function(bulk_datasets, granularity, metadata,
 # we're only interested in n_valid_results and n_possible_results, though this
 # function could be expanded.
 Get_AllQualityStatsAsDf <- function(bulk_datasets, granularity, n_cores = 2) {
-  file_list <- list.files(dir_top_parameters,
-                          pattern = paste0("(",
+  file_list <- list.files(dir_analysis,
+                          pattern = paste0("quality_stats_.*(",
                                            paste(bulk_datasets, collapse = "|"),
                                            ").*", granularity),
                           full.names = TRUE,
                           recursive = TRUE)
 
-  qstats_list <- mclapply(file_list, function(file) {
+  file_list_per_alg <- file_list[!grepl("all", file_list)]
+  file_list_all <- setdiff(file_list, file_list_per_alg)
+
+  qstats_list <- mclapply(file_list_per_alg, function(file) {
     data <- readRDS(file)
     print(basename(file))
 
-    file_id <- str_replace(basename(file), "top_parameters_", "") %>%
+    file_id <- str_replace(basename(file), "quality_stats_", "") %>%
       str_replace(".rds", "")
 
-    n_valid <- data.frame(n_valid_results = data$n_valid_results,
-                          n_possible_results = data$n_possible_results,
-                          algorithm = str_replace(file_id, "_.*", ""))
-
-    # Add file parameters to the data frame
-    if ("params" %in% names(data)) {
-      params <- FileParams_FromParams(data$params)
-    } else {
-      # Extract parameters from the file_id string. These str_replaces are so
-      # that normalizations like "log_cpm" and the granularity don't get split
-      # up by str_split.
-      file_id <- str_replace(file_id, "log_", "log.") %>%
-        str_replace("_class", ".class")
-
-      params <- as.data.frame(str_split(file_id, "_", simplify = TRUE))
-      colnames(params) <- Get_ParameterColumnNames()
-      params$granularity <- str_replace(params$granularity, "\\.", "_")
-      params$normalization <- str_replace(params$normalization, "\\.", "_")
-    }
-
-    n_valid <- cbind(n_valid, params)
+    # TODO
 
     return(n_valid)
   }, mc.cores = n_cores)
@@ -208,6 +191,45 @@ Get_TopRanked <- function(df, group_cols, n_top = 1, with_mean_rank = TRUE) {
 }
 
 
+Get_TopErrors <- function(errors_df, group_cols, n_cores, with_mean_rank = TRUE) {
+  # Special case: The signature doesn't matter when all percentages are zeros, so
+  # for the "zeros" baseline data we just subset to have one unique param_id per
+  # tissue/data transform. The zeros data also needs to be held out separately
+  # from the other baseline data and not combined with it at the top level.
+  best_zeros <- subset(errors_df, reference_data_name == "zeros") %>%
+    Get_TopRanked(group_cols, n_top = 1, with_mean_rank = with_mean_rank) %>%
+    mutate(signature = NA)
+
+  # Remove the "zeros" data from the best errors df for ranking
+  errors_df <- subset(errors_df, reference_data_name != "zeros")
+
+  top_errors <- errors_df %>%
+    Get_TopRanked(group_cols, n_top = 1, with_mean_rank = with_mean_rank) %>%
+    rbind(best_zeros)
+
+  error_stats <- top_errors %>%
+    Calculate_ErrorStats(group_cols)
+
+  # Break into smaller data frames for storage. These dfs currently have one "best"
+  # param ID per error metric, which results in a lot of duplicate rows with the
+  # same data where the param ID is the "best" for multiple error metrics. We
+  # save the info for mapping param ID -> best metric as one data frame, and the actual
+  # errors for each param ID/tissue in another
+  error_ranks <- top_errors %>%
+    select(param_id, tissue, signature, ends_with("rank"), type)
+
+  top_errors <- top_errors %>%
+    select(-type, -ends_with("rank")) %>%
+    distinct()
+
+  return(list(
+    "ranks" = error_ranks,
+    "errors" = top_errors,
+    "stats" = error_stats
+  ))
+}
+
+
 Find_BestParameters <- function(errs_df, group_cols, with_mean_rank = TRUE) {
   ranks <- Get_TopRanked(errs_df, group_cols, n_top = 1,
                          with_mean_rank = with_mean_rank)
@@ -263,22 +285,20 @@ Count_ParamFrequency <- function(df, groups, pivot_column, algorithm_specific = 
 }
 
 
-Get_AverageStats <- function(errs_df, ests_df, group_cols) {
+Get_AverageStats <- function(errs_df, ests_df, group_cols, with_mean_rank = TRUE) {
   # There can be up to 4 parameter sets per combination of data input
   # parameters, but sometimes a single parameter set was the best for multiple
   # error metrics and is only represented once in the df. When this happens, it
   # should be weighted higher when taking the average. Weights only matter for
-  # when there are 2 parameter sets, if there is 1 or 3 the average doesn't need
-  # to be weighted.
+  # when there is more than one parameter set.
 
   avg_id <- unique(errs_df$avg_id)
 
-  # Ensures that param_ids that are the best for multiple error metrics are
-  # represented that many times in the data frame. We also don't include the
-  # param set with the top mean_rank here
-  ranked <- Get_TopRanked(errs_df, group_cols, n_top = 1, with_mean_rank = FALSE)
+  if (!with_mean_rank) {
+    errs_df <- subset(errs_df, type != "best_mean")
+  }
 
-  avg_err <- ranked %>%
+  avg_err <- errs_df %>%
     group_by_at(c(group_cols, "avg_id")) %>%
     dplyr::summarize(across(c(cor, rMSE, mAPE),
                             list("mean" = ~ mean(.x),
@@ -286,12 +306,16 @@ Get_AverageStats <- function(errs_df, ests_df, group_cols) {
                      .groups = "drop") %>%
     as.data.frame()
 
-  weights <- as.data.frame(table(ranked$param_id))
+  weights <- as.data.frame(table(errs_df$param_id))
   colnames(weights) <- c("param_id", "weight")
 
-  ests_df <- subset(ests_df, param_id %in% ranked$param_id &
-                      tissue == unique(ranked$tissue)) %>%
-    dplyr::mutate(avg_id = avg_id)
+  ests_df <- subset(ests_df, param_id %in% errs_df$param_id &
+                      tissue == unique(errs_df$tissue)) %>%
+    melt(id.vars = c("param_id", "tissue", "sample", "diagnosis"),
+         variable.name = "celltype",
+         value.name = "percent") %>%
+    dplyr::mutate(avg_id = avg_id,
+                  algorithm = unique(errs_df$algorithm))
 
   cols_keep_ests <- setdiff(colnames(ests_df), c("percent", "param_id"))
 
@@ -302,15 +326,15 @@ Get_AverageStats <- function(errs_df, ests_df, group_cols) {
   # there is only 1 row. With the number of times this function gets called, it
   # can take a while to run on the full data set, and separating it out like
   # this speeds it up considerably even though it's messier.
-  if (nrow(ranked) == 1) {
+  if (nrow(weights) == 1) {
     mean_fun <- function(value, weight) { value }
     sd_fun <- function(value, weight) { 0 }
-  } else if (nrow(ranked) == 3) {
+  } else if (nrow(weights) == nrow(errs_df)) {
     mean_fun <- function(values, weights) { mean(values) }
     sd_fun <- function(values, weights) { sd(values) }
   } else { # any other number of rows
-    mean_fun <- wtd.mean
-    sd_fun <- function(value, weights) { sqrt(wtd.var(value, weights)) }
+    mean_fun <- Hmisc::wtd.mean
+    sd_fun <- function(value, weights) { sqrt(Hmisc::wtd.var(value, weights)) }
   }
 
   avg_est <- ests_df %>%
@@ -324,8 +348,8 @@ Get_AverageStats <- function(errs_df, ests_df, group_cols) {
 }
 
 
-Create_AveragesList <- function(errs_df, ests_df, group_cols, n_cores = 2) {
-  # Although we could do this in one lapply statement, subsetting best_errors
+Create_AveragesList <- function(errs_df, ests_df, group_cols, n_cores = 2, with_mean_rank = TRUE) {
+  # Although we could do this in one lapply statement, subsetting ests_df
   # takes a non-trivial amount of time because it's so large, so we do this to
   # break it into smaller pieces before having to call subset every time
   avg_list <- lapply(unique(errs_df$tissue), function(tiss) {
@@ -336,7 +360,7 @@ Create_AveragesList <- function(errs_df, ests_df, group_cols, n_cores = 2) {
       print(a_id)
       errs_filt <- subset(errs_tmp, avg_id == a_id)
 
-      return(Get_AverageStats(errs_filt, ests_tmp, group_cols))
+      return(Get_AverageStats(errs_filt, ests_tmp, group_cols, with_mean_rank))
     }, mc.cores = n_cores)
 
     return(list("avg_errors" = do.call(rbind, lapply(avg_tmp, "[[", "avg_error")),
