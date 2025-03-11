@@ -292,21 +292,31 @@ Paper_Renames <- function(df) {
   regression_renames <- c("none" = "No regression", "edger" = "edgeR",
                           "lme" = "LME", "dream" = "dream")
 
-  df <- df %>% mutate(
-    regression_method = regression_renames[regression_method],
-    normalization = str_replace(normalization, "counts", "cpm"),
-    normalization = str_replace(normalization, "log_", ""),
-    normalization = toupper(normalization),
-    algorithm = str_replace(algorithm, "Music", "MuSiC"),
-    data_transform = paste(normalization, "+", regression_method),
-  )
+  if (all(c("normalization", "regression_method") %in% colnames(df))) {
+    df <- df %>%
+      mutate(regression_method = regression_renames[regression_method],
+             normalization = str_replace(normalization, "counts", "cpm"),
+             normalization = str_replace(normalization, "log_", ""),
+             normalization = toupper(normalization),
+             data_transform = paste(normalization, "+", regression_method),)
+  }
+
+  if ("algorithm" %in% colnames(df)) {
+    df <- df %>%
+      mutate(algorithm = str_replace(algorithm, "Music", "MuSiC"))
+  }
 
   if ("tissue" %in% colnames(df)) {
-    df <- df %>% mutate(
-      tissue_full = paste(test_data_name, tissue),
-      tissue = factor(tissue, levels = c("CBE", "TCX", "FP", "IFG", "PHG",
-                                         "STG", "ACC", "DLPFC", "PCC"))
+    df <- df %>%
+      mutate(tissue = factor(tissue,
+                             levels = c("CBE", "TCX", "FP", "IFG", "PHG",
+                                        "STG", "ACC", "DLPFC", "PCC"))
     )
+
+    if ("test_data_name" %in% colnames(df)) {
+      df <- df %>%
+        mutate(tissue_full = paste(test_data_name, as.character(tissue)))
+    }
   }
 
   if ("cor" %in% colnames(df)) {
@@ -320,11 +330,15 @@ Paper_Renames <- function(df) {
 
   if ("type" %in% colnames(df)) {
     df <- df %>%
-      mutate(error_type = str_replace(type, "best_", "")) %>%
-      group_by(error_type) %>%
-      mutate(error_type = if (unique(error_type) == "cor") "Correlation"
-             else toupper(error_type)) %>%
-      ungroup()
+      mutate(error_type = str_replace(type, "best_", ""),
+             error_type = case_when(error_type == "cor" ~ "Correlation",
+                                    TRUE ~ toupper(error_type)))
+  }
+
+  if ("error_metric" %in% colnames(df)) {
+    df <- df %>%
+      mutate(error_metric = case_when(error_metric == "cor" ~ "Correlation",
+                                      TRUE ~ toupper(error_metric)))
   }
 
   return(df)
@@ -334,36 +348,35 @@ Paper_Renames <- function(df) {
 Load_BestErrors <- function(granularity) {
   best_errors_list <- readRDS(file.path(dir_analysis,
                                         str_glue("best_errors_{granularity}.rds")))
-  best_errors <- Paper_Renames(best_errors_list$best_errors_all)
-  best_errors_top <- Paper_Renames(best_errors_list$best_errors_toplevel)
+  best_errors <- Paper_Renames(best_errors_list$all$errors)
+  best_errors_top <- Paper_Renames(best_errors_list$toplevel$errors)
 
-  quality_stats <- subset(best_errors, algorithm != "Baseline") %>%
-    select(-Correlation, -RMSE, -MAPE)
+  #quality_stats <- Paper_Renames(best_errors_list$all$stats)
+  #quality_stats_top <- Paper_Renames(best_errors_list$toplevel$stats)
 
-  quality_stats_top <- subset(best_errors_top, algorithm != "Baseline") %>%
-    select(-Correlation, -RMSE, -MAPE)
-
-  quality_stats_all <- Paper_Renames(best_errors_list$quality_stats)
+  top3_by_tissue <- best_errors_list$top3_by_tissue %>%
+    Paper_Renames() %>%
+    subset(type != "best_mean") # drop mean rank if it exists TODO do we want to drop this?
 
   # There are up to 3 param_ids per set of input parameters. Get the best of each
   # error metric for each set
   best_errors <- best_errors  %>%
     group_by(tissue, tissue_full, reference_data_name, test_data_name, algorithm,
-             normalization, regression_method) %>%
+             normalization, regression_method, data_transform) %>%
     dplyr::summarize(Correlation = max(Correlation),
                      RMSE = min(RMSE),
                      MAPE = min(MAPE),
                      .groups = "drop") %>%
-    melt(variable.name = "error_type")
+    melt(variable.name = "error_metric")
 
   best_errors_top <- best_errors_top  %>%
-    group_by(tissue, tissue_full, reference_data_name, test_data_name, algorithm,
-             normalization, regression_method) %>%
+    group_by(tissue, tissue_full, test_data_name, algorithm,
+             normalization, regression_method, data_transform) %>%
     dplyr::summarize(Correlation = max(Correlation),
                      RMSE = min(RMSE),
                      MAPE = min(MAPE),
                      .groups = "drop") %>%
-    melt(variable.name = "error_type")
+    melt(variable.name = "error_metric")
 
   baselines <- subset(best_errors, algorithm == "Baseline")
   best_errors <- subset(best_errors, algorithm != "Baseline")
@@ -371,18 +384,14 @@ Load_BestErrors <- function(granularity) {
   baselines_top <- subset(best_errors_top, algorithm == "Baseline")
   best_errors_top <- subset(best_errors_top, algorithm != "Baseline")
 
-  ranked <- readRDS(file.path(dir_analysis, str_glue("ranked_errors_{granularity}.rds")))
-
-  ranked_df <- Paper_Renames(ranked$ranked_errors_best_signatures) %>%
-    subset(type != "best_mean") # drop mean_rank
-
-  best_dt <- Get_BestDataTransform(ranked_df)
+  best_dt <- Get_BestDataTransform(top3_by_tissue,
+                                   algorithms = c(unique(best_errors$algorithm), "Baseline"))
 
   items <- list(best_errors, best_errors_top, baselines, baselines_top,
-    ranked_df, best_dt, quality_stats, quality_stats_top, quality_stats_all)
+    top3_by_tissue, best_dt) #, quality_stats, quality_stats_top)
   names(items) <- paste(c("best_errors", "best_errors_top", "baselines",
-                          "baselines_top","ranked_df", "best_dt",
-                          "quality_stats", "quality_stats_top", "quality_stats_all"),
+                          "baselines_top","top3_by_tissue", "best_dt"),
+                          #"quality_stats", "quality_stats_top"),
                         str_replace(granularity, "_class", ""),
                         sep = "_")
 
@@ -390,37 +399,58 @@ Load_BestErrors <- function(granularity) {
 }
 
 
-Load_Significance <- function(granularity, p_sig = 0.01, log2_cap = 1) {
-  significance <- readRDS(file.path(dir_analysis,
-                                    str_glue("significance_lists_{granularity}.rds")))
+Load_QualityStats <- function(bulk_datasets, granularity) {
+  qstats_list <- lapply(bulk_datasets, function(bulk) {
+    readRDS(file.path(dir_analysis,
+                      str_glue("quality_stats_all_{bulk}_{granularity}.rds")))
+  })
 
-  sig_toplevel <- Paper_Renames(do.call(rbind, significance$significance_props_toplevel))
+  # qstats_list will be a list of lists, so we combine inner lists of the same
+  # name from each qstats_list item
+  qstats_list_final <- lapply(names(qstats_list[[1]]), function(item_name) {
+    List_to_DF(qstats_list, item_name) %>%
+      Paper_Renames()
+  })
 
+  names(qstats_list_final) <- names(qstats_list[[1]])
+
+  return(qstats_list_final)
+}
+
+
+Count_Grouped <- function(ranked_df, group_cols) {
+  ranked_df %>%
+    group_by_at(group_cols) %>%
+    dplyr::count() %>%
+    dplyr::rename(count = n)
+}
+
+
+Load_Significance <- function(significance_df, best_dt, p_sig = 0.01, log2_cap = 1) {
   # Fill in missing data with NA
-  params <- expand.grid(celltype = unique(sig_toplevel$celltype),
-                        tissue = unique(sig_toplevel$tissue),
-                        algorithm = unique(sig_toplevel$algorithm),
-                        normalization = unique(sig_toplevel$normalization),
-                        regression_method = unique(sig_toplevel$regression_method))
+  params <- expand.grid(celltype = unique(significance_df$celltype),
+                        tissue = unique(significance_df$tissue),
+                        algorithm = unique(significance_df$algorithm),
+                        normalization = unique(significance_df$normalization),
+                        regression_method = unique(significance_df$regression_method))
 
-  sig_toplevel <- merge(sig_toplevel, params,
-                        by = colnames(params),
-                        all = TRUE)
-  sig_toplevel$p_adj_thresh[is.na(sig_toplevel$p_adj_thresh)] <- 1
+  significance_df <- merge(significance_df, params,
+                           by = colnames(params),
+                           all = TRUE)
+  significance_df$p_adj_thresh[is.na(significance_df$p_adj_thresh)] <- 1
 
-  sig_toplevel$data_transform <- paste(sig_toplevel$normalization, "+",
-                                       sig_toplevel$regression_method)
+  # Fill in any NA data transforms created by missing data
+  significance_df$data_transform <- paste(significance_df$normalization, "+",
+                                          significance_df$regression_method)
 
   if (granularity == "sub_class") {
     ct_order <- c("Astrocyte", "Endothelial", paste0("Exc.", 1:10),
                   paste0("Inh.", 1:7), "Microglia", "Oligodendrocyte", "OPC",
                   "Pericyte", "VLMC")
-    sig_toplevel$celltype <- factor(sig_toplevel$celltype, levels = ct_order)
+    significance_df$celltype <- factor(significance_df$celltype, levels = ct_order)
   }
 
-  sig_final <- merge(sig_toplevel, best_dt_broad,
-                     by = c("tissue", "algorithm", "data_transform"),
-                     all.x = FALSE)
+  sig_final <- merge(significance_df, best_dt)
 
   # Cap log2_fc values to +/- 1 so color scaling is better. Need to account for
   # Inf and -Inf values. Set non-significant log2 values to NA.

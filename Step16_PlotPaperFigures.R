@@ -8,7 +8,7 @@ library(reshape2)
 library(patchwork)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
-source(file.path("functions", "Step14_Analysis_HelperFunctions.R"))
+source(file.path("functions", "Step15_Analysis_HelperFunctions.R"))
 source(file.path("functions", "Step15_Plotting_HelperFunctions.R"))
 
 options(scipen = 999)
@@ -17,8 +17,10 @@ bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
 
 best_errors_list_broad <- Load_BestErrors("broad_class")
 best_errors_list_sub <- Load_BestErrors("sub_class")
+quality_stats_broad <- Load_QualityStats(bulk_datasets, "broad_class")
+quality_stats_sub <- Load_QualityStats(bulk_datasets, "sub_class")
 
-# Unpack variables into environment for readability
+# Unpack error variables into environment for readability
 list2env(best_errors_list_broad, globalenv())
 list2env(best_errors_list_sub, globalenv())
 
@@ -68,21 +70,21 @@ pdf(file.path(dir_figures,
 
 baselines_plot_tissue <- baselines_broad %>%
   subset(reference_data_name != "All zeros") %>%
-  Create_BoxStats(c("tissue_full", "error_type")) %>%
-  group_by(error_type) %>%
-  mutate(best_val = if (unique(error_type) == "Correlation") max_val else min_val) %>%
+  Create_BoxStats(c("tissue_full", "error_metric")) %>%
+  group_by(error_metric) %>%
+  mutate(best_val = if (unique(error_metric) == "Correlation") max_val else min_val) %>%
   ungroup()
 
 errs_box_noalg <- best_errors_broad %>%
-  Create_BoxStats(c("tissue_full", "error_type",
+  Create_BoxStats(c("tissue_full", "error_metric",
                     "normalization", "regression_method"))
 
 cap <- "Show correlation only, for all tissues. RMSE and MAPE graphs would be in supplementary."
-plt1Bv1 <- ggplot(subset(errs_box_noalg, error_type == "Correlation"),
+plt1Bv1 <- ggplot(subset(errs_box_noalg, error_metric == "Correlation"),
                   aes(x = normalization, fill = regression_method,
                       y = median_val, ymin = min_val, ymax = max_val)) +
   geom_hline(aes(yintercept = best_val, color = "Baseline"),
-             data = subset(baselines_plot_tissue, error_type == "Correlation"),
+             data = subset(baselines_plot_tissue, error_metric == "Correlation"),
              linetype = "twodash") +
   geom_crossbar(position = position_dodge2(padding = 0),
                 fatten = 1.5, width = 0.75) +
@@ -98,12 +100,12 @@ plt1Bv1 <- ggplot(subset(errs_box_noalg, error_type == "Correlation"),
 cap <- paste("Original, but cut down: show 3 representative tissues for correlation\n",
              "only and kick the rest to supplementary.The sub class graph looks\n",
              "nearly identical so I don't think it's necessary to show both.")
-plt1Bv2 <- ggplot(subset(errs_box_noalg, error_type == "Correlation" &
+plt1Bv2 <- ggplot(subset(errs_box_noalg, error_metric == "Correlation" &
                            tissue_full %in% tissues_use_full),
                   aes(x = normalization, fill = regression_method,
                       y = median_val, ymin = min_val, ymax = max_val)) +
   geom_hline(aes(yintercept = best_val, color = "Baseline"),
-             data = subset(baselines_plot_tissue, error_type == "Correlation" &
+             data = subset(baselines_plot_tissue, error_metric == "Correlation" &
                              tissue_full %in% tissues_use_full),
              linetype = "twodash") +
   geom_crossbar(position = position_dodge2(padding = 0),
@@ -141,7 +143,7 @@ plt1Bv3 <- ggplot(subset(errs_box_noalg,
   theme_bw() +
   scale_fill_manual(values = regression_colors) +
   scale_color_manual(values = "slategray") +
-  facet_grid(error_type ~ tissue_full, scales = "free", switch = "y") +
+  facet_grid(error_metric ~ tissue_full, scales = "free", switch = "y") +
   labs(fill = "Regression Method", color = "", caption = cap) +
   xlab("Normalization Strategy") +
   ylab(NULL) +
@@ -160,9 +162,9 @@ cap <- paste("Took the top 3 scoring estimates for each tissue and error metric\
              "few tissues, so these could possibly go in supplemental if the main\n",
              "figure is pooled data.")
 
-ranked_df_all <- rbind(ranked_df_broad, ranked_df_sub)
+ranked_df_all <- rbind(top3_by_tissue_broad, top3_by_tissue_sub)
 
-plt1Cav1 <- ggplot(Count_Grouped(ranked_df_broad, c("tissue", "normalization", "regression_method")),
+plt1Cav1 <- ggplot(Count_Grouped(top3_by_tissue_broad, c("tissue", "normalization", "regression_method")),
                    aes(x = normalization, y = regression_method, color = count, size = count)) +
   geom_count() + theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
@@ -217,7 +219,7 @@ cap <- paste("Took the top 3 scoring estimates for each tissue and error metric\
              "(9 total per tissue) and counted how many times each reference\n",
              "appeared. This can also be changed to a 3x3 grid. Broad class and\n",
              "sub class look nearly identical, should sub class go in supplemental?")
-plt1Dv1a <- ggplot(Count_Grouped(ranked_df_broad, c("tissue", "reference_data_name")),
+plt1Dv1a <- ggplot(Count_Grouped(top3_by_tissue_broad, c("tissue", "reference_data_name")),
                    aes(x = tissue, y = reference_data_name, color = count, size = count)) +
   geom_count() + theme_classic() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
@@ -243,7 +245,7 @@ plt1Dv1b <- ggplot(Count_Grouped(ranked_df_sub, c("tissue", "reference_data_name
   ggtitle(NULL, subtitle = "Sub class") +
   guides(size = "none")
 
-ranked_all <- rbind(ranked_df_broad, ranked_df_sub)
+ranked_all <- rbind(top3_by_tissue_broad, ranked_df_sub)
 
 cap <- "Pooled results for broad and sub class"
 plt1Dv2 <- ggplot(Count_Grouped(ranked_all, c("tissue", "reference_data_name")),
@@ -260,16 +262,18 @@ plt1Dv2 <- ggplot(Count_Grouped(ranked_all, c("tissue", "reference_data_name")),
   guides(size = "none")
 
 print(plt1Dv1a + plt1Dv1b)
+print(plt1Dv2)
 
 
 # Figure 1E --------------------------------------------------------------------
 
-total_valid_broad <- quality_stats_all_broad %>%
+# TODO calculate this in Step 15
+total_valid_broad <- quality_stats_broad$n_valid_by_algorithm %>%
   subset(algorithm != "Baseline") %>%
   group_by(algorithm) %>%
-  summarize(n_valid_results = sum(n_valid_results),
-            n_possible_results = sum(n_possible_results),
-            pct_valid_results = n_valid_results / n_possible_results,
+  summarize(n_valid = sum(n_valid),
+            n_possible = sum(n_possible),
+            pct_valid = n_valid / n_possible,
             granularity = "Broad class")
 
 total_valid_sub <- quality_stats_all_sub %>%
@@ -285,7 +289,7 @@ total_valid_sub$pct_valid_results[total_valid_sub$pct_valid_results < 0.01] <- 0
 
 cap = "Graphs separated by class"
 plt1Ev1a <- ggplot(total_valid_broad,
-                   aes(x = algorithm, y = pct_valid_results, fill = algorithm)) +
+                   aes(x = algorithm, y = pct_valid, fill = algorithm)) +
   geom_col() + theme_bw() +
   scale_fill_manual(values = algorithm_colors) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
@@ -374,7 +378,7 @@ cap <- paste("Took the top 3 scoring estimates for each tissue and error metric\
              "(9 total per tissue) and counted how many times each algorithm\n",
              "appeared. This can also be changed to a 3x3 grid.")
 
-plt2Av1a <- ggplot(Count_Grouped(ranked_df_broad, c("tissue", "algorithm", "error_type")),
+plt2Av1a <- ggplot(Count_Grouped(top3_by_tissue_broad, c("tissue", "algorithm", "error_type")),
                    aes(x = error_type, y = algorithm, color = count, size = count)) +
   geom_count() + theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
@@ -390,7 +394,7 @@ plt2Av1a <- ggplot(Count_Grouped(ranked_df_broad, c("tissue", "algorithm", "erro
           subtitle = "Broad class")
 
 # Sub class is missing several algorithms that dropped out, fill these in
-alg_info <- Count_Grouped(ranked_df_broad, c("tissue", "algorithm", "error_type")) %>%
+alg_info <- Count_Grouped(top3_by_tissue_broad, c("tissue", "algorithm", "error_type")) %>%
   select(tissue, algorithm)
 alg_sub <- Count_Grouped(ranked_df_sub, c("tissue", "algorithm", "error_type")) %>%
   merge(alg_info, by = c("tissue", "algorithm"), all = TRUE)
@@ -412,7 +416,7 @@ plt2Av1b <- ggplot(alg_sub,
 
 cap <- paste("Original: get rid of error metric to make the graph simpler.\n",
              "Thematically this fits better in Figure 1 but there wasn't room.")
-plt2Av2a <- ggplot(Count_Grouped(ranked_df_broad, c("tissue", "algorithm")),
+plt2Av2a <- ggplot(Count_Grouped(top3_by_tissue_broad, c("tissue", "algorithm")),
                    aes(x = tissue, y = algorithm, color = count, size = count)) +
   geom_count() + theme_classic() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
@@ -425,7 +429,7 @@ plt2Av2a <- ggplot(Count_Grouped(ranked_df_broad, c("tissue", "algorithm")),
   ggtitle("Figure 2A v2: Best algorithm per tissue", subtitle = "Broad class")
 
 # Sub class is missing several algorithms that dropped out, fill these in
-alg_info <- Count_Grouped(ranked_df_broad, c("tissue", "algorithm")) %>%
+alg_info <- Count_Grouped(top3_by_tissue_broad, c("tissue", "algorithm")) %>%
   select(tissue, algorithm)
 alg_sub <- Count_Grouped(ranked_df_sub, c("tissue", "algorithm")) %>%
   merge(alg_info, by = c("tissue", "algorithm"), all = TRUE)
@@ -450,50 +454,46 @@ print(plt2Av1a / plt2Av1b / (plt2Av2 + plot_layout(widths = c(1,1)))) # + plot_l
 
 # Figure 2B --------------------------------------------------------------------
 
+# TODO none of this is right
+
 baselines_plot <- baselines_broad %>%
   subset(reference_data_name != "All zeros") %>%
   Create_BoxStats(grouping_cols = c("tissue_full", "normalization",
-                                    "regression_method", "error_type"))
+                                    "regression_method", "error_metric"))
 
-errs_better <- merge(best_errors_broad, baselines_plot,
-                     by = c("tissue_full", "normalization", "regression_method",
-                            "error_type")) %>%
-  group_by(error_type) %>%
-  mutate(better = if(unique(error_type) == "Correlation") (value > max_val) else (value < min_val))
+errs_better <- merge(best_errors_broad, baselines_plot) %>%
+  mutate(better = case_when(error_metric == "Correlation" ~ value > max_val,
+                            TRUE ~ value < min_val))
 
 better_stats <- errs_better %>%
   group_by(tissue_full, algorithm) %>%
   dplyr::summarize(count = n(),
-                   pct_better_than_baseline = sum(better) / n(),
+                   pct_better_than_baseline = sum(better) / count,
                    .groups = "drop")
 
-baselines_plot_filt <- baselines_top_broad %>%
+baselines_plot_filt <- baselines_broad %>%
   subset(reference_data_name != "All zeros") %>%
-  mutate(data_transform = paste(normalization, "+", regression_method)) %>%
-  merge(best_dt_broad, by = c("tissue", "algorithm", "data_transform"), all = FALSE) %>%
+  merge(best_dt_broad) %>%
   Create_BoxStats(grouping_cols = c("tissue_full", "normalization",
-                                    "regression_method", "error_type"))
+                                    "regression_method", "error_metric"))
 
 errs_better_filt <- best_errors_top_broad %>%
-  mutate(data_transform = paste(normalization, "+", regression_method)) %>%
-  merge(best_dt_broad, by = c("tissue", "algorithm", "data_transform"), all = FALSE) %>%
-  merge(baselines_plot_filt,
-        by = c("tissue_full", "error_type")) %>%
-  group_by(error_type) %>%
-  mutate(better = if(unique(error_type) == "Correlation") (value > max_val) else (value < min_val))
+  merge(best_dt_broad) %>%
+  merge(baselines_plot_filt) %>%
+  mutate(better = case_when(error_metric == "Correlation" ~ value > max_val,
+                            TRUE ~ value < min_val))
 
 better_stats_filt <- errs_better_filt %>%
   group_by(tissue_full, algorithm) %>%
   dplyr::summarize(count = n(),
-                   pct_better_than_baseline = sum(better) / n(),
+                   pct_better_than_baseline = sum(better) / count,
                    .groups = "drop")
 
 baselines_plot_filt_sub <- baselines_top_sub %>%
-  subset(reference_data_name != "All zeros") %>%
-  mutate(data_transform = paste(normalization, "+", regression_method)) %>%
-  merge(best_dt_broad, by = c("tissue", "algorithm", "data_transform"), all = FALSE) %>%
+  #subset(reference_data_name != "All zeros") %>%
+  merge(best_dt_broad) %>%
   Create_BoxStats(grouping_cols = c("tissue_full", "normalization",
-                                    "regression_method", "error_type"))
+                                    "regression_method", "error_metric"))
 
 errs_better_filt_sub <- best_errors_top_sub %>%
   mutate(data_transform = paste(normalization, "+", regression_method)) %>%
@@ -551,7 +551,7 @@ plt2Bv2 <- ggplot(subset(better_stats_filt, tissue_full %in% tissues_use_full),
 better_stats_filt2 <- errs_better_filt %>%
   group_by(algorithm) %>%
   dplyr::summarize(count = n(),
-                   pct_better_than_baseline = sum(better) / n(),
+                   pct_better_than_baseline = sum(better) / count,
                    granularity = "Broad class",
                    .groups = "drop")
 
@@ -756,7 +756,9 @@ pdf(file.path(dir_figures,
 
 # Figure 3A --------------------------------------------------------------------
 
-significance_broad <- Load_Significance("broad_class", p_sig = 0.01, log2_cap = 1)
+significance_broad <- Load_Significance(quality_stats_broad$significance_toplevel,
+                                        best_dt_broad,
+                                        p_sig = 0.01, log2_cap = 1)
 
 plot_limit <- c(-1, 1)
 n_cols <- 4 #if (granularity == "broad_class") 4 else 6

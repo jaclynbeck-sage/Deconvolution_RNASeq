@@ -17,7 +17,7 @@ library(parallel)
 source(file.path("functions", "General_HelperFunctions.R"))
 source(file.path("functions", "Step15_Analysis_HelperFunctions.R"))
 
-granularity <- "broad_class"
+granularity <- "sub_class"
 bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
 
 n_cores <- 12
@@ -36,6 +36,11 @@ best_errors_step14 <- Get_AllBestErrorsAsDf(bulk_datasets, granularity, n_cores)
   subset(signature == reference_data_name | algorithm == "Baseline") %>%
   subset(tissue != "All")
 
+# Used for plotting, not for analysis
+top3_by_tissue <- best_errors_step14 %>%
+  subset(algorithm != "Baseline") %>%
+  Get_TopRanked(group_cols = "tissue", n_top = 3, with_mean_rank = TRUE)
+
 # Group by all parameters common to all algorithms (ignoring input type), and
 # then create a top-level grouping that also ignores which single cell reference
 # was used.
@@ -45,7 +50,8 @@ group_cols_toplevel <- setdiff(group_cols, "reference_data_name")
 
 top_errors <- list(
   "all" = Get_TopErrors(best_errors_step14, group_cols, n_cores, with_mean_rank = FALSE),
-  "toplevel" = Get_TopErrors(best_errors_step14, group_cols_toplevel, n_cores, with_mean_rank = FALSE)
+  "toplevel" = Get_TopErrors(best_errors_step14, group_cols_toplevel, n_cores, with_mean_rank = FALSE),
+  "top3_by_tissue" = top3_by_tissue
 )
 
 # This doesn't necessarily need to be true but I want to know if it happens
@@ -103,9 +109,8 @@ for (bulk_dataset in bulk_datasets) {
       # exist. Create an abbreviated quality stats file for the sole purpose of
       # keeping track of number of failures.
       if (length(err_f_step11) != 1 || length(best_est_f_step13) != 1) {
-        print(str_glue(
-          paste("No valid error or best estimates files found for",
-                "{basename(est_f)}. Returning abbreviated stats data.")))
+        print(str_glue("No valid error or best estimates files found for ",
+                       "{basename(est_f)}. Returning abbreviated stats data."))
 
         n_valid_results <- data.frame(n_valid = 0,
                                       n_possible = length(est_list_step09),
@@ -134,9 +139,8 @@ for (bulk_dataset in bulk_datasets) {
                                   top_errors$all$errors$param_id)
 
       if (length(best_param_ids) == 0) {
-        print(str_glue(
-          paste("No estimates from {basename(est_f)} were included in the best",
-                "error set. Returning abbreviated stats data.")))
+        print(str_glue("No estimates from {basename(est_f)} were included in ",
+                       "the best error set. Returning abbreviated stats data."))
         return(list("n_valid_results" = n_valid_results))
       }
 
@@ -217,6 +221,12 @@ for (bulk_dataset in bulk_datasets) {
 
     best_ests <- List_to_DF(file_qstats, "best_estimates")
     best_params <- List_to_DF(file_qstats, "best_params")
+
+    if (is.null(best_ests) || is.null(best_params)) {
+      print(str_glue("No valid data found for {bulk_dataset} / {algorithm}. ",
+                     "Returning abbreviated stats data."))
+      return(list("n_valid_results" = List_to_DF(file_qstats, "n_valid_results")))
+    }
 
     ## Estimate stats ----------------------------------------------
     # For best estimates
@@ -314,7 +324,7 @@ for (bulk_dataset in bulk_datasets) {
               .groups = "drop")
 
   n_valid_by_algorithm <- n_valid %>%
-    group_by(algorithm, granularity) %>%
+    group_by(algorithm, test_data_name, granularity) %>%
     summarize(n_valid = sum(n_valid),
               n_possible = sum(n_possible),
               pct_valid = n_valid / n_possible,
@@ -360,19 +370,18 @@ for (bulk_dataset in bulk_datasets) {
   param_frequency <- List_to_DF(param_frequency_list) %>%
     rbind(List_to_DF(alg_qstats_all, "param_frequency"))
 
-
-  # Percent of errors better than baseline -------------------------------------
-  # Using top-level data
-
   best_params_toplevel <- lapply(alg_qstats_all[setdiff(algorithms, "Baseline")],
                                  "[[", "best_params_toplevel") %>%
     lapply(select_at, cols_keep) %>%  # subset to only cols_keep columns
     List_to_DF()
 
-  baseline_bests <- top_errors$toplevel$errors %>%
-    merge(alg_qstats_all$Baseline$best_params_toplevel) %>%
-    subset(reference_data_name != "zeros") %>%
-    group_by(tissue, normalization, regression_method) %>%
+
+  # Percent of errors better than baseline -------------------------------------
+  # Using top-level data
+  # TODO stuck here
+  baseline_bests <- top_errors$all$errors %>%
+    subset(algorithm == "Baseline" & reference_data_name != "zeros") %>%
+    group_by(tissue, test_data_name, normalization, regression_method) %>%
     summarize(cor = max(cor),
               rMSE = min(rMSE),
               mAPE = min(mAPE),
@@ -380,22 +389,26 @@ for (bulk_dataset in bulk_datasets) {
     pivot_longer(cols = c(cor, rMSE, mAPE), names_to = "error_metric",
                  values_to = "baseline_value")
 
-
-  # TODO this isn't the same calculation being done in Step 16 ?
   better_than_baseline <- top_errors$toplevel$errors %>%
-    merge(best_params_toplevel) %>%
-    pivot_longer(cols = c(cor, rMSE, mAPE), names_to = "error_metric") %>%
-    # "counts" should be in the same category as "cpm", all "log_X" normalizations
-    # should be in the same category as their linear counterparts
+    subset(algorithm != "Baseline") %>%
     mutate(normalization = str_replace(normalization, "counts", "cpm"),
            normalization = str_replace(normalization, "log_", "")) %>%
+    pivot_longer(cols = c(cor, rMSE, mAPE), names_to = "error_metric",
+                 values_to = "value") %>%
     merge(baseline_bests) %>%
-    group_by(error_metric) %>%
-    mutate(better = if(unique(error_metric) == "cor")
-      (value > baseline_value) else (value < baseline_value)) %>%
-    group_by(tissue, algorithm) %>%
+    mutate(better = case_when(error_metric == "cor" ~ value > baseline_value,
+                              TRUE ~ value < baseline_value))
+
+  better_than_baseline_all <- better_than_baseline %>%
+    group_by(tissue, test_data_name, algorithm) %>%
     dplyr::summarize(count = n(),
-                     pct_better_than_baseline = sum(better) / n(),
+                     pct_better_than_baseline = sum(better) / count,
+                     .groups = "drop")
+
+  better_than_baseline_dt <- better_than_baseline %>%
+    group_by(tissue, test_data_name, algorithm, normalization, regression_method) %>%
+    dplyr::summarize(count = n(),
+                     pct_better_than_baseline = sum(better) / count,
                      .groups = "drop")
 
 
@@ -453,7 +466,10 @@ for (bulk_dataset in bulk_datasets) {
                "top3_errors" = top3,
                "parameter_frequency" = param_frequency,
                "best_baselines" = baseline_bests,
-               "better_than_baseline" = better_than_baseline),
+               "better_than_baseline_all" = better_than_baseline_all,
+               "better_than_baseline_by_dt" = better_than_baseline_dt,
+               "significance_all" = List_to_DF(mean_props_all),
+               "significance_toplevel" = List_to_DF(mean_props_toplevel)),
           file.path(dir_analysis,
                     str_glue("quality_stats_all_{bulk_dataset}_{granularity}.rds")))
 }

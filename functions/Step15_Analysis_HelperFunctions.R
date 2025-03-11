@@ -132,24 +132,36 @@ Find_BestSignature <- function(errs_df) {
 }
 
 
-Get_BestDataTransform <- function(ranked_df) {
-  best_dt <- Count_ParamFrequency(ranked_df, c("tissue", "data_transform")) %>%
-    group_by(tissue) %>%
-    slice_max(order_by = count, with_ties = FALSE) %>%
-    mutate(normalization = str_replace(data_transform, " \\+.*", ""),
-           regression_method = str_replace(data_transform, ".*\\+ ", "")) %>%
-    as.data.frame()
+Get_BestDataTransform <- function(ranked_df, algorithms) {
+  params <- ranked_df %>%
+    select(tissue, normalization, regression_method, data_transform) %>%
+    distinct()
+
+  best_dt <- ranked_df %>%
+    group_by(tissue, data_transform) %>%
+    dplyr::summarize(count = n(),
+                     mean_rank = mean(mean_rank),
+                     .groups = "drop_last") %>%
+    # First, pick the data transform(s) that show up the most in the top3
+    slice_max(order_by = count, with_ties = TRUE) %>%
+    # If there's a tie, use the transform with the lowest mean rank
+    slice_min(order_by = mean_rank, with_ties = FALSE) %>%
+    merge(params)
 
   best_dt <- tidyr::expand_grid(best_dt,
-                                algorithm = c(unique(ranked_df$algorithm), "Baseline"))
+                                algorithm = algorithms)
+
+  # MuSiC always has to use CPM (counts). CibersortX uses CPM when the
+  # normalization is TMM since TMM isn't a valid normalization in CibersortX.
   best_dt$normalization[best_dt$algorithm == "MuSiC"] <- "CPM"
   best_dt$normalization[best_dt$normalization == "TMM" &
                           best_dt$algorithm == "CibersortX"] <- "CPM"
 
   best_dt <- best_dt %>%
+    # Fix the data_transform field for MuSiC and CibersortX
     mutate(data_transform = paste(normalization, "+", regression_method)) %>%
-    select(tissue, algorithm, data_transform) %>%
-    distinct()
+    select(-count, -mean_rank) %>%
+    as.data.frame()
 
   return(best_dt)
 }
@@ -197,8 +209,9 @@ Get_TopErrors <- function(errors_df, group_cols, n_cores, with_mean_rank = TRUE)
   # tissue/data transform. The zeros data also needs to be held out separately
   # from the other baseline data and not combined with it at the top level.
   best_zeros <- subset(errors_df, reference_data_name == "zeros") %>%
-    Get_TopRanked(group_cols, n_top = 1, with_mean_rank = with_mean_rank) %>%
-    mutate(signature = NA)
+    mutate(signature = NA) %>%
+    distinct() %>%
+    Get_TopRanked(group_cols, n_top = 1, with_mean_rank = with_mean_rank)
 
   # Remove the "zeros" data from the best errors df for ranking
   errors_df <- subset(errors_df, reference_data_name != "zeros")
