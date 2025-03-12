@@ -529,16 +529,15 @@ Load_PreprocessedData <- function(dataset_name, remove_excluded = TRUE) {
 #            also be NULL instead of a list. If it's a list, it must contain an
 #            entry called "params", which is a single-row dataframe containing
 #            the parameters used to generate this result.
-#   algorithm = the name of the algorithm to pre-pend to the file name
 #
 # Returns:
 #   nothing
-Save_AlgorithmIntermediate <- function(result, algorithm) {
+Save_AlgorithmIntermediate <- function(result) {
   if (!is.null(result)) {
     filename <- paste(result$params, collapse = "_")
     saveRDS(result,
             file.path(dir_estimates_tmp,
-                      paste0(algorithm, "_", filename, ".rds")))
+                      paste0(filename, ".rds")))
   }
 }
 
@@ -549,17 +548,16 @@ Save_AlgorithmIntermediate <- function(result, algorithm) {
 # result.
 #
 # Arguments:
-#   algorithm = the name of the algorithm to pre-pend to the file name
 #   params = a named vector or single-row dataframe with the parameters used to
 #            generate the result
 #
 # Returns:
 #   a result object from one of the algorithms if a file matching the input
 #   parameters exists, or NULL if not
-Load_AlgorithmIntermediate <- function(algorithm, params) {
+Load_AlgorithmIntermediate <- function(params) {
   filename <- paste(params, collapse = "_")
   filename <- file.path(dir_estimates_tmp,
-                        paste0(paste0(algorithm, "_", filename, ".rds")))
+                        paste0(filename, ".rds"))
   if (file.exists(filename)) {
     return(readRDS(filename))
   }
@@ -586,7 +584,7 @@ Load_AlgorithmIntermediate <- function(algorithm, params) {
 #   Nothing
 Save_AlgorithmOutputList <- function(output_list, algorithm, test_dataset,
                                      name_base, top_params = FALSE) {
-  list_file_format <- paste0("estimates_{algorithm}_{name_base}.rds")
+  list_file_name <- str_glue("estimates_{name_base}.rds")
 
   if (top_params) {
     dir_alg <- file.path(dir_top_estimates, test_dataset, algorithm)
@@ -599,7 +597,7 @@ Save_AlgorithmOutputList <- function(output_list, algorithm, test_dataset,
   }
 
   saveRDS(output_list,
-          file = file.path(dir_alg, str_glue(list_file_format)))
+          file = file.path(dir_alg, list_file_name))
 }
 
 
@@ -653,18 +651,26 @@ Load_AlgorithmOutputList <- function(algorithm, reference_dataset, test_dataset,
 #   algorithm = the name of the algorithm
 #   params_data = a one-row dataframe or named list of parameters that were
 #                 used to generate the estimates for this list
+#   top_params = if TRUE, errors will be saved to the "best errors" directory,
+#                otherwise if FALSE they will be saved to the normal errors
+#                directory.
 #
 # Returns:
 #   Nothing
-Save_ErrorList <- function(dataset_name, error_list, algorithm, params_data) {
+Save_ErrorList <- function(dataset_name, error_list, algorithm, params_data,
+                           top_params = FALSE) {
   name_base <- paste(params_data, collapse = "_")
-  error_file_format <- paste0("errors_{algorithm}_{name_base}.rds")
+  error_file_name <- str_glue("errors_{name_base}.rds")
 
-  dir_errors_alg <- file.path(dir_errors, dataset_name, algorithm)
+  if (top_params) {
+    dir_errors_alg <- file.path(dir_best_errors, dataset_name, algorithm)
+  } else {
+    dir_errors_alg <- file.path(dir_errors, dataset_name, algorithm)
+  }
   dir.create(dir_errors_alg, recursive = TRUE, showWarnings = FALSE)
 
   saveRDS(error_list,
-          file = file.path(dir_errors_alg, str_glue(error_file_format)))
+          file = file.path(dir_errors_alg, error_file_name))
 }
 
 
@@ -672,19 +678,27 @@ Save_ErrorList <- function(dataset_name, error_list, algorithm, params_data) {
 # algorithm for a single data set.
 #
 # Arguments:
-#   algorithm = the name of the algorithm
 #   params = a one-row dataframe or named list of parameters used to generate
 #            the file
+#   top_params = if TRUE, errors will be loaded from the "best errors" directory,
+#                otherwise if FALSE they will be loaded from the normal errors
+#                directory.
 #
 # Returns:
 #   a list of errors containing entries for mean errors, errors by sample,
 #   parameters, and some statistics about the errors. If the error file doesn't
 #   exist, the function returns NULL.
-Load_ErrorList <- function(algorithm, params) {
+Load_ErrorList <- function(params, top_params = FALSE) {
   name_base <- paste(params, collapse = "_")
-  error_file_format <- paste0("errors_{algorithm}_{name_base}.rds")
-  error_file <- file.path(dir_errors, params$test_data_name, algorithm,
-                          str_glue(error_file_format))
+  error_file_name <- str_glue("errors_{name_base}.rds")
+
+  if (top_params) {
+    error_file <- file.path(dir_best_errors, params$test_data_name,
+                            params$algorithm, error_file_name)
+  } else {
+    error_file <- file.path(dir_errors, params$test_data_name, params$algorithm,
+                            error_file_name)
+  }
 
   if (!file.exists(error_file)) {
     #message(paste(error_file, "doesn't exist!"))
@@ -726,15 +740,14 @@ Get_ErrorFiles <- function(bulk_dataset, algorithm, granularity, reference_datas
 #            deconvolution algorithms plus the error calculations. It must
 #            contain an entry called "params", which is a single-row dataframe
 #            containing the parameters used to generate this result.
-#   algorithm = the name of the algorithm to pre-pend to the file name
 #
 # Returns:
 #   nothing
-Save_ErrorIntermediate <- function(error_obj, algorithm) {
+Save_ErrorIntermediate <- function(error_obj) {
   params <- error_obj$params %>% select(-total_markers_used)
   filename <- paste(params, collapse = "_")
   saveRDS(error_obj,
-          file.path(dir_errors_tmp, str_glue("{algorithm}_{filename}.rds")))
+          file.path(dir_errors_tmp, paste0(filename, ".rds")))
 }
 
 
@@ -744,7 +757,6 @@ Save_ErrorIntermediate <- function(error_obj, algorithm) {
 # used to generate the result.
 #
 # Arguments:
-#   algorithm = the name of the algorithm to pre-pend to the file name
 #   params = a named vector or single-row dataframe with the parameters used to
 #            generate the result
 #
@@ -752,14 +764,46 @@ Save_ErrorIntermediate <- function(error_obj, algorithm) {
 #   a named list containing both the output of one of the deconvolution
 #   algorithms plus the error calculations if a file matching the input
 #   parameters exists, or NULL if not
-Load_ErrorIntermediate <- function(algorithm, params) {
+Load_ErrorIntermediate <- function(params) {
   filename <- paste(params, collapse = "_")
-  filename <- file.path(dir_errors_tmp, str_glue("{algorithm}_{filename}.rds"))
+  filename <- file.path(dir_errors_tmp, paste0(filename, ".rds"))
 
   if (file.exists(filename)) {
     return(readRDS(filename))
   }
   return(NULL)
+}
+
+
+# Load_TopParams: loads a top parameters file as calculated in Step 12.
+#
+# Arguments:
+#   params = a named vector or single-row dataframe with the parameters used to
+#            generate the top parameters file. Must have the columns named
+#            below in the select_cols variable declaration.
+#
+# Returns:
+#   a named list containing the contents of the top parameters file, or NULL
+#   if the file doesn't exist.
+Load_TopParams <- function(params) {
+  select_cols <- c("algorithm", "reference_data_name", "test_data_name",
+                   "granularity", "reference_input_type", "normalization",
+                   "regression_method")
+
+  file_params <- params[, select_cols]
+
+  file_id <- paste(file_params, collapse = "_")
+  top_param_file <- file.path(dir_top_parameters,
+                              params$test_data_name,
+                              params$algorithm,
+                              str_glue("top_parameters_{file_id}.rds"))
+
+  if (!file.exists(top_param_file)) {
+    return(NULL)
+  }
+
+  top_params <- readRDS(top_param_file)
+  return(top_params)
 }
 
 

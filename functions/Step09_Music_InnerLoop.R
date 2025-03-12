@@ -10,11 +10,10 @@
 #            Must be a matrix, not a data.frame.
 #     sc_basis = pre-computed list output from music_basis()
 #   params = a single-row data frame or a named vector/list of parameters
-#            containing the following variables: reference_data_name,
+#            containing the following variables: algorithm, reference_data_name,
 #            test_data_name, granularity, filter_level, n_markers, marker_type,
 #            marker_subtype, marker_input_type, and algorithm-specific
 #            variables ct_cov, centered, normalize
-#   algorithm = the name of the algorithm being run. This value is unused.
 #   verbose = whether Music should have verbose output
 #
 # Returns:
@@ -23,7 +22,7 @@
 #   which are calculated based on the "M.S" matrix from sc_basis, "params",
 #   which is the parameter set used for this run, and "markers", which is the
 #   list of genes used as markers for this run
-Music_InnerLoop <- function(data, params, algorithm = NULL, verbose = FALSE) {
+Music_InnerLoop <- function(data, params, verbose = FALSE) {
   # Unpack variables for readability, enforce they are the correct types
   ct_cov <- as.logical(params$ct.cov)
   centered <- as.logical(params$centered)
@@ -78,16 +77,22 @@ Music_InnerLoop <- function(data, params, algorithm = NULL, verbose = FALSE) {
       result$Est.prop.weighted <- result$Est.prop.weighted[, celltypes]
       result$Est.prop.allgene <- result$Est.prop.allgene[, celltypes]
 
-      # Convert proportion of cells to percent RNA
+      # Convert proportion of cells to percent RNA, and assign this as the
+      # estimates output. We don't use Est.pctRNA.allgene downstream but want to
+      # keep it for reference
       M.S <- data$sc_basis$M.S[celltypes]
-      result$Est.pctRNA.weighted <- ConvertPropCellsToPctRNA(
+      result$estimates <- ConvertPropCellsToPctRNA(
         result$Est.prop.weighted, M.S
       )
       result$Est.pctRNA.allgene <- ConvertPropCellsToPctRNA(
         result$Est.prop.allgene, M.S
       )
 
-      result$estimates <- result$Est.pctRNA.weighted
+      # Remove Est.prop.weighted and Est.prop.allgene, we only need pctRNA
+      # from this point forward.
+      result$Est.prop.weighted <- NULL
+      result$Est.prop.allgene <- NULL
+
       result$params <- params
       result$markers <- markers_use
       print(paste(result$params, collapse = "  "))

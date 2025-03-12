@@ -3,8 +3,11 @@ library(dplyr)
 source("Filenames.R")
 source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
+models_folder <- Folder("09_algorithm_models", parent = "syn58802522")
+models_folder <- synStore(models_folder, forceVersion = FALSE)
+
 # Deconvolution WG Synapse space
-scaden_folder <- Folder("scaden_models", parent = "syn59489760")
+scaden_folder <- Folder("scaden_models", parent = models_folder)
 scaden_folder <- synStore(scaden_folder, forceVersion = FALSE)
 
 # Provenance

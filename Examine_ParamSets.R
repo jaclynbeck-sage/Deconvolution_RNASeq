@@ -8,14 +8,15 @@ library(viridis)
 
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
-source(file.path("functions", "Step11_Error_HelperFunctions.R"))
+source(file.path("functions", "Step15_Analysis_HelperFunctions.R"))
 
 datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
 
 granularity <- "broad_class"
 bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
 
-algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "HSPE", "Music", "Scaden")
+algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "Music")#,
+                #"Scaden", "Baseline") # Scaden and Baseline graphs aren't useful due to lack of markers
 
 do_plot <- TRUE
 
@@ -119,8 +120,7 @@ for (bulk_dataset in bulk_datasets) {
           next
         }
 
-        errs_all <- rbind(err_list$means$all_signature,
-                          err_list$means$all_lm)
+        errs_all <- err_list$means
         errs_all <- merge(errs_all, err_list$params,
                           by.x = "param_id", by.y = "row.names")
 
@@ -128,7 +128,7 @@ for (bulk_dataset in bulk_datasets) {
                                        errs_all$marker_subtype,
                                        errs_all$marker_input_type)
 
-        errs_all$marker_order[errs_all$marker_order == "None"] <- "distance"
+        #errs_all$marker_order[errs_all$marker_order == "None"] <- "distance"
 
         errs_all$n_marker_type <- sapply(errs_all$n_markers, function(N) {
           if (N <= 1) {
@@ -142,11 +142,6 @@ for (bulk_dataset in bulk_datasets) {
         # Adding a pattern with just the wildcard will force the function to
         # color-code every marker combo, not just a few
         target_patterns <- c(paste0("^", target_patterns), "*")
-
-        # backwards compatibility
-        if (!("reference_input_type" %in% colnames(errs_all))) {
-          errs_all$reference_input_type <- "signature"
-        }
 
         file_params <- errs_all %>%
           select(reference_data_name, test_data_name, granularity,
@@ -165,29 +160,19 @@ for (bulk_dataset in bulk_datasets) {
           pdf(file.path(pdf_dir, paste0("param_set_graphs_", file_title, ".pdf")),
               width=24, height = 24)
 
-          subsets_plot <- expand.grid(tissue = unique(errs_all$tissue),
-                                      solve_type = unique(errs_all$solve_type),
-                                      stringsAsFactors = FALSE)
-
-          #subsets_plot <- subset(subsets_plot,
-          #                       (solve_type == "signature" & signature != "none") |
-          #                         (solve_type == "lm" & signature == "none"))
-
           errs_tmp = errs_all %>%
-                        group_by(tissue, solve_type, marker_combo, marker_order,
-                                 n_marker_type, total_markers_used) %>%
-                        summarize(cor = max(cor),
-                                  rMSE = min(rMSE),
-                                  mAPE = min(mAPE),
-                                  .groups = "drop")
+            group_by(tissue, marker_combo, marker_order,
+                     n_marker_type, total_markers_used) %>%
+            dplyr::summarize(cor = max(cor),
+                             rMSE = min(rMSE),
+                             mAPE = min(mAPE),
+                             .groups = "drop")
 
-          for (R in 1:nrow(subsets_plot)) {
-            errs_plot <- subset(errs_tmp, tissue == subsets_plot$tissue[R] &
-                                  solve_type == subsets_plot$solve_type[R])
+          for (tiss in unique(errs_all$tissue)) {
+            errs_plot <- subset(errs_tmp, tissue == tiss)
 
             display_title2 <- str_glue(paste0("{display_title} / ",
-                                              "tissue {subsets_plot$tissue[R]}, ",
-                                              "using {subsets_plot$solve_type[R]}"))
+                                              "tissue {tiss}"))
 
             # total_markers_used vs marker_combo
             for (error_metric in error_cols) {
@@ -198,8 +183,11 @@ for (bulk_dataset in bulk_datasets) {
                                  linetype_aes = "n_marker_type")
             }
 
-            # These algorithms have algorithm-specific parameters to graph
-            if (algorithm %in% c("DeconRNASeq", "DWLS", "Music")) {
+            # All algorithms except Dtangle have algorithm-specific parameters to graph
+            if (algorithm != "Dtangle") {
+              if (algorithm == "CibersortX") {
+                algorithm_arg <- "batch_correct"
+              }
               if (algorithm == "DeconRNASeq") {
                 algorithm_arg <- "use_scale"
               }
@@ -215,18 +203,21 @@ for (bulk_dataset in bulk_datasets) {
                                             sep = " / ")
                 algorithm_arg <- "music_arg"
               }
+              if (algorithm == "Scaden") {
+                algorithm_arg <- "n_cells"
+                errs_all$n_cells <- factor(errs_all$n_cells, levels = c("100", "500", "1000"))
+              }
 
               cols_group <- c(setdiff(colnames(errs_plot), error_cols),
                               algorithm_arg)
 
               errs_plot2 <- errs_all %>%
-                              subset(tissue == subsets_plot$tissue[R] &
-                                       solve_type == subsets_plot$solve_type[R]) %>%
-                              group_by(across(all_of(cols_group))) %>%
-                                summarize(cor = max(cor),
-                                          rMSE = min(rMSE),
-                                          mAPE = min(mAPE),
-                                          .groups = "drop")
+                subset(tissue == tiss) %>%
+                group_by(across(all_of(cols_group))) %>%
+                dplyr::summarize(cor = max(cor),
+                                 rMSE = min(rMSE),
+                                 mAPE = min(mAPE),
+                                 .groups = "drop")
 
               for (error_metric in error_cols) {
                 plot_algorithm_args(errs_plot2, error_metric, display_title2,
@@ -248,18 +239,18 @@ for (bulk_dataset in bulk_datasets) {
         # Stats on the top 20 parameters for each error metric
         best_params <- lapply(error_cols, function(error_metric) {
           if (grepl("cor", error_metric)) {
-            errs_all %>% group_by(tissue, solve_type) %>%
+            errs_all %>% group_by(tissue) %>%
               slice_max(order_by = .data[[error_metric]], n = 20)
           }
           else {
-            errs_all %>% group_by(tissue, solve_type) %>%
+            errs_all %>% group_by(tissue) %>%
               slice_min(order_by = .data[[error_metric]], n = 20)
           }
         })
         names(best_params) <- error_cols
 
         fields <- c("marker_combo", "marker_order", "n_marker_type", "total_markers_used")
-        if (algorithm %in% c("DeconRNASeq", "DWLS", "Music")) {
+        if (algorithm != "Dtangle") {
           fields <- c(fields, algorithm_arg)
         }
 
@@ -267,18 +258,18 @@ for (bulk_dataset in bulk_datasets) {
           bp <- best_params[[error_metric]]
           best_totals <- lapply(fields, function(field) {
             df <- if (is.numeric(bp[[field]])) {
-              bp %>% group_by(tissue, solve_type) %>%
-                      summarize("best" = .data[[field]][1],
-                                "min" = min(.data[[field]]),
-                                "max" = max(.data[[field]]),
-                                "mean" = mean(.data[[field]]),
-                                "sd" = sd(.data[[field]]),
-                                .groups = "drop")
+              bp %>% group_by(tissue) %>%
+                dplyr::summarize("best" = .data[[field]][1],
+                                 "min" = min(.data[[field]]),
+                                 "max" = max(.data[[field]]),
+                                 "mean" = mean(.data[[field]]),
+                                 "sd" = sd(.data[[field]]),
+                                 .groups = "drop")
             } else {
-              tab <- table(bp$tissue, bp$solve_type, bp[[field]],
-                           dnn = c("tissue", "solve_type", field))
+              tab <- table(bp$tissue, bp[[field]],
+                           dnn = c("tissue", field))
               tab <- dcast(as.data.frame(tab, stringsAsFactors = FALSE),
-                           as.formula(paste("tissue + solve_type ~", field)),
+                           as.formula(paste("tissue ~", field)),
                            value.var = "Freq", stringsAsFactors = FALSE,
                            drop = FALSE)
               tab
@@ -288,7 +279,7 @@ for (bulk_dataset in bulk_datasets) {
           })
           names(best_totals) <- fields
           return(Reduce(function(d1, d2) {
-            merge(d1, d2, by = c("tissue", "solve_type"))
+            merge(d1, d2, by = c("tissue"))
           }, best_totals))
         })
         names(summary_stats) <- error_cols
@@ -311,17 +302,17 @@ for (bulk_dataset in bulk_datasets) {
           plot_title <- "Count of appearance in top 20 results per error metric"
 
           plt <- ggplot(for_plot, aes(x = tissue, y = parameter, color = count, size = count)) +
-            geom_count() + facet_wrap(solve_type ~ error_metric, ncol = 6) +
+            geom_count() + facet_wrap(~ error_metric) +
             scale_color_viridis(option = "plasma", direction = -1) + theme_bw() +
             scale_y_discrete(limits = col_order) +
-            ggtitle(display_title, subtitle = plot_title) +
-            theme(text = element_text(size = 20),
-                  plot.margin = margin(t = 1, r = 5, b = 14, l = 5,
-                                       unit = "in"))
+            ggtitle(display_title, subtitle = plot_title) #+
+            #theme(text = element_text(size = 20),
+            #      plot.margin = margin(t = 1, r = 5, b = 14, l = 5,
+            #                           unit = "in"))
 
           print(plt)
 
-          dev.off()
+          #dev.off()
         }
 
         # UNUSED

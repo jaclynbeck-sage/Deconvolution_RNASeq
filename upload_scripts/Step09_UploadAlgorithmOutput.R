@@ -70,7 +70,7 @@ for (bulk in test_datasets) {
             used_ids <- provenance$sig_id
           } else if (alg %in% c("Dtangle", "HSPE")) {
             used_ids <- provenance$pb_id
-          } else { # Music and Scaden
+          } else { # Baseline, Music, and Scaden
             used_ids <- provenance$sc_id
           }
 

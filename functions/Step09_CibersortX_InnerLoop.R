@@ -13,17 +13,16 @@
 #     test = a matrix (genes x samples) of bulk data. Must be a dense matrix.
 #
 #   params = a single-row data frame or a named vector/list of parameters
-#            containing the following variables: reference_data_name,
+#            containing the following variables: algorithm, reference_data_name,
 #            test_data_name, granularity, filter_level, n_markers, marker_type,
 #            marker_subtype, marker_input_type. This variable is unused except
 #            to get added to the results object.
-#   algorithm = unused
 #
 # Returns:
 #   a list containing entries for the celltype percentage estimates ("estimates"),
 #   "params", which is the parameter set used for this run, and "markers", which
 #   is the list of genes from the CibersortX signature matrix
-CibersortX_InnerLoop <- function(data, params, algorithm) {
+CibersortX_InnerLoop <- function(data, params) {
   omnideconv::set_cibersortx_credentials(email = Sys.getenv("CIBERSORT_EMAIL"),
                                          token = Sys.getenv("CIBERSORT_TOKEN"))
 

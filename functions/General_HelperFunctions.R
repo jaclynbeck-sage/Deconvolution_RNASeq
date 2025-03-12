@@ -345,7 +345,7 @@ CalculateSignature <- function(dataset, granularity, output_type, geom_mean = FA
       log_means <- rowMeans(log(pb_cpm[, cols] + 1), na.rm = TRUE)
       cpm_means <- exp(log_means) - 1
       cpm_means[cpm_means < 0] <- 0
-      #sig <- scuttle::calculateCPM(sig) # TODO is this necessary?
+
     } else {
       cpm_means <- rowMeans(pb_cpm[, cols], na.rm = TRUE)
     }
@@ -754,4 +754,59 @@ Clean_BulkCovariates <- function(bulk_dataset_name, metadata, covariates,
   }
 
   return(metadata)
+}
+
+
+# FileParams_FromParams - takes a parameters data frame and extracts the
+# columns that are used to name output/error files. If params_df is from a
+# single output or error file, all values for those columns are the same for
+# each row so this function will return a one-row data frame.
+#
+# Arguments:
+#   params_df - a data frame of any number of rows that must contain the columns
+#               in the select statement below
+#
+# Returns:
+#   a data frame
+FileParams_FromParams <- function(params_df) {
+  params_df %>%
+    dplyr::select_at(Get_ParameterColumnNames()) %>%
+    dplyr::distinct() %>%
+    as.data.frame()
+}
+
+
+# Get_ParameterColumns - Helper function to get the names of the parameters that
+# exist across all deconvolution trials. These are used all over the code so
+# this avoids hard-coding the list in multiple places.
+#
+# Arguments: none
+# Returns: a vector of column names
+Get_ParameterColumnNames <- function() {
+  return(c("algorithm", "reference_data_name", "test_data_name", "granularity",
+           "reference_input_type", "normalization", "regression_method"))
+}
+
+
+# List_to_DF - a helper function for turning a list of data frames into a single
+# data frame via rbind. Providing a sublist_name will extract all items with that
+# name from each item in the list and rbind those together instead.
+#
+# Arguments:
+#   input_list - a list of data frames or a list of lists of data frames
+#   sublist_name - if NULL, input_list must be a list of data frames and this
+#                  function will rbind all items in input_list together.
+#                  If a value is provided, input_list must be a list where each
+#                  item contains a named list of data frames whose name matches
+#                  sublist_name. In that case, sublists with that name are
+#                  extracted from each item in input_list and rbind-ed together.
+#
+# Returns:
+#   a data frame
+List_to_DF <- function(input_list, sublist_name = NULL) {
+  if (is.null(sublist_name)) {
+    return(do.call(rbind, input_list))
+  }
+
+  return(do.call(rbind, lapply(input_list, "[[", sublist_name)))
 }

@@ -3,7 +3,10 @@ library(dplyr)
 source("Filenames.R")
 source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
-music_folder <- Folder("music_basis", parent = "syn59489760")
+models_folder <- Folder("09_algorithm_models", parent = "syn58802522")
+models_folder <- synStore(models_folder, forceVersion = FALSE)
+
+music_folder <- Folder("music_basis", parent = models_folder)
 music_folder <- synStore(music_folder, forceVersion = FALSE)
 
 # Provenance
