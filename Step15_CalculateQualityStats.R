@@ -342,9 +342,15 @@ for (bulk_dataset in bulk_datasets) {
 
   # Concat all algorithm params into one data frame -- ignoring Baseline
   best_params <- lapply(alg_qstats_all[setdiff(algorithms, "Baseline")],
-                        "[[", "best_params") %>%
+                        "[[", "best_params")
+
+  # Remove any algorithms with NULL entries, which can happen if no output was
+  # valid
+  best_params <- best_params[lengths(best_params) > 0] %>%
     lapply(select_at, cols_keep) %>%  # subset to only cols_keep columns
     List_to_DF()
+
+  rownames(best_params) <- NULL
 
   top3 <- top_errors$all$errors %>%
     merge(best_params) %>%
@@ -371,9 +377,15 @@ for (bulk_dataset in bulk_datasets) {
     rbind(List_to_DF(alg_qstats_all, "param_frequency"))
 
   best_params_toplevel <- lapply(alg_qstats_all[setdiff(algorithms, "Baseline")],
-                                 "[[", "best_params_toplevel") %>%
+                                 "[[", "best_params_toplevel")
+
+  # Remove any algorithms with NULL entries, which can happen if no output was
+  # valid
+  best_params_toplevel <- best_params_toplevel[lengths(best_params_toplevel) > 0] %>%
     lapply(select_at, cols_keep) %>%  # subset to only cols_keep columns
     List_to_DF()
+
+  rownames(best_params_toplevel) <- NULL
 
 
   # Percent of errors better than baseline -------------------------------------
