@@ -319,6 +319,12 @@ Paper_Renames <- function(df) {
     }
   }
 
+  if ("granularity" %in% colnames(df)) {
+    df <- df %>%
+      mutate(granularity = case_when(granularity == "broad_class" ~ "Broad class",
+                                     granularity == "sub_class" ~ "Sub class"))
+  }
+
   if ("cor" %in% colnames(df)) {
     df <- df %>% dplyr::rename(Correlation = cor, RMSE = rMSE, MAPE = mAPE)
   }
@@ -345,14 +351,10 @@ Paper_Renames <- function(df) {
 }
 
 
-Load_BestErrors <- function(granularity) {
-  best_errors_list <- readRDS(file.path(dir_analysis,
-                                        str_glue("best_errors_{granularity}.rds")))
-  best_errors <- Paper_Renames(best_errors_list$all$errors)
-  best_errors_top <- Paper_Renames(best_errors_list$toplevel$errors)
-
-  #quality_stats <- Paper_Renames(best_errors_list$all$stats)
-  #quality_stats_top <- Paper_Renames(best_errors_list$toplevel$stats)
+Load_BestErrors <- function() {
+  best_errors_list <- readRDS(file.path(dir_analysis, "top_errors.rds"))
+  best_errors <- Paper_Renames(best_errors_list$by_reference$errors)
+  best_errors_top <- Paper_Renames(best_errors_list$by_algorithm$errors)
 
   top3_by_tissue <- best_errors_list$top3_by_tissue %>%
     Paper_Renames() %>%
@@ -361,8 +363,9 @@ Load_BestErrors <- function(granularity) {
   # There are up to 3 param_ids per set of input parameters. Get the best of each
   # error metric for each set
   best_errors <- best_errors  %>%
-    group_by(tissue, tissue_full, reference_data_name, test_data_name, algorithm,
-             normalization, regression_method, data_transform) %>%
+    group_by(tissue, tissue_full, granularity, reference_data_name,
+             test_data_name, algorithm, normalization, regression_method,
+             data_transform) %>%
     dplyr::summarize(Correlation = max(Correlation),
                      RMSE = min(RMSE),
                      MAPE = min(MAPE),
@@ -370,7 +373,7 @@ Load_BestErrors <- function(granularity) {
     melt(variable.name = "error_metric")
 
   best_errors_top <- best_errors_top  %>%
-    group_by(tissue, tissue_full, test_data_name, algorithm,
+    group_by(tissue, tissue_full, granularity, test_data_name, algorithm,
              normalization, regression_method, data_transform) %>%
     dplyr::summarize(Correlation = max(Correlation),
                      RMSE = min(RMSE),
@@ -384,37 +387,23 @@ Load_BestErrors <- function(granularity) {
   baselines_top <- subset(best_errors_top, algorithm == "Baseline")
   best_errors_top <- subset(best_errors_top, algorithm != "Baseline")
 
-  best_dt <- Get_BestDataTransform(top3_by_tissue,
-                                   algorithms = c(unique(best_errors$algorithm), "Baseline"))
+  best_dt <- best_errors_list$best_data_transform %>%
+    Paper_Renames()
 
   items <- list(best_errors, best_errors_top, baselines, baselines_top,
-    top3_by_tissue, best_dt) #, quality_stats, quality_stats_top)
-  names(items) <- paste(c("best_errors", "best_errors_top", "baselines",
-                          "baselines_top","top3_by_tissue", "best_dt"),
-                          #"quality_stats", "quality_stats_top"),
-                        str_replace(granularity, "_class", ""),
-                        sep = "_")
+    top3_by_tissue, best_dt)
+  names(items) <- c("best_errors", "best_errors_top", "baselines",
+                    "baselines_top","top3_by_tissue", "best_dt")
 
   return(items)
 }
 
 
-Load_QualityStats <- function(bulk_datasets, granularity) {
-  qstats_list <- lapply(bulk_datasets, function(bulk) {
-    readRDS(file.path(dir_analysis,
-                      str_glue("quality_stats_all_{bulk}_{granularity}.rds")))
-  })
+Load_QualityStats <- function() {
+  qstats_list <- readRDS(file.path(dir_analysis, "quality_stats_all.rds"))
+  qstats_list <- lapply(qstats_list, Paper_Renames)
 
-  # qstats_list will be a list of lists, so we combine inner lists of the same
-  # name from each qstats_list item
-  qstats_list_final <- lapply(names(qstats_list[[1]]), function(item_name) {
-    List_to_DF(qstats_list, item_name) %>%
-      Paper_Renames()
-  })
-
-  names(qstats_list_final) <- names(qstats_list[[1]])
-
-  return(qstats_list_final)
+  return(qstats_list)
 }
 
 
@@ -422,44 +411,45 @@ Count_Grouped <- function(ranked_df, group_cols) {
   ranked_df %>%
     group_by_at(group_cols) %>%
     dplyr::count() %>%
-    dplyr::rename(count = n)
+    dplyr::rename(count = n) %>%
+    ungroup()
 }
 
 
 Load_Significance <- function(significance_df, best_dt, p_sig = 0.01, log2_cap = 1) {
+  significance_df <- merge(significance_df, best_dt)
+
   # Fill in missing data with NA
   params <- expand.grid(celltype = unique(significance_df$celltype),
                         tissue = unique(significance_df$tissue),
-                        algorithm = unique(significance_df$algorithm),
-                        normalization = unique(significance_df$normalization),
-                        regression_method = unique(significance_df$regression_method))
+                        algorithm = unique(significance_df$algorithm))
 
-  significance_df <- merge(significance_df, params,
-                           by = colnames(params),
-                           all = TRUE)
-  significance_df$p_adj_thresh[is.na(significance_df$p_adj_thresh)] <- 1
+  significance_df <- merge(significance_df, params, all = TRUE) %>%
+    # Fill in any NA thresholds and data transforms created by missing data
+    mutate(p_adj_thresh = ifelse(is.na(p_adj_thresh), 1, p_adj_thresh),
+           data_transform = paste(normalization, "+", regression_method))
 
-  # Fill in any NA data transforms created by missing data
-  significance_df$data_transform <- paste(significance_df$normalization, "+",
-                                          significance_df$regression_method)
-
-  if (granularity == "sub_class") {
+  # Rearrange sub-class cell types to be in numerical order instead of
+  # alphabetical order. "significance_df$granularity" may include NAs after
+  # merge with params so we just check for "Sub class" membership
+  if ("Sub class" %in% significance_df$granularity) {
     ct_order <- c("Astrocyte", "Endothelial", paste0("Exc.", 1:10),
                   paste0("Inh.", 1:7), "Microglia", "Oligodendrocyte", "OPC",
                   "Pericyte", "VLMC")
     significance_df$celltype <- factor(significance_df$celltype, levels = ct_order)
   }
 
-  sig_final <- merge(significance_df, best_dt)
-
   # Cap log2_fc values to +/- 1 so color scaling is better. Need to account for
   # Inf and -Inf values. Set non-significant log2 values to NA.
-  sig_final$log2_fc[sig_final$fc == 0] <- NA
-  sig_final$log2_fc[is.infinite(sig_final$log2_fc)] <- log2_cap
-  sig_final$log2_fc[sig_final$log2_fc > 1] <- log2_cap
-  sig_final$log2_fc[sig_final$log2_fc < -1] <- -log2_cap
+  significance_df <- significance_df %>%
+    mutate(log2_fc = case_when(fc == 0 ~ NA,
+                               is.infinite(log2_fc) ~ log2_cap,
+                               log2_fc > 1 ~ log2_cap,
+                               log2_fc < -1 ~ -log2_cap,
+                               TRUE ~ log2_fc))
 
-  sig_final$log2_fc[sig_final$p_adj_thresh >= p_sig] <- NA
+  # Anything non-significant gets changed to NA for plotting
+  significance_df$log2_fc[significance_df$p_adj_thresh >= p_sig] <- NA
 
-  return(sig_final)
+  return(significance_df)
 }

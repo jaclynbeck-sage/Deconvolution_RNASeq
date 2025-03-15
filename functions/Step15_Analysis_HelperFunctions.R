@@ -8,22 +8,25 @@ source(file.path("functions", "General_HelperFunctions.R"))
 # Arguments:
 #   bulk_datasets - a vector of bulk dataset names to load ("Mayo", "MSBB",
 #                   and/or "ROSMAP")
-#   granularity - either "broad_class" or "sub_class"
+#   granularities - a vector of granularities to load ("broad_class" and/or
+#                   "sub_class")
 #
 # Returns:
 #   a data frame with all errors from all files concatenated together
-Get_AllBestErrorsAsDf <- function(bulk_datasets, granularity, n_cores = 2) {
+Get_AllBestErrorsAsDf <- function(bulk_datasets, granularities, n_cores = 2) {
   # List of "best errors" files matching the bulk data set names and granularity
   file_list <- list.files(dir_best_errors,
                           pattern = paste0("(",
                                            paste(bulk_datasets, collapse = "|"),
-                                           ").*", granularity),
+                                           ").*",
+                                           "(",
+                                           paste(granularities, collapse = "|"),
+                                           ")"),
                           full.names = TRUE,
                           recursive = TRUE)
 
   best_err_list <- mclapply(file_list, function(file) {
     data <- readRDS(file)
-    print(basename(file))
 
     # Merge a subset of the parameters into the mean errors data frame. These
     # parameters exist in every error file for every algorithm
@@ -47,8 +50,6 @@ Get_AllBestEstimatesAsDf <- function(bulk_datasets, granularity, metadata,
 
   best_ests_list <- mclapply(file_list, function(file) {
     data <- readRDS(file)
-    print(basename(file))
-
     data <- data[names(data) %in% best_params$param_id]
 
     for (N in names(data)) {
@@ -97,7 +98,6 @@ Get_AllQualityStatsAsDf <- function(bulk_datasets, granularity, n_cores = 2) {
 
   qstats_list <- mclapply(file_list_per_alg, function(file) {
     data <- readRDS(file)
-    print(basename(file))
 
     file_id <- str_replace(basename(file), "quality_stats_", "") %>%
       str_replace(".rds", "")
@@ -108,6 +108,27 @@ Get_AllQualityStatsAsDf <- function(bulk_datasets, granularity, n_cores = 2) {
   }, mc.cores = n_cores)
 
   return(do.call(rbind, qstats_list))
+}
+
+
+Get_BulkMetadata <- function(bulk_dataset, columns) {
+  bulk <- Load_BulkData(bulk_dataset)
+  bulk_metadata <- colData(bulk) %>%
+    as.data.frame() %>%
+    select(all_of(columns))
+  return(bulk_metadata)
+}
+
+
+Find_ErrorFiles <- function(bulk_dataset, algorithm, file_id) {
+  list.files(file.path(dir_errors, bulk_dataset, algorithm),
+             pattern = file_id, full.names = TRUE)
+}
+
+
+Find_BestEstimateFiles <- function(bulk_dataset, algorithm, file_id) {
+  list.files(file.path(dir_top_estimates, bulk_dataset, algorithm),
+             pattern = file_id, full.names = TRUE)
 }
 
 
@@ -132,6 +153,14 @@ Find_BestSignature <- function(errs_df) {
 }
 
 
+Standardize_DataTransform <- function(data) {
+  data %>%
+    mutate(normalization = str_replace(normalization, "counts", "cpm"),
+           normalization = str_replace(normalization, "log_", ""),
+           data_transform = paste(normalization, regression_method, sep = " + "))
+}
+
+
 Get_BestDataTransform <- function(ranked_df, algorithms) {
   params <- ranked_df %>%
     select(tissue, normalization, regression_method, data_transform) %>%
@@ -153,9 +182,9 @@ Get_BestDataTransform <- function(ranked_df, algorithms) {
 
   # MuSiC always has to use CPM (counts). CibersortX uses CPM when the
   # normalization is TMM since TMM isn't a valid normalization in CibersortX.
-  best_dt$normalization[best_dt$algorithm == "MuSiC"] <- "CPM"
-  best_dt$normalization[best_dt$normalization == "TMM" &
-                          best_dt$algorithm == "CibersortX"] <- "CPM"
+  best_dt$normalization[best_dt$algorithm == "Music"] <- "cpm"
+  best_dt$normalization[best_dt$normalization == "tmm" &
+                          best_dt$algorithm == "CibersortX"] <- "cpm"
 
   best_dt <- best_dt %>%
     # Fix the data_transform field for MuSiC and CibersortX
@@ -199,7 +228,9 @@ Get_TopRanked <- function(df, group_cols, n_top = 1, with_mean_rank = TRUE) {
              type = "best_mean"))
   }
 
-  return(ungroup(top_ranked))
+  top_ranked %>%
+    ungroup() %>%
+    as.data.frame()
 }
 
 
@@ -238,7 +269,8 @@ Get_TopErrors <- function(errors_df, group_cols, n_cores, with_mean_rank = TRUE)
   return(list(
     "ranks" = error_ranks,
     "errors" = top_errors,
-    "stats" = error_stats
+    "stats" = error_stats,
+    "param_ids" = top_errors$param_id
   ))
 }
 
@@ -273,18 +305,114 @@ Calculate_ErrorStats <- function(errs_df, group_cols) {
 }
 
 
-Calculate_EstimateStats <- function(est_pcts, group_cols) {
-  est_stats <- est_pcts %>%
+Calculate_EstimateStats <- function(best_ests, top_errors_list, group_cols) {
+  # Create the same kind of duplication in the estimates df as we used to
+  # calculate best errors, so that each estimate is weighted by the number of
+  # times it shows up as a "best" among the 4 error metrics. Also pull in
+  # parameters listed in group_cols for this calculation.
+  weights <- top_errors_list$ranks %>%
+    merge(top_errors_list$errors) %>%
+    select(param_id, all_of(group_cols), type)
+
+  est_stats <- best_ests %>%
+    merge(weights) %>%
+    select(param_id, sample, all_of(group_cols), where(is.numeric)) %>%
     melt(variable.name = "celltype",
          value.name = "percent",
-         id.vars = c("param_id", group_cols)) %>%
-    group_by_at(c(group_cols, "celltype")) %>%
+         id.vars = c("param_id", "sample", group_cols)) %>%
+    group_by_at(c("sample", group_cols, "celltype")) %>%
     summarize(mean_pct = mean(percent),
               sd_pct = sd(percent),
               rel_sd_pct = sd_pct / mean_pct,
               .groups = "drop")
 
   return(est_stats)
+}
+
+
+Subset_BestEstimates <- function(best_param_ids, best_est_list, bulk_metadata) {
+  # Subset to the best parameter IDs.
+  best_est_list <- best_est_list[best_param_ids]
+
+  # Get all best estimates as one data frame
+  est_pcts <- lapply(best_est_list, function(est_item) {
+    estimates <- as.data.frame(est_item$estimates) %>%
+      mutate(sample = rownames(.),
+             param_id = est_item$param_id) %>%
+      merge(bulk_metadata)
+  })
+  est_pcts <- List_to_DF(est_pcts) %>%
+    tibble::remove_rownames()
+
+  return(est_pcts)
+}
+
+
+Calculate_ExcInhRatio <- function(est_pcts, params) {
+  neuron_ests <- cbind(
+    select(est_pcts, sample, tissue, param_id),
+    data.frame(
+      Excitatory = rowSums(select(est_pcts, starts_with("Exc"))),
+      Inhibitory = rowSums(select(est_pcts, starts_with("Inh")))
+    )) %>%
+    mutate(is_bad_estimate = Inhibitory > Excitatory,
+           exc_inh_ratio = Excitatory / Inhibitory)
+
+  # Change these to NA so they get removed when doing mean/median below
+  neuron_ests$exc_inh_ratio[is.infinite(neuron_ests$exc_inh_ratio)] <- NA
+
+  exc_inh_ratio <- neuron_ests %>%
+    group_by(tissue, param_id) %>%
+    dplyr::summarize(n_bad = sum(is_bad_estimate),
+                     count = n(),
+                     pct_bad_inhibitory_ratio = n_bad / count,
+                     mean_exc_inh_ratio = mean(exc_inh_ratio, na.rm = TRUE),
+                     median_exc_inh_ratio = median(exc_inh_ratio, na.rm = TRUE),
+                     param_id = unique(param_id),
+                     .groups = "drop") %>%
+    select(-n_bad, -count) %>%
+    as.data.frame()
+
+  params <- params %>%
+    select(param_id, all_of(Get_ParameterColumnNames())) %>%
+    subset(param_id %in% exc_inh_ratio$param_id)
+
+  return(merge(exc_inh_ratio, params))
+}
+
+
+Count_AlgSpecificParameters <- function(best_params, top3_errors_df) {
+  alg <- unique(best_params$algorithm)
+  gran <- unique(best_params$granularity)
+
+  # Check for algorithm-specific parameters and if they exist calculate how
+  # many times each value for those parameters shows up in the top 3 errors
+  # for each error metric
+  alg_specific <- select(best_params,
+                         # remove file params
+                         -all_of(Get_ParameterColumnNames()),
+                         # remove general marker params
+                         -contains("filter_level"), -contains("marker"),
+                         # remove unneeded "mode" indicator
+                         -mode)
+
+  if (ncol(alg_specific) > 1) {
+    top3 <- merge(top3_errors_df, alg_specific)
+
+    params_test <- setdiff(colnames(alg_specific), "param_id")
+    param_frequency <- lapply(params_test, function(param_col) {
+      Count_ParamFrequency(top3, groups = c("tissue", param_col),
+                           pivot_column = param_col,
+                           algorithm_specific = alg)
+    })
+    param_frequency <- List_to_DF(param_frequency) %>%
+      mutate(granularity = gran)
+
+  } else {
+    param_frequency <- NULL
+  }
+
+  return(param_frequency)
 }
 
 
@@ -298,21 +426,20 @@ Count_ParamFrequency <- function(df, groups, pivot_column, algorithm_specific = 
 }
 
 
-Get_AverageStats <- function(errs_df, ests_df, group_cols, with_mean_rank = TRUE) {
+Get_AverageStats <- function(avg_id, errs_df, ests_df, group_cols, with_mean_rank = TRUE) {
   # There can be up to 4 parameter sets per combination of data input
   # parameters, but sometimes a single parameter set was the best for multiple
   # error metrics and is only represented once in the df. When this happens, it
   # should be weighted higher when taking the average. Weights only matter for
   # when there is more than one parameter set.
-
-  avg_id <- unique(errs_df$avg_id)
+  errs_df <- errs_df[errs_df$avg_id == avg_id, ]
 
   if (!with_mean_rank) {
     errs_df <- subset(errs_df, type != "best_mean")
   }
 
   avg_err <- errs_df %>%
-    group_by_at(c(group_cols, "avg_id")) %>%
+    dplyr::group_by_at(c(group_cols, "avg_id")) %>%
     dplyr::summarize(across(c(cor, rMSE, mAPE),
                             list("mean" = ~ mean(.x),
                                  "sd" = ~ sd(.x))),
@@ -324,11 +451,12 @@ Get_AverageStats <- function(errs_df, ests_df, group_cols, with_mean_rank = TRUE
 
   ests_df <- subset(ests_df, param_id %in% errs_df$param_id &
                       tissue == unique(errs_df$tissue)) %>%
-    melt(id.vars = c("param_id", "tissue", "sample", "diagnosis"),
-         variable.name = "celltype",
-         value.name = "percent") %>%
+    tidyr::pivot_longer(cols = where(is.numeric),
+                        names_to = "celltype",
+                        values_to = "percent") %>%
     dplyr::mutate(avg_id = avg_id,
-                  algorithm = unique(errs_df$algorithm))
+                  algorithm = unique(errs_df$algorithm),
+                  granularity = unique(errs_df$granularity))
 
   cols_keep_ests <- setdiff(colnames(ests_df), c("percent", "param_id"))
 
@@ -351,7 +479,7 @@ Get_AverageStats <- function(errs_df, ests_df, group_cols, with_mean_rank = TRUE
   }
 
   avg_est <- ests_df %>%
-    group_by_at(cols_keep_ests) %>%
+    dplyr::group_by_at(cols_keep_ests) %>%
     dplyr::summarize(percent_mean = mean_fun(percent, weight),
                      percent_sd = sd_fun(percent, weight),
                      .groups = "drop") %>%
@@ -362,6 +490,9 @@ Get_AverageStats <- function(errs_df, ests_df, group_cols, with_mean_rank = TRUE
 
 
 Create_AveragesList <- function(errs_df, ests_df, group_cols, n_cores = 2, with_mean_rank = TRUE) {
+  cl <- parallel::makeCluster(n_cores, outfile = "")
+  parallel::clusterEvalQ(cl, library(magrittr, include.only = c("%>%")))
+
   # Although we could do this in one lapply statement, subsetting ests_df
   # takes a non-trivial amount of time because it's so large, so we do this to
   # break it into smaller pieces before having to call subset every time
@@ -369,105 +500,116 @@ Create_AveragesList <- function(errs_df, ests_df, group_cols, n_cores = 2, with_
     errs_tmp <- subset(errs_df, tissue == tiss)
     ests_tmp <- subset(ests_df, tissue == tiss)
 
-    avg_tmp <- mclapply(unique(errs_tmp$avg_id), function(a_id) {
-      print(a_id)
-      errs_filt <- subset(errs_tmp, avg_id == a_id)
+    avg_tmp <- parallel::parLapply(cl,
+                                   X = unique(errs_tmp$avg_id),
+                                   fun = Get_AverageStats,
+                                   errs_df = errs_tmp,
+                                   ests_df = ests_tmp,
+                                   group_cols = group_cols,
+                                   with_mean_rank = with_mean_rank)
 
-      return(Get_AverageStats(errs_filt, ests_tmp, group_cols, with_mean_rank))
-    }, mc.cores = n_cores)
-
-    return(list("avg_errors" = do.call(rbind, lapply(avg_tmp, "[[", "avg_error")),
-                "avg_estimates" = do.call(rbind, lapply(avg_tmp, "[[", "avg_estimates"))))
+    return(list("avg_errors" = List_to_DF(avg_tmp, "avg_error"),
+                "avg_estimates" = List_to_DF(avg_tmp, "avg_estimates")))
   })
 
   names(avg_list) <- unique(errs_df$tissue)
+
+  parallel::stopCluster(cl)
 
   return(avg_list)
 }
 
 
-Calculate_Significance <- function(ests_df, tissue) {
-  significant <- lapply(unique(ests_df$avg_id), function(a_id) {
-    ests_param <- subset(ests_df, avg_id == a_id)
+Calculate_Significance <- function(avg_id, ests_df) {
+  ests_param <- ests_df[ests_df$avg_id == avg_id, ]
 
-    anov <- aov(percent_mean ~ diagnosis*celltype, data = ests_param)
-    summ <- summary(anov)[[1]]
-    tuk <- TukeyHSD(anov, "diagnosis:celltype")
+  anov <- aov(percent_mean ~ diagnosis*celltype, data = ests_param)
+  summ <- summary(anov)[[1]]
+  tuk <- TukeyHSD(anov, "diagnosis:celltype")
 
-    comparisons <- paste0("CT:", levels(ests_param$celltype),
-                          "-AD:", levels(ests_param$celltype))
+  comparisons <- paste0("CT:", unique(ests_param$celltype),
+                        "-AD:", unique(ests_param$celltype))
 
-    tuk <- as.data.frame(tuk[[1]][comparisons,])
-    tuk$p_adj <- tuk$`p adj`
-    tuk$p_adj[is.na(tuk$p_adj)] <- 1 # Baseline zeros case causes this
+  tuk <- as.data.frame(tuk[[1]][comparisons,])
+  tuk$p_adj <- tuk$`p adj`
+  tuk$p_adj[is.na(tuk$p_adj)] <- 1 # Baseline zeros case causes this
 
-    tuk$celltype <- str_split(rownames(tuk), pattern = ":", simplify = TRUE)[,3]
-    tuk$tissue <- tissue
-    tuk$significant_05 <- tuk$p_adj <= 0.05
-    tuk$significant_01 <- tuk$p_adj <= 0.01
-    tuk$anova_pval <- summ["diagnosis:celltype", "Pr(>F)"]
+  tuk$celltype <- stringr::str_split(rownames(tuk),
+                                     pattern = ":",
+                                     simplify = TRUE)[,3]
 
-    tuk$avg_id <- a_id
-    return(tuk)
-  })
+  tuk$anova_pval <- summ["diagnosis:celltype", "Pr(>F)"]
+  tuk$avg_id <- avg_id
 
-  significant <- do.call(rbind, significant) %>%
-    dplyr::select(celltype, tissue, p_adj, significant_05, significant_01,
-                  anova_pval, avg_id)
-
-  # cap minimum p to avoid log(0) further down
-  significant$p_adj_thresh <- significant$p_adj
-  significant$p_adj_thresh[significant$p_adj < 1e-8] <- 1e-8
-
-  return(significant)
+  return(tuk)
 }
 
 
-Get_MeanProps_Significance <- function(avg_item, group_cols) {
-  errs_tmp <- avg_item$avg_errors
-  tissue <- unique(errs_tmp$tissue)
-  bulk_dataset <- unique(errs_tmp$test_data_name) # Tissues are unique to a single bulk dataset so this works
+Get_MeanProps_Significance <- function(avg_list, group_cols, n_cores = 2) {
+  cl <- parallel::makeCluster(n_cores, outfile = "")
 
-  print(paste(bulk_dataset, tissue))
+  sig_list <- lapply(avg_list, function(avg_item) {
+    errs_tmp <- avg_item$avg_errors
+    tissue <- unique(errs_tmp$tissue)
+    # Tissues are unique to a single bulk dataset so this works
+    bulk_dataset <- unique(errs_tmp$test_data_name)
 
-  ests_ad <- avg_item$avg_estimates
+    print(paste(bulk_dataset, tissue))
 
-  # Calculate significance for estimates from each parameter ID separately
-  significant <- Calculate_Significance(ests_ad, tissue)
+    ests_ad <- avg_item$avg_estimates
 
-  # Average cell type percentages across all AD or all CT samples in a given
-  # parameter set
-  mean_props <- ests_ad %>% subset(diagnosis %in% c("CT", "AD")) %>%
-    group_by(avg_id, diagnosis, tissue, celltype, algorithm) %>%
-    dplyr::summarize(mean_pct = mean(percent_mean),
-                     sd_pct = sd(percent_mean),
-                     rel_sd_pct = sd_pct / mean_pct,
-                     count = n(),
-                     .groups = "drop")
+    # Calculate significance for estimates from each parameter ID separately
+    significant <- parallel::parLapply(cl,
+                                       X = unique(ests_ad$avg_id),
+                                       fun = Calculate_Significance,
+                                       ests_df = ests_ad)
 
-  # Make one column for AD and one for CT for each of mean_pct, sd_pct,
-  # rel_sd_pct, and count, calculate fold-change between AD and CT means
-  mean_props <- pivot_wider(mean_props, names_from = "diagnosis",
-                            values_from = c("mean_pct", "sd_pct",
-                                            "rel_sd_pct", "count")) %>%
-    dplyr::mutate(fc = mean_pct_AD / mean_pct_CT,
-                  log2_fc = log2(fc)) # equivalent to log2(AD)-log2(CT)
+    significant <- List_to_DF(significant) %>%
+      dplyr::mutate(tissue = tissue,
+                    significant_05 = (p_adj <= 0.05),
+                    significant_01 = (p_adj <= 0.01)) %>%
+      dplyr::select(celltype, tissue, p_adj, significant_05, significant_01,
+                    anova_pval, avg_id)
 
-  # If one or both of the means is 0, rel_sd_pct values and the FC would be NA
-  # due to divide by zero, so they need to be changed to 0
-  mean_props$fc[is.na(mean_props$fc)] <- 0
-  mean_props$log2_fc[is.na(mean_props$log2_fc)] <- 0
-  mean_props$rel_sd_pct_AD[is.na(mean_props$rel_sd_pct_AD)] <- 0
-  mean_props$rel_sd_pct_CT[is.na(mean_props$rel_sd_pct_CT)] <- 0
+    # cap minimum p to avoid log(0) in downstream analysis
+    significant$p_adj_thresh <- significant$p_adj
+    significant$p_adj_thresh[significant$p_adj < 1e-8] <- 1e-8
 
-  mean_props <- merge(mean_props, significant,
-                      by = c("avg_id", "celltype", "tissue")) %>%
-    dplyr::mutate(log_p = log(p_adj_thresh)) %>%
-    # pull in missing parameter fields from errs_tmp
-    merge(errs_tmp[, c("avg_id", group_cols)]) %>%
-    as.data.frame()
+    # Average cell type percentages across all AD or all CT samples in a given
+    # parameter set
+    mean_props <- ests_ad %>% subset(diagnosis %in% c("CT", "AD")) %>%
+      group_by(avg_id, diagnosis, tissue, celltype, algorithm) %>%
+      dplyr::summarize(mean_pct = mean(percent_mean),
+                       sd_pct = sd(percent_mean),
+                       rel_sd_pct = sd_pct / mean_pct,
+                       count = n(),
+                       .groups = "drop") %>%
+      # Make one column for AD and one for CT for each of mean_pct, sd_pct,
+      # rel_sd_pct, and count, calculate fold-change between AD and CT means
+      pivot_wider(names_from = "diagnosis",
+                  values_from = c("mean_pct", "sd_pct", "rel_sd_pct", "count")) %>%
+      dplyr::mutate(fc = mean_pct_AD / mean_pct_CT,
+                    log2_fc = log2(fc), # equivalent to log2(AD)-log2(CT)
+                    # If one or both of the means is 0, rel_sd_pct values and the
+                    # FC would be NA due to divide by zero, so they need to be
+                    # changed to 0
+                    fc = ifelse(is.na(fc), 0, fc),
+                    log2_fc = ifelse(is.na(log2_fc), 0, log2_fc),
+                    rel_sd_pct_AD = ifelse(is.na(rel_sd_pct_AD), 0, rel_sd_pct_AD),
+                    rel_sd_pct_CT = ifelse(is.na(rel_sd_pct_CT), 0, rel_sd_pct_CT))
 
-  return(mean_props)
+    mean_props <- merge(mean_props, significant) %>%
+      dplyr::mutate(log_p = log(p_adj_thresh)) %>%
+      # pull in missing parameter fields from errs_tmp
+      merge(errs_tmp[, c("avg_id", group_cols)]) %>%
+      as.data.frame()
+
+    return(mean_props)
+  })
+
+  parallel::stopCluster(cl)
+
+  return(List_to_DF(sig_list))
 }
 
 
