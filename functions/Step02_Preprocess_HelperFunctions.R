@@ -9,6 +9,7 @@ library(dplyr)
 library(readxl)
 library(SingleCellExperiment)
 library(sageseqr)
+library(scDblFinder)
 
 source("Filenames.R")
 
@@ -237,6 +238,12 @@ ReadCounts_Cain <- function(files) {
   return(counts)
 }
 
+QC_Cain <- function(seurat) {
+  # This data has already been thresholded by counts and doesn't need additional
+  # modification.
+  return(seurat)
+}
+
 
 ## Lau, et al., 2020 -----------------------------------------------------------
 # https://doi.org/10.1073/pnas.2008762117
@@ -250,15 +257,9 @@ DownloadData_Lau <- function(metadata_only = FALSE) {
 
   if (!metadata_only) {
     # For some reason this function call is failing
-    # geo <- getGEOSuppFiles(GEO = "GSE157827", makeDirectory = FALSE,
-    #                       baseDir = dir_lau_raw)
-    # untar(rownames(geo)[1], exdir = dir_lau_raw)
-
-    url_geo_tar <- "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE157827&format=file"
-    destfile_tar <- file.path(dir_lau_raw, "GSE157827.tar")
-    download.file(url_geo_tar, destfile_tar)
-
-    untar(file.path(dir_lau_raw, "GSE157827.tar"), exdir = dir_lau_raw)
+    geo <- getGEOSuppFiles(GEO = "GSE157827", makeDirectory = FALSE,
+                           baseDir = dir_lau_raw)
+    untar(rownames(geo)[1], exdir = dir_lau_raw)
   }
 
   synIDs <- list("clinical_metadata" = list(id = "syn52308080", version = 1))
@@ -339,14 +340,19 @@ ReadCounts_Lau <- function(files) {
 
   counts <- do.call(cbind, counts_list)
 
-  # Filter as in the paper, but filtering on mitochondrial percent is done in
-  # the main function
-  n_genes <- colSums(counts > 0)
-  n_umi <- colSums(counts)
+  return(counts)
+}
 
-  cells_keep <- (n_genes > 200) & (n_umi < 20000)
+QC_Lau <- function(seurat) {
+  # We need to threshold on total counts / detected genes after removal of doublets
+  seurat$high_expression <- seurat$nCount_RNA > 25000
+  seurat$low_expression <- seurat$nFeature_RNA < 400
 
-  return(counts[, cells_keep])
+  seurat$pass_QC <- seurat$pass_QC &
+    !seurat$high_expression &
+    !seurat$low_expression
+
+  return(seurat)
 }
 
 
@@ -397,15 +403,24 @@ ReadCounts_Leng <- function(files) {
   return(cbind(counts(sce_ec), counts(sce_sfg)))
 }
 
+QC_Leng <- function(seurat) {
+  # This data has really low counts in general so the cap for high expression
+  # is fairly low too
+  seurat$high_expression <- seurat$nCount_RNA > 10000
+  seurat$pass_QC <- seurat$pass_QC & !seurat$high_expression
+
+  return(seurat)
+}
+
 
 ## Mathys, et al., 2019 --------------------------------------------------------
 # http://dx.doi.org/10.1038/s41586-019-1195-2
 
 DownloadData_Mathys <- function(metadata_only = FALSE) {
   synIDs <- list("clinical_metadata" = list(id = "syn3191087", version = 11),
-                 "cell_metadata" = list(id = "syn18686372", version = 1),
-                 "counts" = list(id = "syn18686381", version = 1),
-                 "genes" = list(id = "syn18686382", version = 1))
+                 "cell_metadata" = list(id = "syn18686383", version = 1),
+                 "counts" = list(id = "syn18687958", version = 1),
+                 "genes" = list(id = "syn18687959", version = 1))
 
   if (metadata_only) {
     synIDs <- synIDs[1:2]
@@ -446,7 +461,9 @@ ReadMetadata_Mathys <- function(files) {
   covariates$age_at_visit_max[covariates$age_at_visit_max == "90+"] <- 90
   covariates$age_at_visit_max <- as.numeric(covariates$age_at_visit_max)
 
-  metadata <- metadata %>% select(TAG, projid, diagnosis, broad.cell.type, Subcluster)
+  metadata <- metadata %>% select(TAG, projid, diagnosis)
+  metadata$broad_class <- NA
+  metadata$sub_class <- NA
 
   return(list("metadata" = metadata, "covariates" = covariates))
 }
@@ -457,6 +474,14 @@ ReadCounts_Mathys <- function(files) {
                     features = files$genes$path,
                     feature.column = 1, skip.cell = 1)
   return(counts)
+}
+
+QC_Mathys <- function(seurat) {
+  seurat$high_expression <- seurat$nCount_RNA > 25000
+  seurat$pass_QC <- seurat$pass_QC &
+    !seurat$high_expression
+
+  return(seurat)
 }
 
 
@@ -495,17 +520,12 @@ ReadMetadata_SEARef <- function(files) {
   adata <- ad$read_h5ad(files$counts, backed = "r")
 
   metadata <- adata$obs
-
-  metadata$broad_class <- as.character(metadata$subclass_label)
-  metadata$broad_class[metadata$class_label == "Neuronal: GABAergic"] <- "GABA"
-  metadata$broad_class[metadata$class_label == "Neuronal: Glutamatergic"] <- "Glut"
-
   metadata <- merge(metadata, donor_metadata,
                     by.x = "external_donor_name_label",
                     by.y = "individualID")
 
   metadata <- select(metadata, sample_name, external_donor_name_label,
-                     diagnosis, broad_class, subclass_label)
+                     diagnosis, class_label, subclass_label)
 
   covariates <- subset(donor_metadata,
                        individualID %in% metadata$external_donor_name_label) %>%
@@ -523,6 +543,150 @@ ReadCounts_SEARef <- function(files) {
                                       file.path("obs", "sample_name")))
   dimnames(counts)[[2]] <- col_names
   return(counts)
+}
+
+
+# Generic single cell QC function ----------------------------------------------
+
+QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n_cores = 2) {
+  # The seaRef data set has already undergone extensive QC, including doublet
+  # removal and removal of cells with percent_mito > 0.05%. Therefore we do not
+  # remove any additional cells here.
+  if (dataset_name == "seaRef") {
+    return(counts)
+  }
+
+  # Seed for reproducible results with scDblFinder, based on the dataset name
+  seed <- sum(as.numeric(charToRaw(dataset_name)))
+
+  stats <- list(total_cells = ncol(counts))
+
+  sce <- SingleCellExperiment(list("counts" = counts), colData = metadata)
+  sce <- scuttle::addPerCellQCMetrics(sce)
+
+  # Small amount of initial thresholding to remove empty droplets
+  sce <- sce[, sce$detected > 200 & sce$sum > 200]
+
+  stats$low_expression <- ncol(counts) - ncol(sce)
+
+  # If any samples have > 30% of their cells with percent_mito > 0.05, remove
+  # them as potentially poor quality samples. The 30% threshold was determined
+  # by visually inspecting the distribution of percent_mito for each sample in
+  # each dataset and choosing a threshold that removed the most obviously skewed
+  # samples in all datasets.
+  # TODO: For Lau, this removes 4 AD and 2 NC samples. Lowering to 0.2 removes 2 more AD samples
+  # TODO: For Leng, this removes 1 EC sample. Lowering to 0.2 removes 2 SFG samples
+  # TODO: For Mathys, this removes 18 samples. Lowering to 0.2 removes 2 more samples.
+  mito_stats <- table(sce$sample, sce$percent_mito > mt_threshold)
+  mito_stats <- sweep(mito_stats, 1, rowSums(mito_stats), "/")
+
+  if (ncol(mito_stats) == 2) {
+    stats$removed_samples <- names(which(mito_stats[, "TRUE"] > 0.3))
+    stats$removed_sample_cells <- sum(sce$sample %in% stats$removed_samples)
+  } else {
+    # This happens with cain and seaRef, no samples need to be removed
+    stats$removed_samples <- c()
+    stats$removed_sample_cells <- 0
+  }
+
+  if (length(stats$removed_samples) > 0) {
+    cat(str_glue("Removing {length(stats$removed_samples)} sample(s) due to ",
+                 "sample-wide high mitochondrial gene expression:"),
+        paste(stats$removed_samples, collapse = ", "), "\n")
+  }
+
+  sce <- sce[, !(sce$sample %in% stats$removed_samples)]
+
+  cat("Finding doublets...\n")
+
+  sce <- scDblFinder::scDblFinder(
+    sce,
+    clusters = TRUE,
+    samples = "sample",
+    nfeatures = 4000,
+    BPPARAM = BiocParallel::SnowParam(n_cores, RNGseed = seed)
+  )
+
+  stats$doublets <- sum(sce$scDblFinder.class == "doublet")
+  stats$doublet_pct <- round(stats$doublets / stats$total_cells * 100, digits = 2)
+  cat(str_glue("Found {stats$doublets} doublets ({stats$doublet_pct}% of total).\n"))
+
+  cat("Removing doublet clusters...\n")
+  seurat <- as.Seurat(sce, data = "counts")
+  rm(sce)
+  gc()
+
+  seurat <- RenameAssays(seurat, assay.name = "originalexp", new.assay.name = "RNA")
+  seurat <- seurat |>
+    NormalizeData() |>
+    FindVariableFeatures(nfeatures = 4000) |>
+    ScaleData() |>
+    RunPCA() |>
+    FindNeighbors(dims = 1:20) |> # 20 seems good for all data sets
+    FindClusters(resolution = 5)
+
+  seurat$seurat_clusters <- paste0("C", seurat$seurat_clusters)
+  dbl_stats <- table(seurat$seurat_clusters, seurat$scDblFinder.class)
+  dbl_stats <- sweep(dbl_stats, 1, rowSums(dbl_stats), "/")
+  dbl_clusts <- names(which(dbl_stats[, "doublet"] > 0.5))
+
+  cat(str_glue("Removed {length(dbl_clusts)} doublet clusters.\n"))
+
+  seurat$singlet <- seurat$scDblFinder.class == "singlet"
+  seurat$doublet_cluster <- seurat$seurat_clusters %in% dbl_clusts
+  seurat$low_mito <- seurat$percent_mito < mt_threshold
+
+  seurat$pass_QC <- seurat$singlet &
+    !seurat$doublet_cluster &
+    seurat$low_mito
+
+  seurat$high_expression <- FALSE
+  seurat$low_expression <- FALSE
+
+  # Do any dataset-specific QC, which may include filtering on high/low
+  # expression
+  seurat <- switch(dataset_name,
+                   "cain" = QC_Cain(seurat),
+                   "lau" = QC_Lau(seurat),
+                   "leng" = QC_Leng(seurat),
+                   "mathys" = QC_Mathys(seurat))
+
+  # Collect some final stats for printout
+
+  # Cells that weren't marked as doublets but are in doublet clusters
+  stats$doublet_cluster_cells <- sum(seurat$doublet_cluster & seurat$singlet)
+
+  # Cells remaining with high mitochondrial expression
+  stats$mito_cells <- sum(!seurat$low_mito & !seurat$doublet_cluster & seurat$singlet)
+
+  # Cells remaining with low expression
+  stats$low_expression <- stats$low_expression +
+    sum(seurat$low_mito & !seurat$doublet_cluster &
+          seurat$singlet & seurat$low_expression)
+
+  # Cells remaining with high expression
+  stats$high_expression <- sum(seurat$low_mito & !seurat$doublet_cluster &
+                                 seurat$singlet & seurat$high_expression)
+
+  stats$pct_pass <- round(sum(seurat$pass_QC) / ncol(counts) * 100, digits = 2)
+
+  cat(str_glue(
+    "{sum(seurat$pass_QC)} of {ncol(counts)} cells ({stats$pct_pass}%) passed ",
+    "QC. Removed:\n",
+    ".. {stats$removed_sample_cells} cells from {length(stats$removed_samples)} ",
+    "low-quality sample(s)\n",
+    ".. {stats$doublets} doublets\n",
+    ".. {stats$doublet_cluster_cells} additional cells in doublet clusters\n",
+    ".. {stats$low_expression} cells with low expression\n",
+    ".. {stats$high_expression} cells with high expression\n",
+    ".. {stats$mito_cells} cells with high mitochondrial expression\n"
+  ))
+
+  # Save stats for examination
+  saveRDS(stats, file.path(dir_tmp, str_glue("{dataset_name}_qc.rds}")))
+
+  # Only keep cells that passed QC
+  return(counts[, colnames(seurat)[seurat$pass_QC]])
 }
 
 

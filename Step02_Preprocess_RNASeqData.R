@@ -13,8 +13,8 @@ source(file.path("functions", "General_HelperFunctions.R"))
 
 # Setup ------------------------------------------------------------------------
 
-datasets <- c("cain", "lau", "leng", "mathys", "seaRef") # Single cell
-              #"Mayo", "MSBB", "ROSMAP") # Bulk
+datasets <- c("cain", "lau", "leng", "mathys", "seaRef", # Single cell
+              "Mayo", "MSBB", "ROSMAP") # Bulk
 
 # Helper functions
 is_bulk <- function(dataset) {
@@ -30,6 +30,12 @@ is_singlecell <- function(dataset) {
 for (dataset in datasets) {
   message(str_glue("Creating data set for {dataset}..."))
   files <- DownloadData(dataset)
+
+  # Allow threading of operations on DelayedMatrix for seaRef
+  if (dataset == "seaRef") {
+    n_cores <- max(parallel::detectCores() - 2, 1)
+    setAutoBPPARAM(BPPARAM = BiocParallel::SnowParam(n_cores))
+  }
 
   ## Read in metadata file -----------------------------------------------------
 
@@ -75,7 +81,7 @@ for (dataset in datasets) {
   ## Convert gene names --------------------------------------------------------
 
   # Bulk only -- Convert bulk data Ensembl IDs to gene symbols.
-  if (is_bulk(dataset)) {
+  if (is_bulk(dataset) || dataset == "mathys") {
     genes <- EnsemblIdToGeneSymbol(rownames(counts))
   } else {
     # Single cell only -- update potentially outdated gene symbols to the most
@@ -99,14 +105,9 @@ for (dataset in datasets) {
   rownames(counts) <- genes$hgnc_symbol
   rownames(genes) <- genes$hgnc_symbol
 
+
   ## Adjust for and remove mitochondrial/non-coding genes ----------------------
 
-  # Remove samples with > 20% (single cell) or > 35% (bulk) mito genes by count.
-  # All single cell datasets have most cells under 20% already, but the
-  # percentages are much higher in Mayo and ROSMAP. The 35% threshold for bulk
-  # data was chosen by looking at the value of median(pct_mt) + 3*mad(pct_mt),
-  # which is near 0.35 for both Mayo and ROSMAP (MSBB is much lower), and visual
-  # inspection of the distribution of pct_mt for each data set.
   mt_genes <- grepl("^MT-", rownames(counts))
   pct_mt <- colSums(counts[mt_genes, ]) / colSums(counts)
   metadata$percent_mito <- pct_mt
@@ -118,26 +119,37 @@ for (dataset in datasets) {
 
   genes$exclude <- mt_genes | nc_genes
 
-  mt_threshold <- if (is_singlecell(dataset)) 0.2 else 0.35
+  # Remove bulk samples with > 35% mito genes by count. The percentages in Mayo
+  # and ROSMAP especially can get pretty high and these samples should be
+  # removed as low-quality. The 35% threshold was chosen by looking at the value
+  # of median(pct_mt) + 3*mad(pct_mt), which is near 0.35 for both Mayo and
+  # ROSMAP (MSBB is much lower), and visual inspection of the distribution of
+  # pct_mt for each data set.
+  # Single cell data sets will be thresholded during QC and mapping.
+  if (is_bulk(dataset)) {
+    mt_threshold <- 0.35
 
-  if (any(pct_mt > mt_threshold)) {
-    print(str_glue(paste("Removing {sum(pct_mt > mt_threshold)} samples from",
-                         "{dataset} due to high mitochondrial gene expression.")))
+    if (any(pct_mt > mt_threshold)) {
+      print(str_glue(paste("Removing {sum(pct_mt > mt_threshold)} samples from",
+                           "{dataset} due to high mitochondrial gene expression.")))
+    }
+    counts <- counts[, pct_mt <= mt_threshold] # Exclude samples with high mitochondrial genes
   }
-  counts <- counts[, pct_mt <= mt_threshold] # Exclude samples with high mitochondrial genes
 
   # Remove genes that are expressed in less than 3 cells (or samples) after
   # filtering for outliers and high mitochondrial percentages
   ok <- rowSums(counts > 0) >= 3
-  counts <- counts[ok, ]
-
-  genes <- genes[rownames(counts), ]
+  genes$exclude <- genes$exclude | !ok
 
 
   ## Final modifications to metadata -------------------------------------------
 
   # Make sure metadata has the same samples and is in the same order as counts
   metadata <- metadata[colnames(counts), ]
+
+  # Keep track of original library size before excluding mito/nc genes in
+  # case we need it
+  metadata$lib_size <- colSums(counts)
 
   if (is_singlecell(dataset)) {
     metadata$broad_class <- RemapCelltypeNames(metadata$broad_class)
@@ -152,14 +164,15 @@ for (dataset in datasets) {
     }
   }
 
-  # TMM normalization factors -- unfortunately will convert to dense matrix
-  if (is_singlecell(dataset)) {
-    tmm <- edgeR::calcNormFactors(counts[!genes$exclude, ], method = "TMMwsp")
-  } else { # bulk
-    tmm <- edgeR::calcNormFactors(counts[!genes$exclude, ], method = "TMM")
+  # TMM normalization factors -- bulk only. Single cell factors will be
+  # calculated after single cell QC and cell type mapping.
+  if (is_bulk(dataset)) {
+    tmm <- edgeR::calcNormFactors(counts[!genes$exclude, ],
+                                  lib.size = metadata$lib_size,
+                                  method = "TMM")
+    metadata$tmm_factors <- tmm
   }
 
-  metadata$tmm_factors <- tmm
   gc()
 
 
@@ -184,5 +197,23 @@ for (dataset in datasets) {
     # sce file will contain a pointer to the original data file rather than
     # writing the full data to disk again
     Save_PreprocessedData(dataset, sce)
+
+    # Save a metadata-free copy as an h5ad file for mapping. seaRef is already
+    # mapped and doesn't need this step
+    if (dataset != "seaRef") {
+      ad <- import("anndata")
+
+      obs <- data.frame(cell_id = metadata$cell_id,
+                        row.names = metadata$cell_id)
+      var <- data.frame(ensembl_gene_id = genes$ensembl_gene_id,
+                        row.names = genes$ensembl_gene_id)
+
+      adata <- ad$AnnData(X = t(counts),
+                          obs = obs,
+                          var = var)
+      adata$write_h5ad(filename = file.path(dir_preprocessed,
+                                            str_glue("{dataset}_preprocessed.h5ad")),
+                       compression = "gzip")
+    }
   }
 }

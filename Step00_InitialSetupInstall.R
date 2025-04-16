@@ -7,12 +7,12 @@ install.packages(c("BiocManager", "devtools", "stringr", "Metrics",
 # If synapser fails to install because it can't find "synapseclient", go to
 # RStudio options (Tools->Global Options) -> Python, uncheck "Automatically
 # activate project-local Python environments" and restart R.
-install.packages("synapser", repos = c("http://ran.synapse.org", "http://cran.fhcrc.org"))
+install.packages("synapser", repos = c("http://ran.synapse.org", "https://cloud.r-project.org"))
 
 BiocManager::install(c("Biobase", "SingleCellExperiment", "TOAST", "scuttle",
                        "DeconRNASeq", "Seurat", "MAST", "GEOquery", "biomaRt",
                        "DESeq2", "edgeR", "GenomicFeatures", "snpStats",
-                       "HDF5Array", "glmGamPoi"))
+                       "HDF5Array", "glmGamPoi", "scDblFinder"))
 
 BiocManager::install("preprocessCore", configure.args="--disable-threading")
 
