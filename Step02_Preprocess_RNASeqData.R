@@ -31,9 +31,10 @@ for (dataset in datasets) {
   message(str_glue("Creating data set for {dataset}..."))
   files <- DownloadData(dataset)
 
-  # Allow threading of operations on DelayedMatrix for seaRef
+  # Allow threading of operations on DelayedMatrix for seaRef. This formula
+  # assumes 8 GB of RAM per CPU.
   if (dataset == "seaRef") {
-    n_cores <- max(parallel::detectCores() - 2, 1)
+    n_cores <- max(parallel::detectCores() / 2, 1)
     setAutoBPPARAM(BPPARAM = BiocParallel::SnowParam(n_cores))
   }
 
@@ -108,25 +109,43 @@ for (dataset in datasets) {
 
   ## Adjust for and remove mitochondrial/non-coding genes ----------------------
 
+  # Keep track of original library size before excluding mito/nc genes
+  metadata$lib_size <- colSums(counts)
+
   mt_genes <- grepl("^MT-", rownames(counts))
-  pct_mt <- colSums(counts[mt_genes, ]) / colSums(counts)
+  pct_mt <- colSums(counts[mt_genes, ]) / metadata$lib_size
   metadata$percent_mito <- pct_mt
 
   # Remove non-coding genes -- grep pattern from Green et al 2023.
   nc_genes <- grepl("^(AC\\d+{3}|AL\\d+{3}|AP\\d+{3}|LINC\\d+{3})", rownames(counts))
-  pct_nc <- colSums(counts[nc_genes, ]) / colSums(counts)
+  pct_nc <- colSums(counts[nc_genes, ]) / metadata$lib_size
   metadata$percent_noncoding <- pct_nc
 
   genes$exclude <- mt_genes | nc_genes
 
-  # Remove bulk samples with > 35% mito genes by count. The percentages in Mayo
-  # and ROSMAP especially can get pretty high and these samples should be
-  # removed as low-quality. The 35% threshold was chosen by looking at the value
-  # of median(pct_mt) + 3*mad(pct_mt), which is near 0.35 for both Mayo and
-  # ROSMAP (MSBB is much lower), and visual inspection of the distribution of
-  # pct_mt for each data set.
-  # Single cell data sets will be thresholded during QC and mapping.
-  if (is_bulk(dataset)) {
+  if (is_singlecell(dataset)) {
+    # Since all of these are single nucleus datasets, we expect the percent of
+    # mitochondrial expression to be near-zero. We set the threshold to 0.05 to
+    # allow for a small amount of noise or minor non-nuclear RNA contamination.
+    # Ideally this threshold would be closer to 0.02 or 0.03, but some of the
+    # datasets are too noisy for this to be realistic. The seaRef dataset is
+    # pre-capped at 0.05%, so this is the threshold we chose.
+
+    # TODO move to top of script as settable variable
+    # Assumes a ratio of 8 GB per 1 CPU. This formula should be safe for all
+    # data sets.
+    n_cores <- max(parallel::detectCores() - 2, 1)
+    counts <- QC_SingleCell(metadata, counts,
+                            mt_threshold = 0.05,
+                            dataset_name = dataset,
+                            n_cores = n_cores)
+  } else {
+    # Remove bulk samples with > 35% mito genes by count. The percentages in
+    # Mayo and ROSMAP especially can get pretty high and these samples should be
+    # removed as low-quality. The 35% threshold was chosen by looking at the
+    # value of median(pct_mt) + 3*mad(pct_mt), which is near 0.35 for both Mayo
+    # and ROSMAP (MSBB is much lower), and visual inspection of the distribution
+    # of pct_mt for each data set.
     mt_threshold <- 0.35
 
     if (any(pct_mt > mt_threshold)) {
@@ -147,13 +166,9 @@ for (dataset in datasets) {
   # Make sure metadata has the same samples and is in the same order as counts
   metadata <- metadata[colnames(counts), ]
 
-  # Keep track of original library size before excluding mito/nc genes in
-  # case we need it
-  metadata$lib_size <- colSums(counts)
-
-  if (is_singlecell(dataset)) {
-    metadata$broad_class <- RemapCelltypeNames(metadata$broad_class)
-  }
+  #if (is_singlecell(dataset)) {
+  #  metadata$broad_class <- RemapCelltypeNames(metadata$broad_class)
+  #}
 
   # Ensure "sample" is a factor and not numeric (fixes mathys samples)
   metadata$sample <- factor(metadata$sample)
@@ -165,7 +180,7 @@ for (dataset in datasets) {
   }
 
   # TMM normalization factors -- bulk only. Single cell factors will be
-  # calculated after single cell QC and cell type mapping.
+  # calculated after cell type mapping.
   if (is_bulk(dataset)) {
     tmm <- edgeR::calcNormFactors(counts[!genes$exclude, ],
                                   lib.size = metadata$lib_size,

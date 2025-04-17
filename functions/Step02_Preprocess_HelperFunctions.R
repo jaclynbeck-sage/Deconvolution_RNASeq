@@ -584,7 +584,7 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
     stats$removed_samples <- names(which(mito_stats[, "TRUE"] > 0.3))
     stats$removed_sample_cells <- sum(sce$sample %in% stats$removed_samples)
   } else {
-    # This happens with cain and seaRef, no samples need to be removed
+    # This happens with cain, no samples need to be removed
     stats$removed_samples <- c()
     stats$removed_sample_cells <- 0
   }
@@ -609,7 +609,8 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
 
   stats$doublets <- sum(sce$scDblFinder.class == "doublet")
   stats$doublet_pct <- round(stats$doublets / stats$total_cells * 100, digits = 2)
-  cat(str_glue("Found {stats$doublets} doublets ({stats$doublet_pct}% of total).\n"))
+  cat(str_glue("Found {stats$doublets} doublets ({stats$doublet_pct}% of total)."),
+      "\n")
 
   cat("Removing doublet clusters...\n")
   seurat <- as.Seurat(sce, data = "counts")
@@ -630,7 +631,7 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
   dbl_stats <- sweep(dbl_stats, 1, rowSums(dbl_stats), "/")
   dbl_clusts <- names(which(dbl_stats[, "doublet"] > 0.5))
 
-  cat(str_glue("Removed {length(dbl_clusts)} doublet clusters.\n"))
+  cat(str_glue("Removed {length(dbl_clusts)} doublet clusters."), "\n")
 
   seurat$singlet <- seurat$scDblFinder.class == "singlet"
   seurat$doublet_cluster <- seurat$seurat_clusters %in% dbl_clusts
@@ -679,11 +680,11 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
     ".. {stats$doublet_cluster_cells} additional cells in doublet clusters\n",
     ".. {stats$low_expression} cells with low expression\n",
     ".. {stats$high_expression} cells with high expression\n",
-    ".. {stats$mito_cells} cells with high mitochondrial expression\n"
-  ))
+    ".. {stats$mito_cells} cells with high mitochondrial expression"
+  ), "\n")
 
   # Save stats for examination
-  saveRDS(stats, file.path(dir_tmp, str_glue("{dataset_name}_qc.rds}")))
+  saveRDS(stats, file.path(dir_tmp, str_glue("{dataset_name}_qc.rds")))
 
   # Only keep cells that passed QC
   return(counts[, colnames(seurat)[seurat$pass_QC]])
