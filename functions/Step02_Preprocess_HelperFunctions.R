@@ -524,8 +524,14 @@ ReadMetadata_SEARef <- function(files) {
                     by.x = "external_donor_name_label",
                     by.y = "individualID")
 
-  metadata <- select(metadata, sample_name, external_donor_name_label,
-                     diagnosis, class_label, subclass_label)
+  metadata <- metadata |>
+    select(
+      sample_name, external_donor_name_label, diagnosis, class_label,
+      subclass_label, cluster_label, class_confidence, subclass_confidence,
+      cluster_confidence
+    ) |>
+    dplyr::rename(supertype = cluster_label,
+                  supertype_confidence = cluster_confidence)
 
   covariates <- subset(donor_metadata,
                        individualID %in% metadata$external_donor_name_label) %>%

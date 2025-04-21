@@ -49,8 +49,8 @@ for (dataset in datasets) {
   Save_Covariates(dataset, covariates)
 
   if (is_singlecell(dataset)) {
-    colnames(metadata) <- c("cell_id", "sample", "diagnosis",
-                            "broad_class", "sub_class")
+    colnames(metadata)[1:5] <- c("cell_id", "sample", "diagnosis",
+                                 "broad_class", "sub_class")
     rownames(metadata) <- metadata$cell_id
   } else { # bulk
     colnames(metadata) <- c("sample", "diagnosis", "tissue")
@@ -165,10 +165,6 @@ for (dataset in datasets) {
 
   # Make sure metadata has the same samples and is in the same order as counts
   metadata <- metadata[colnames(counts), ]
-
-  #if (is_singlecell(dataset)) {
-  #  metadata$broad_class <- RemapCelltypeNames(metadata$broad_class)
-  #}
 
   # Ensure "sample" is a factor and not numeric (fixes mathys samples)
   metadata$sample <- factor(metadata$sample)
