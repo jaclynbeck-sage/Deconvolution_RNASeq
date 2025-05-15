@@ -13,8 +13,8 @@ source(file.path("functions", "General_HelperFunctions.R"))
 
 # Setup ------------------------------------------------------------------------
 
-datasets <- c("cain", "lau", "leng", "mathys", "seaRef", # Single cell
-              "Mayo", "MSBB", "ROSMAP") # Bulk
+datasets <- #c("cain", "lau", "leng", "mathys", "seaRef", # Single cell
+              c("Mayo", "MSBB", "ROSMAP") # Bulk
 
 # Helper functions
 is_bulk <- function(dataset) {
@@ -71,7 +71,7 @@ for (dataset in datasets) {
 
   if (is_bulk(dataset)) {
     outliers <- FindOutliers_BulkData(dataset, covariates, counts,
-                                      do_plot = FALSE, sd_threshold = 4)
+                                      do_plot = TRUE, sd_threshold = 4)
 
     print(str_glue("{length(outliers)} outlier samples will be removed from {dataset}."))
     counts <- counts[, setdiff(colnames(counts), outliers)]
@@ -178,9 +178,20 @@ for (dataset in datasets) {
   # TMM normalization factors -- bulk only. Single cell factors will be
   # calculated after cell type mapping.
   if (is_bulk(dataset)) {
-    tmm <- edgeR::calcNormFactors(counts[!genes$exclude, ],
-                                  lib.size = metadata$lib_size,
-                                  method = "TMM")
+    tmm <- rep(1, ncol(counts))
+    names(tmm) <- metadata$sample
+
+    # Calculate norm factors on a tissue-by-tissue basis
+    for (tissue in levels(metadata$tissue)) {
+      samples <- metadata$sample[metadata$tissue == tissue]
+      group <- metadata$diagnosis[metadata$tissue == tissue]
+      genes_keep <- edgeR::filterByExpr(counts[, samples], group = group)
+
+      tmm[samples] <- edgeR::calcNormFactors(
+        counts[!genes$exclude & genes_keep, samples],
+        method = "TMM"
+      )
+    }
     metadata$tmm_factors <- tmm
   }
 

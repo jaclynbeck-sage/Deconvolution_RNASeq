@@ -9,7 +9,7 @@ library(dplyr)
 library(readxl)
 library(SingleCellExperiment)
 library(sageseqr)
-library(scDblFinder)
+#library(scDblFinder)
 
 source("Filenames.R")
 
@@ -142,7 +142,7 @@ ReadCounts <- function(dataset, files) {
                    "seaRef" = ReadCounts_SEARef(files),
                    "Mayo" = ReadCounts_BulkData(files),
                    "MSBB" = ReadCounts_BulkData(files),
-                   "ROSMAP" = ReadCounts_BulkData(files))
+                   "ROSMAP" = ReadCounts_ROSMAP(files))
   return(counts)
 }
 
@@ -707,12 +707,14 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
 # Biomart gene conversion: https://www.synapse.org/#!Synapse:syn27024953
 
 DownloadData_Mayo <- function(metadata_only = FALSE) {
-  synIDs <- list("metadata" = list(id = "syn29855549", version = 2),
-                 "clinical_metadata" = list(id = "syn23277389", version = 6),
-                 "counts" = list(id = "syn27024951", version = 1))
+  synIDs <- list("individual_metadata" = list(id = "syn23277389", version = 7),
+                 "biospecimen_metadata" = list(id = "syn20827192", version = 13),
+                 "assay_metadata" = list(id = "syn20827193", version = 4),
+                 "metrics" = list(id = "syn21544637", version = 1),
+                 "counts" = list(id = "syn21544635", version = 1))
 
   if (metadata_only) {
-    synIDs <- synIDs[1:2]
+    synIDs <- synIDs[1:4]
   }
 
   files <- DownloadFromSynapse(synIDs, dir_mayo_raw)
@@ -730,12 +732,14 @@ DownloadData_Mayo <- function(metadata_only = FALSE) {
 # Biomart gene conversion: https://www.synapse.org/#!Synapse:syn27068755
 
 DownloadData_MSBB <- function(metadata_only = FALSE) {
-  synIDs <- list("metadata" = list(id = "syn29855570", version = 2),
-                 "clinical_metadata" = list(id = "syn6101474", version = 9),
-                 "counts" = list(id = "syn27068754", version = 1))
+  synIDs <- list("individual_metadata" = list(id = "syn6101474", version = 9),
+                 "biospecimen_metadata" = list(id = "syn21893059", version = 14),
+                 "assay_metadata" = list(id = "syn22447899", version = 6),
+                 "metrics" = list(id = "syn21544666", version = 1),
+                 "counts" = list(id = "syn21544664", version = 1))
 
   if (metadata_only) {
-    synIDs <- synIDs[1:2]
+    synIDs <- synIDs[1:4]
   }
 
   files <- DownloadFromSynapse(synIDs, dir_msbb_raw)
@@ -753,12 +757,20 @@ DownloadData_MSBB <- function(metadata_only = FALSE) {
 # Biomart gene conversion: https://www.synapse.org/#!Synapse:syn26967452
 
 DownloadData_ROSMAP <- function(metadata_only = FALSE) {
-  synIDs <- list("metadata" = list(id = "syn29855598", version = 2),
-                 "clinical_metadata" = list(id = "syn3191087", version = 11),
-                 "counts" = list(id = "syn26967451", version = 1))
+  synIDs <- list("individual_metadata" = list(id = "syn3191087", version = 11),
+                 "biospecimen_metadata" = list(id = "syn21323366", version = 19),
+                 "assay_metadata" = list(id = "syn21088596", version = 5),
+                 "metrics1" = list(id = "syn22283384", version = 4),
+                 "metrics2" = list(id = "syn22301603", version = 4),
+                 "metrics3" = list(id = "syn22314232", version = 4),
+                 "metrics4" = list(id = "syn25817663", version = 4),
+                 "counts1" = list(id = "syn22283382", version = 4),
+                 "counts2" = list(id = "syn22301601", version = 4),
+                 "counts3" = list(id = "syn22314230", version = 4),
+                 "counts4" = list(id = "syn25817661", version = 4))
 
   if (metadata_only) {
-    synIDs <- synIDs[1:2]
+    synIDs <- synIDs[1:7]
   }
 
   files <- DownloadFromSynapse(synIDs, dir_rosmap_raw)
@@ -771,7 +783,56 @@ DownloadData_ROSMAP <- function(metadata_only = FALSE) {
 # from the harmonization effort and are in the same format
 
 ReadMetadata_BulkData <- function(dataset, files) {
-  metadata <- read.table(files$metadata$path, header = T)
+  ind <- read.csv(files$individual_metadata$path)
+  bio <- read.csv(files$biospecimen_metadata$path) |>
+    subset((is.na(exclude) | exclude == FALSE) & assay == "rnaSeq") |>
+    select(individualID, specimenID, tissue)
+  assay <- read.csv(files$assay_metadata$path) |>
+    select(specimenID, RIN, any_of(c("sequencingBatch", "flowcell")))
+
+  if (dataset == "Mayo") {
+    assay$batch <- assay$flowcell
+  } else {
+    assay$batch <- assay$sequencingBatch
+  }
+
+  assay$batch <- ifelse(is.na(assay$batch), "unknown", assay$batch)
+
+  if (dataset == "ROSMAP") {
+    metrics <- lapply(paste0("metrics", 1:4), function(m_name) {
+      read.delim(files[[m_name]]$path) |>
+        select(sample, contains("_PCT_"))
+    })
+
+    metrics <- do.call(rbind, metrics)
+  } else {
+    metrics <- read.delim(files$metrics$path) |>
+      select(sample, contains("_PCT_"))
+  }
+
+  metadata <- ind |>
+    merge(bio) |>
+    merge(assay) |>
+    merge(metrics, by.x = "specimenID", by.y = "sample") |>
+    mutate(
+      tissue = case_match(
+        tissue,
+        # Mayo
+        "cerebellum" ~ "CBE",
+        "temporal cortex" ~ "TCX",
+        # MSBB
+        "frontal pole" ~ "FP",
+        "inferior frontal gyrus" ~ "IFG",
+        "parahippocampal gyrus" ~ "PHG",
+        "superior temporal gyrus" ~ "STG",
+        # ROSMAP
+        "dorsolateral prefrontal cortex" ~ "DLPFC",
+        "Head of caudate nucleus" ~ "ACC",
+        "posterior cingulate cortex" ~ "PCC",
+        .default = tissue
+      ),
+      batch = paste0(tissue, "_", batch)
+    )
 
   # Reclassify samples using the criteria from the Diverse Cohorts phenotype
   # harmonization:
@@ -779,11 +840,8 @@ ReadMetadata_BulkData <- function(dataset, files) {
   #   CT: Braak <= 3 and [CERAD = normal or possible AD, or Thal < 2 (Mayo only)]
   #   OTHER: all other samples
   # I expand the OTHER diagnosis into two more groups:
-  #   AD_LOW_PATH: Braak <= 3 and [CERAD = probable AD or definite AD, or Thal >= 2 (Mayo only)]
-  #   CT_HIGH_PATH: Braak >= 4 and [CERAD = normal or possible AD, or Thal < 2 (Mayo only)]
-
-  clinical <- read.csv(files$clinical_metadata$path) %>%
-    subset(individualID %in% metadata$individualID)
+  #   CT_HIGH_CERAD: Braak <= 3 and [CERAD = probable AD or definite AD, or Thal >= 2 (Mayo only)]
+  #   CT_HIGH_BRAAK: Braak >= 4 and [CERAD = normal or possible AD, or Thal < 2 (Mayo only)]
 
   if (dataset == "Mayo") {
     # Mayo samples do not have CERAD values so we use Thal >= 2 for AD. In the
@@ -794,44 +852,35 @@ ReadMetadata_BulkData <- function(dataset, files) {
     renames <- c("Alzheimer Disease" = "AD", "control" = "CT",
                  "pathological aging" = "PATH_AGE",
                  "progressive supranuclear palsy" = "PSP")
-    clinical$diagnosis <- renames[clinical$diagnosis]
-    clinical$ad_cerad <- clinical$Thal >= 2
-    clinical$high_braak <- clinical$Braak >= 4
-    clinical$ad_cerad[clinical$diagnosis == "PSP"] <- NA # Forces PSP to be left alone below
+    metadata$diagnosis <- renames[metadata$diagnosis]
+    metadata$ad_cerad <- metadata$Thal >= 2
+    metadata$high_braak <- metadata$Braak >= 4
+    metadata$ad_cerad[metadata$diagnosis == "PSP"] <- NA # Forces PSP to be left alone below
   } else if (dataset == "MSBB") {
     # MSBB CERAD values:
     #   1 = Normal
     #   2 = Definite AD
     #   3 = Probable AD
     #   4 = Possible AD
-    clinical$ad_cerad <- clinical$CERAD %in% c(2, 3)
-    clinical$high_braak <- clinical$Braak >= 4
+    metadata$ad_cerad <- metadata$CERAD %in% c(2, 3)
+    metadata$high_braak <- metadata$Braak >= 4
   } else if (dataset == "ROSMAP") {
     # ROSMAP CERAD values
     #  1 = Definite AD
     #  2 = Probable AD
     #  3 = Possible AD
     #  4 = No AD/Normal
-    clinical$ad_cerad <- clinical$ceradsc %in% c(1, 2)
-    clinical$high_braak <- clinical$braaksc >= 4
+    metadata$ad_cerad <- metadata$ceradsc %in% c(1, 2)
+    metadata$high_braak <- metadata$braaksc >= 4
   }
 
   # Rows where either ad_cerad or high_braak are NA do not get changed by this code
-  clinical$diagnosis[clinical$ad_cerad & clinical$high_braak] <- "AD"
-  clinical$diagnosis[!clinical$ad_cerad & !clinical$high_braak] <- "CT"
-  clinical$diagnosis[!clinical$ad_cerad & clinical$high_braak] <- "CT_HIGH_PATH"
-  clinical$diagnosis[clinical$ad_cerad & !clinical$high_braak] <- "AD_LOW_PATH"
+  metadata$diagnosis[metadata$ad_cerad & metadata$high_braak] <- "AD"
+  metadata$diagnosis[!metadata$ad_cerad & !metadata$high_braak] <- "CT"
+  metadata$diagnosis[!metadata$ad_cerad & metadata$high_braak] <- "CT_HIGH_BRAAK"
+  metadata$diagnosis[metadata$ad_cerad & !metadata$high_braak] <- "CT_HIGH_CERAD"
 
-  # Keep 'projid' for ROSMAP for comparison with IHC data
-  if (dataset == "ROSMAP") {
-    clinical <- clinical %>% select(individualID, diagnosis, projid)
-  } else {
-    clinical <- clinical %>% select(individualID, diagnosis)
-  }
-
-  metadata <- metadata %>% select(-diagnosis) %>%
-    merge(clinical, by = "individualID") %>%
-    subset(RIN >= 5) # Drop samples with RIN < 5
+  metadata <- subset(metadata, RIN >= 5) # Drop samples with RIN < 5
 
   # Necessary because the column names of the counts matrix get converted this
   # way automatically
@@ -844,13 +893,38 @@ ReadMetadata_BulkData <- function(dataset, files) {
   }
 
   covariates <- metadata
-  metadata <- metadata[, c("specimenID", "diagnosis", "tissue")]
+  metadata <- select(metadata, specimenID, diagnosis, tissue)
 
   return(list("metadata" = metadata, "covariates" = covariates))
 }
 
 ReadCounts_BulkData <- function(files, metadata) {
   counts <- read.table(files[["counts"]]$path, header = TRUE, row.names = 1)
+  rownames(counts) <- str_replace(rownames(counts), "\\.[0-9]+", "")
+
+  # Counts matrix has a few rows of statistics before genes start, remove them
+  counts <- counts[grepl("ENSG", rownames(counts)), ]
+
+  return(counts)
+}
+
+ReadCounts_ROSMAP <- function(files, metadata) {
+  counts <- lapply(paste0("counts", 1:4), function(c_name) {
+    read.table(files[[c_name]]$path, header = TRUE, row.names = 1)
+  })
+
+  all_genes <- lapply(counts, rownames) |> unlist() |> unique()
+  counts <- lapply(counts, function(c_mat) {
+    c_mat[all_genes, ]
+  })
+
+  counts <- do.call(cbind, counts)
+
+  rownames(counts) <- str_replace(rownames(counts), "\\.[0-9]+", "")
+
+  # Counts matrix has a few rows of statistics before genes start, remove them
+  counts <- counts[grepl("ENSG", rownames(counts)), ]
+
   return(counts)
 }
 
@@ -861,10 +935,8 @@ ReadCounts_BulkData <- function(files, metadata) {
 # Y-chromosomal gene expression does not fit with the sex recorded in the
 # metadata, indicating potential contamination or mislabeling of those samples.
 # To be consistent with how Mayo and ROSMAP were handled in the RNASeq
-# Harmonization pipeline, we remove these samples. Note that the Github
-# repository linked below specifies to throw out resequenced samples, however if
-# they pass QC I leave them in because they might be useful as technical
-# replicates when looking at estimates and errors.
+# Harmonization pipeline, we remove these samples. We also remove resequenced
+# samples as was intended in the repository below.
 # Source: https://github.com/Sage-Bionetworks/ampad-rnaseq-reprocessing/blob/main/code/metadata_preprocessing/msbb_reprocessing.R
 RemoveBadSamples_MSBB <- function(metadata) {
   sex_swapped <- c( 'hB_RNA_12901', 'hB_RNA_12934', 'BM_36_296', 'hB_RNA_10622',
@@ -876,6 +948,10 @@ RemoveBadSamples_MSBB <- function(metadata) {
                 'hB_RNA_10567', 'hB_RNA_10577', 'hB_RNA_7855', 'hB_RNA_9005')
 
   metadata <- subset(metadata, !(specimenID %in% c(sex_swapped, outliers)))
+  metadata <- subset(metadata, !grepl("resequenced", specimenID))
+
+  # Remove the 7 prefrontal cortex samples
+  metadata <- subset(metadata, tissue != "prefrontal cortex")
 
   return(metadata)
 }
@@ -907,25 +983,13 @@ FindOutliers_BulkData <- function(dataset, covariates, counts, sd_threshold = 4,
   # addition batch split by tissue.
   covariates$batch <- switch(dataset,
                              "Mayo" = covariates$tissue,
-                             "MSBB" = 1, # no separation
-                             "ROSMAP" = covariates$final_batch)
+                             "MSBB" = covariates$batch,
+                             "ROSMAP" = covariates$batch)
 
-  # ROSMAP samples cluster by a mixture of batch and tissue. All batches
-  # starting with "1" cluster together on a PCA graph, and all batches starting
-  # with "3" cluster together as well, so these batches are collapsed. Batch 2_3
-  # separates into one cluster of ACC samples and one cluster of DLPFC/PCC
-  # samples so it is split in two. Batch 2_9 also splits by tissue the same way.
-  # Batches 2_1 and 2_2 are too small to make inferences about outliers but
-  # don't cluster closely with other batches, so they are left alone here and
-  # will be skipped (no samples marked as outliers).
-  if (dataset == "ROSMAP") {
-    covariates$batch[startsWith(covariates$final_batch, "1")] <- "1"
-    covariates$batch[startsWith(covariates$final_batch, "3")] <- "3"
-
-    covariates$batch[covariates$batch == "2_3" & covariates$tissue == "ACC"] <- "2_3_ACC"
-    covariates$batch[covariates$batch == "2_3" & covariates$tissue != "ACC"] <- "2_3_DLPFC_PCC"
-    covariates$batch[covariates$batch == "2_9" & covariates$tissue == "ACC"] <- "2_9_ACC"
-    covariates$batch[covariates$batch == "2_9" & covariates$tissue != "ACC"] <- "2_9_DLPFC_PCC"
+  # MSBB batches cluster by the second half of their batch name + tissue, rather
+  # than separating by batch completely
+  if (dataset == "MSBB") {
+    covariates$batch <- str_replace(covariates$batch, "_[A-Z][0-9]+r?", "_")
   }
 
   # Ensure covariates are in the same order as counts

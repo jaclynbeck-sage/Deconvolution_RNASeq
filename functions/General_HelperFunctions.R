@@ -707,7 +707,6 @@ OrderMarkers_ByCorrelation <- function(marker_list, data) {
 # dataframe.
 #
 # Arguments:
-#   bulk_dataset_name - the name of the data set
 #   metadata - the metadata dataframe (colData()) from a SummarizedExperiment
 #   covariates - a dataframe of covariates, where rows are samples and columns
 #                are the covariates
@@ -715,9 +714,28 @@ OrderMarkers_ByCorrelation <- function(marker_list, data) {
 #
 # Returns:
 #   a dataframe with merged metadata and cleaned covariates
-Clean_BulkCovariates <- function(bulk_dataset_name, metadata, covariates,
-                                 scale_numerical = TRUE) {
+Clean_BulkCovariates <- function(metadata, covariates, scale_numerical = TRUE) {
   covariates <- subset(covariates, specimenID %in% rownames(metadata))
+
+  covariates <- covariates |>
+    mutate(
+      age_death_num = suppressWarnings(as.numeric(age_death)),
+      age_death = case_when(
+        !is.na(age_death_num) ~ cut(
+          age_death_num,
+          breaks = c(0, 65, 70, 75, 80, 85, 90),
+          labels = c("Under 65", "65 - 69", "70 - 74", "75 - 79", "80 - 84", "85 - 89"),
+          right = FALSE,
+          include.lowest = TRUE
+        ),
+        .default = age_death # 90+
+      )
+    ) |>
+    select(-age_death_num)
+
+  covariates$age_death <- factor(covariates$age_death,
+                                 levels = c("Under 65", "65 - 69", "70 - 74",
+                                            "75 - 79", "80 - 84", "85 - 89", "90+"))
 
   for (col in c("sex", "race", "spanish", "ethnicity", "individualID", "apoe4_allele",
                 "projid", "flowcell", "sequencingBatch", "final_batch")) {
@@ -725,11 +743,6 @@ Clean_BulkCovariates <- function(bulk_dataset_name, metadata, covariates,
       covariates[, col] <- factor(covariates[, col])
     }
   }
-
-  # Fix the age_death column: ages above 90 are masked as "90+", so we convert
-  # those to numerical 90 instead.
-  covariates$age_death[covariates$age_death == "90+"] <- 90
-  covariates$age_death <- as.numeric(covariates$age_death)
 
   # Remove duplicate columns that already exist in colData
   covariates <- covariates %>% select(-diagnosis, -tissue)
