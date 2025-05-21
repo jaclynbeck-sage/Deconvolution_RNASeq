@@ -76,6 +76,20 @@ for (dataset in datasets) {
     print(str_glue("{length(outliers)} outlier samples will be removed from {dataset}."))
     counts <- counts[, setdiff(colnames(counts), outliers)]
     metadata <- metadata[colnames(counts),]
+
+    # Sex mismatches
+    # A threshold of 2 works for both Mayo and ROSMAP but catches two female
+    # MSBB samples with higher Y expression that seem to belong to the female
+    # cluster. However, raising the threshold to 3.5 in order to not mark those
+    # samples as outliers puts the threshold inside the male cluster of ROSMAP,
+    # so we only raise the threshold for MSBB.
+    thresh <- ifelse(dataset == "MSBB", 3.5, 2)
+    mismatches <- FindSexMismatches_BulkData(dataset, covariates, counts,
+                                             do_plot = TRUE,
+                                             y_expr_threshold = thresh)
+    print(str_glue("{length(mismatches)} sex-mismatched samples will be removed from {dataset}."))
+    counts <- counts[, setdiff(colnames(counts), mismatches)]
+    metadata <- metadata[colnames(counts),]
   }
 
 
@@ -185,10 +199,9 @@ for (dataset in datasets) {
     for (tissue in levels(metadata$tissue)) {
       samples <- metadata$sample[metadata$tissue == tissue]
       group <- metadata$diagnosis[metadata$tissue == tissue]
-      genes_keep <- edgeR::filterByExpr(counts[, samples], group = group)
 
       tmm[samples] <- edgeR::calcNormFactors(
-        counts[!genes$exclude & genes_keep, samples],
+        counts[!genes$exclude, samples],
         method = "TMM"
       )
     }

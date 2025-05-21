@@ -8,7 +8,7 @@ library(HDF5Array)
 library(dplyr)
 library(readxl)
 library(SingleCellExperiment)
-library(sageseqr)
+library(sageRNAUtils)
 #library(scDblFinder)
 
 source("Filenames.R")
@@ -840,8 +840,8 @@ ReadMetadata_BulkData <- function(dataset, files) {
   #   CT: Braak <= 3 and [CERAD = normal or possible AD, or Thal < 2 (Mayo only)]
   #   OTHER: all other samples
   # I expand the OTHER diagnosis into two more groups:
-  #   CT_HIGH_CERAD: Braak <= 3 and [CERAD = probable AD or definite AD, or Thal >= 2 (Mayo only)]
-  #   CT_HIGH_BRAAK: Braak >= 4 and [CERAD = normal or possible AD, or Thal < 2 (Mayo only)]
+  #   PATH_HIGH_CERAD: Braak <= 3 and [CERAD = probable AD or definite AD, or Thal >= 2 (Mayo only)]
+  #   PATH_HIGH_BRAAK: Braak >= 4 and [CERAD = normal or possible AD, or Thal < 2 (Mayo only)]
 
   if (dataset == "Mayo") {
     # Mayo samples do not have CERAD values so we use Thal >= 2 for AD. In the
@@ -877,19 +877,25 @@ ReadMetadata_BulkData <- function(dataset, files) {
   # Rows where either ad_cerad or high_braak are NA do not get changed by this code
   metadata$diagnosis[metadata$ad_cerad & metadata$high_braak] <- "AD"
   metadata$diagnosis[!metadata$ad_cerad & !metadata$high_braak] <- "CT"
-  metadata$diagnosis[!metadata$ad_cerad & metadata$high_braak] <- "CT_HIGH_BRAAK"
-  metadata$diagnosis[metadata$ad_cerad & !metadata$high_braak] <- "CT_HIGH_CERAD"
+  metadata$diagnosis[!metadata$ad_cerad & metadata$high_braak] <- "PATH_HIGH_BRAAK"
+  metadata$diagnosis[metadata$ad_cerad & !metadata$high_braak] <- "PATH_HIGH_CERAD"
 
-  metadata <- subset(metadata, RIN >= 5) # Drop samples with RIN < 5
+  metadata$RIN[is.na(metadata$RIN)] <- 0
+
+  print(str_glue("{sum(metadata$RIN < 3)} sample(s) will be removed from ",
+                 "{dataset} due to low RIN."))
+  metadata <- subset(metadata, RIN >= 3) # Drop samples with RIN < 3
 
   # Necessary because the column names of the counts matrix get converted this
   # way automatically
   metadata$specimenID <- make.names(metadata$specimenID)
 
-  # MSBB never had sex swapped / resequencing samples removed from the data
-  # before processing, so we do that here
+  # MSBB has a few resequenced samples that need to be removed, and there are
+  # only a small number of "prefrontal cortex" samples. These are removed as
+  # well.
   if (dataset == "MSBB") {
-    metadata <- RemoveBadSamples_MSBB(metadata)
+    metadata <- subset(metadata, !grepl("resequenced", specimenID) &
+                         tissue != "prefrontal cortex")
   }
 
   covariates <- metadata
@@ -929,40 +935,8 @@ ReadCounts_ROSMAP <- function(files, metadata) {
 }
 
 
-# Removes sex-swapped and pre-determined outlier samples from the MSBB dataset.
-# These should have been removed during the RNASeq Harmonization pipeline but
-# weren't due to an oversight. There are several samples whose X- or
-# Y-chromosomal gene expression does not fit with the sex recorded in the
-# metadata, indicating potential contamination or mislabeling of those samples.
-# To be consistent with how Mayo and ROSMAP were handled in the RNASeq
-# Harmonization pipeline, we remove these samples. We also remove resequenced
-# samples as was intended in the repository below.
-# Source: https://github.com/Sage-Bionetworks/ampad-rnaseq-reprocessing/blob/main/code/metadata_preprocessing/msbb_reprocessing.R
-RemoveBadSamples_MSBB <- function(metadata) {
-  sex_swapped <- c( 'hB_RNA_12901', 'hB_RNA_12934', 'BM_36_296', 'hB_RNA_10622',
-                    'hB_RNA_10622_L43C014', 'hB_RNA_10702', 'hB_RNA_10702_E007C014',
-                    'hB_RNA_7765', 'hB_RNA_7765_resequenced', 'hB_RNA_7995',
-                    'hB_RNA_8015', 'hB_RNA_8025', 'hB_RNA_8025_E007C014',
-                    'hB_RNA_8385', 'hB_RNA_8305')
-  outliers <- c('hB_RNA_10577', 'hB_RNA_12964', 'hB_RNA_13144', 'hB_RNA_13397',
-                'hB_RNA_10567', 'hB_RNA_10577', 'hB_RNA_7855', 'hB_RNA_9005')
-
-  metadata <- subset(metadata, !(specimenID %in% c(sex_swapped, outliers)))
-  metadata <- subset(metadata, !grepl("resequenced", specimenID))
-
-  # Remove the 7 prefrontal cortex samples
-  metadata <- subset(metadata, tissue != "prefrontal cortex")
-
-  return(metadata)
-}
-
-
-# Per-batch outlier detection via PCA. Unlike the RNAseq harmonization study,
-# we do this on a per-batch (or tissue) basis, because points tend to cluster by
-# batch (ROSMAP) and tissue (Mayo, MSBB), and batch/tissue clusters are
-# distinctly separated on the PCA plot which skews how large the standard
-# deviation is. We did not see much bias toward diagnosis or sex in the PCA,
-# either with all points together or separated by batch.
+# Per-batch outlier detection via PCA. Each batch in the data is unique to one
+# tissue, so data is actually split by tissue + sequencing batch.
 #
 # Arguments:
 #   covariates = a data.frame of covariates
@@ -978,9 +952,8 @@ FindOutliers_BulkData <- function(dataset, covariates, counts, sd_threshold = 4,
                                   do_plot = FALSE) {
   # Define how to split the data into batches for batch-specific outlier
   # detection. On a PCA plot of all samples, Mayo is distinctly split by tissue
-  # but not sequencing batch, MSBB samples all group together with little
-  # separation by batch or tissue, and ROSMAP is split by batch, with one
-  # addition batch split by tissue.
+  # but not sequencing batch, MSBB samples split by batch but certain batches
+  # group together, and ROSMAP is split by batch.
   covariates$batch <- switch(dataset,
                              "Mayo" = covariates$tissue,
                              "MSBB" = covariates$batch,
@@ -997,25 +970,53 @@ FindOutliers_BulkData <- function(dataset, covariates, counts, sd_threshold = 4,
   covariates <- covariates[colnames(counts), ]
 
   # Find outliers by batch
-  outliers <- lapply(unique(covariates$batch), function(batch) {
-    batch_samples <- covariates$batch == batch
+  pca_results <- sageRNAUtils::find_pca_outliers_by_group(
+    data = sageRNAUtils::simple_lognorm(as.matrix(counts)),
+    pca_group = "batch",
+    n_sds = sd_threshold,
+    metadata = covariates,
+    sample_colname = "specimenID",
+    min_group_size = 20
+  )
 
-    if (sum(batch_samples) > 20) {
-      # Use sagesqr's function
-      res <- sageseqr::identify_outliers(counts[, batch_samples],
-                                         covariates[batch_samples, ],
-                                         color = "diagnosis",
-                                         shape = "tissue", size = "batch",
-                                         z = sd_threshold)
+  if (do_plot) {
+    plts <- lapply(pca_results$group_results, function(res) {
+      sageRNAUtils::plot_pca_outliers(res$pca_df,
+                                      res$pc1_threshold,
+                                      res$pc2_threshold,
+                                      print_plot = FALSE)
+    })
+    print(Reduce("+", plts))
+  }
 
-      if (do_plot) {
-        print(res$plot)
-      }
+  return(pca_results$outliers)
+}
 
-      return(res$outliers)
-    }
-    return(NULL)
-  })
 
-  return(unlist(outliers))
+FindSexMismatches_BulkData <- function(dataset, covariates, counts,
+                                       y_expr_threshold = 2,
+                                       do_plot = FALSE) {
+  # ROSMAP has an "msex" column where 0 = female and 1 = male, convert to
+  # character sex values
+  if (dataset == "ROSMAP") {
+    covariates$sex <- case_match(covariates$msex,
+                                 0 ~ "female",
+                                 1 ~ "male",
+                                 .default = as.character(covariates$msex))
+  }
+
+  mismatches <- sageRNAUtils::find_sex_mismatches(
+    covariates,
+    simple_lognorm(counts),
+    y_expr_threshold = y_expr_threshold
+  )
+
+  if (do_plot) {
+    plts <- sageRNAUtils::plot_sex_mismatch_results(
+      mismatches$sex_check_df, mismatches$y_expr_threshold, print_plot = FALSE
+    )
+    print(plts[[1]] + plts[[2]])
+  }
+
+  return(mismatches$mismatches)
 }
