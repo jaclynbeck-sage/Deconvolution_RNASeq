@@ -60,7 +60,7 @@ EnsemblIdToGeneSymbol <- function(gene_list) {
   gene_conversions <- gene_conversions[overlap, ]
 
   genes <- gene_conversions %>%
-    dplyr::select(ensembl_gene_id, canonical_symbol, exon_length) %>%
+    dplyr::select(ensembl_gene_id, canonical_symbol, gene_length) %>%
     dplyr::rename(hgnc_symbol = canonical_symbol) %>%
     dplyr::arrange(ensembl_gene_id)
   return(genes)
@@ -83,9 +83,9 @@ UpdateGeneSymbols <- function(dataset, gene_list) {
   genes <- subset(gene_conversions, original_symbol %in% gene_list)
   rownames(genes) <- make.unique(genes$original_symbol, sep = "/")
 
-  genes <- genes[rownames(genes) %in% gene_list, ] %>%
-    dplyr::select(ensembl_gene_id, canonical_symbol, original_symbol) %>%
-    dplyr::rename(hgnc_symbol = canonical_symbol) %>%
+  genes <- genes[rownames(genes) %in% gene_list, ] |>
+    dplyr::select(ensembl_gene_id, canonical_symbol, original_symbol) |>
+    dplyr::rename(hgnc_symbol = canonical_symbol) |>
     dplyr::arrange(ensembl_gene_id)
 
   return(genes)
@@ -969,6 +969,8 @@ FindOutliers_BulkData <- function(dataset, covariates, counts, sd_threshold = 4,
   rownames(covariates) <- covariates$specimenID
   covariates <- covariates[colnames(counts), ]
 
+  gene_info <- read.csv(file_gene_list)
+
   # Find outliers by batch
   pca_results <- sageRNAUtils::find_pca_outliers_by_group(
     data = sageRNAUtils::simple_lognorm(as.matrix(counts)),
@@ -976,6 +978,7 @@ FindOutliers_BulkData <- function(dataset, covariates, counts, sd_threshold = 4,
     n_sds = sd_threshold,
     metadata = covariates,
     sample_colname = "specimenID",
+    gene_info = gene_info,
     min_group_size = 20
   )
 
