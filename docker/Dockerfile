@@ -1,4 +1,4 @@
-FROM rocker/rstudio:4.5.0
+FROM rocker/rstudio:4.4
 
 RUN apt-get update -y && apt-get upgrade -y
 RUN apt-get install -y ssh nano less curl

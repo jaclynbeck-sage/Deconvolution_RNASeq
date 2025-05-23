@@ -11,21 +11,21 @@ install.packages("synapser", repos = c("http://ran.synapse.org", "https://cloud.
 
 BiocManager::install(c("SingleCellExperiment", "TOAST", "scuttle", "DESeq2",
                        "edgeR", "DeconRNASeq", "Seurat", "GEOquery",
-                       "HDF5Array", "scDblFinder"))
+                       "HDF5Array", "scDblFinder"),
+                     clean = TRUE)
 
 #BiocManager::install(c("Biobase", "MAST", "GenomicFeatures", "snpStats", "glmGamPoi"))
-
 #BiocManager::install("preprocessCore", configure.args="--disable-threading")
 
 # install my utility package
-devtools::install_github("jaclynbeck-sage/sageRNAUtils")
+devtools::install_github("jaclynbeck-sage/sageRNAUtils", clean = TRUE)
 
 # install the MuSiC package from my fork, which has a few fixes and speedups
-devtools::install_github("jaclynbeck-sage/MuSiC")
+devtools::install_github("jaclynbeck-sage/MuSiC", clean = TRUE)
 
 # install Dtangle and HSPE from my forks, which have a few fixes
-devtools::install_github("jaclynbeck-sage/dtangle", subdir = "lib_dtangle")
-devtools::install_github("jaclynbeck-sage/hspe", subdir = "lib_hspe")
+devtools::install_github("jaclynbeck-sage/dtangle", subdir = "lib_dtangle", clean = TRUE)
+devtools::install_github("jaclynbeck-sage/hspe", subdir = "lib_hspe", clean = TRUE)
 
 # Extra package needed for pre-processing seaRef
 reticulate::virtualenv_install("r-reticulate", packages = c("anndata"))
