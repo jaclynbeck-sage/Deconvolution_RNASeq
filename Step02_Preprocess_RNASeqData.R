@@ -200,7 +200,7 @@ for (dataset in datasets) {
       samples <- metadata$sample[metadata$tissue == tissue]
       group <- metadata$diagnosis[metadata$tissue == tissue]
 
-      tmm[samples] <- edgeR::calcNormFactors(
+      tmm[samples] <- edgeR::normLibSizes(
         counts[!genes$exclude, samples],
         method = "TMM"
       )

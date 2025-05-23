@@ -45,7 +45,7 @@ CreatePseudobulk_BySample <- function(singlecell_counts, metadata, dataset) {
   pb_meta$diagnosis <- factor(pb_meta$diagnosis)
   rownames(pb_meta) <- pb_meta$sample
   pb_meta <- pb_meta[colnames(counts), ]
-  pb_meta$tmm_factors <- edgeR::calcNormFactors(counts, method = "TMMwsp")
+  pb_meta$tmm_factors <- edgeR::normLibSizes(counts, method = "TMMwsp")
 
   propCells_broad <- table(metadata$sample, metadata$broad_class)
   propCells_broad <- sweep(propCells_broad, 1, rowSums(propCells_broad), "/")

@@ -5,7 +5,7 @@ library(SingleCellExperiment)
 library(scuttle)
 library(stringr)
 library(DESeq2)
-library(preprocessCore)
+#library(preprocessCore)
 library(vroom)
 source("Filenames.R")
 

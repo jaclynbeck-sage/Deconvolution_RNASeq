@@ -898,6 +898,11 @@ ReadMetadata_BulkData <- function(dataset, files) {
                          tissue != "prefrontal cortex")
   }
 
+  # Rename ROSMAP age_death column
+  if (dataset == "ROSMAP") {
+    metadata <- dplyr::rename(metadata, ageDeath = age_death)
+  }
+
   covariates <- metadata
   metadata <- select(metadata, specimenID, diagnosis, tissue)
 

@@ -63,7 +63,7 @@ CreatePseudobulk_PureSamples <- function(singlecell_counts, metadata, dataset) {
     rownames(pb_meta) <- pb_meta$sample
     pb_meta <- pb_meta[colnames(counts), ]
     pb_meta$n_cells <- colSums(y) # number of cells in each sample
-    pb_meta$tmm_factors <- edgeR::calcNormFactors(counts, method = "TMMwsp")
+    pb_meta$tmm_factors <- edgeR::normLibSizes(counts, method = "TMMwsp")
 
     propCells <- table(metadata$celltypesample, metadata$celltype)
     rownames(propCells) <- paste0("puresample_", rownames(propCells))

@@ -719,26 +719,28 @@ Clean_BulkCovariates <- function(metadata, covariates, scale_numerical = TRUE) {
 
   covariates <- covariates |>
     mutate(
-      age_death_num = suppressWarnings(as.numeric(age_death)),
-      age_death = case_when(
-        !is.na(age_death_num) ~ cut(
-          age_death_num,
+      ageDeath_num = suppressWarnings(as.numeric(ageDeath)),
+      ageDeath = case_when(
+        !is.na(ageDeath_num) ~ cut(
+          ageDeath_num,
           breaks = c(0, 65, 70, 75, 80, 85, 90),
           labels = c("Under 65", "65 - 69", "70 - 74", "75 - 79", "80 - 84", "85 - 89"),
           right = FALSE,
           include.lowest = TRUE
         ),
-        .default = age_death # 90+
+        ageDeath == "90_or_over" ~ "90+", # Fix for Mayo
+        .default = ageDeath # 90+ or NA
       )
     ) |>
-    select(-age_death_num)
+    select(-ageDeath_num)
 
-  covariates$age_death <- factor(covariates$age_death,
+  covariates$ageDeath <- factor(covariates$ageDeath,
                                  levels = c("Under 65", "65 - 69", "70 - 74",
                                             "75 - 79", "80 - 84", "85 - 89", "90+"))
 
-  for (col in c("sex", "race", "spanish", "ethnicity", "individualID", "apoe4_allele",
-                "projid", "flowcell", "sequencingBatch", "final_batch")) {
+  for (col in c("diagnosis", "sex", "race", "spanish", "ethnicity",
+                "individualID", "apoeGenotype", "projid", "batch", "Braak",
+                "Thal", "CERAD")) {
     if (col %in% colnames(covariates)) {
       covariates[, col] <- factor(covariates[, col])
     }
@@ -766,7 +768,19 @@ Clean_BulkCovariates <- function(metadata, covariates, scale_numerical = TRUE) {
     }
   }
 
-  return(metadata)
+  # Remove columns that are all NA or all the same value
+  all_na <- sapply(colnames(metadata), function(col_name) {
+    all(is.na(metadata[, col_name]))
+  })
+
+  all_same <- sapply(colnames(metadata), function(col_name) {
+    all(metadata[, col_name] == metadata[1, col_name])
+  })
+  all_same[is.na(all_same)] <- FALSE
+
+  cols_keep <- !all_na & !all_same
+
+  return(metadata[, cols_keep])
 }
 
 

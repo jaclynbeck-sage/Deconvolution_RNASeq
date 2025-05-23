@@ -120,7 +120,7 @@ for (dataset in datasets) {
     pctRNA <- do.call(rbind, pctRNA)
 
     pseudobulk <- as(pseudobulk, "matrix")
-    tmm <- edgeR::calcNormFactors(pseudobulk, method = "TMMwsp")
+    tmm <- edgeR::normLibSizes(pseudobulk, method = "TMMwsp")
 
     se <- SummarizedExperiment(assays = SimpleList(counts = pseudobulk),
                                colData = data.frame(tmm_factors = tmm),
