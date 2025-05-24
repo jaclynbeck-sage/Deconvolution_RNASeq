@@ -481,9 +481,11 @@ Load_MapReference <- function(dataset_name, granularity) {
 # Returns:
 #   Nothing
 Save_PreprocessedData <- function(dataset_name, se_object) {
-  saveRDS(se_object,
-          file = file.path(dir_preprocessed,
-                           str_glue("{dataset_name}_preprocessed.rds")))
+  # Use base::saveRDS instead of saveRDS (which defaults to BiocGenerics::saveRDS)
+  # so we can save seaRef data, which is not loaded into memory
+  base::saveRDS(se_object,
+                file = file.path(dir_preprocessed,
+                                 str_glue("{dataset_name}_preprocessed.rds")))
 }
 
 

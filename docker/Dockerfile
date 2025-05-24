@@ -2,10 +2,9 @@ FROM rocker/rstudio:4.4
 
 RUN apt-get update -y && apt-get upgrade -y
 RUN apt-get install -y ssh nano less curl
-RUN apt-get install -y python3 python3-pip python3-venv python3-virtualenv
-RUN apt-get install -y libglpk-dev liblzma-dev libbz2-dev
+RUN apt-get install -y libpng-dev libglpk-dev liblzma-dev libbz2-dev libffi-dev libhdf5-dev
 RUN apt-get install -y libcurl4-openssl-dev # for scDblFinder
-#RUN apt-get install -y libhdf5-dev libpng-dev libxt-dev
+#RUN apt-get install -y libxt-dev
 RUN apt-get clean
 
 # Install docker for CIBERSORTx
