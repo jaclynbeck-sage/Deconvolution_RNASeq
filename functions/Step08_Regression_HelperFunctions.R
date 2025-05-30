@@ -31,7 +31,8 @@ Find_BestModel <- function(dataset, tissue, bulk_se, covariates) {
       batch, # keep
       -any_of(
         c("lib_size", "tmm_factors", "flowcell", "final_batch", "RIN2",
-          "sequencingBatch", "ad_cerad", "high_braak", "projid", "msex")
+          "sequencingBatch", "ad_cerad", "high_braak", "projid", "educ",
+          "yearsEducation")
       ) # numeric variables to remove
     )
 
@@ -44,8 +45,8 @@ Find_BestModel <- function(dataset, tissue, bulk_se, covariates) {
 
   rand_vars <- intersect(valid_covariates, "batch")
 
-  # batch can't be fixed effects
-  fixed_vars <- setdiff(valid_covariates, rand_vars)
+  # batch can't be fixed effects, and diagnosis is already in the model
+  fixed_vars <- setdiff(valid_covariates, c(rand_vars, "diagnosis"))
 
   # Fixed effect model: evaluate best model using "~ diagnosis" as the base
   # model and iteratively adding fixed effect variables.

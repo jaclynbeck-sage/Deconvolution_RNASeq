@@ -40,7 +40,10 @@ for (dataset in datasets) {
   # Load data and covariates ---------------------------------------------------
 
   bulk <- Load_PreprocessedData(dataset, remove_excluded = TRUE)
-  covariates <- Load_Covariates(dataset)
+  covariates <- Load_Covariates(dataset) |>
+    # Remove some very skewed PCT metrics which result in over-fitting
+    select(-starts_with("Alignment"), -RnaSeqMetrics__PCT_CORRECT_STRAND_READS,
+           -RnaSeqMetrics__PCT_RIBOSOMAL_BASES, -RnaSeqMetrics__PCT_INTERGENIC_BASES)
 
 
   # Per-tissue regression ------------------------------------------------------
@@ -48,6 +51,7 @@ for (dataset in datasets) {
   for (tissue in levels(bulk$tissue)) {
     message(str_glue("Regressing {dataset} / {tissue}"))
     bulk_tissue <- bulk[, bulk$tissue == tissue]
+
     covar_tissue <- Clean_BulkCovariates(colData(bulk_tissue), covariates,
                                          scale_numerical = TRUE)
 

@@ -834,6 +834,26 @@ ReadMetadata_BulkData <- function(dataset, files) {
       batch = paste0(tissue, "_", batch)
     )
 
+  # Rename some ROSMAP columns
+  if (dataset == "ROSMAP") {
+    metadata <- metadata |>
+      dplyr::rename(ageDeath = age_death,
+                    sex = msex,
+                    CERAD = ceradsc,
+                    Braak = braaksc,
+                    apoeGenotype = apoe_genotype) |>
+      # ROSMAP's "msex" column is coded 0 = female and 1 = male, convert to
+      # character sex values
+      mutate(sex = case_match(sex,
+                              0 ~ "female",
+                              1 ~ "male",
+                              .default = as.character(sex)),
+             # Move a singleton batch to batch 0
+             batch = case_match(batch,
+                                "DLPFC_0, 6, 7" ~ "DLPFC_0",
+                                .default = batch))
+  }
+
   # Reclassify samples using the criteria from the Diverse Cohorts phenotype
   # harmonization:
   #   AD: Braak >= 4 and [CERAD = probable AD or definite AD, or Thal >= 2 (Mayo only)]
@@ -870,8 +890,8 @@ ReadMetadata_BulkData <- function(dataset, files) {
     #  2 = Probable AD
     #  3 = Possible AD
     #  4 = No AD/Normal
-    metadata$ad_cerad <- metadata$ceradsc %in% c(1, 2)
-    metadata$high_braak <- metadata$braaksc >= 4
+    metadata$ad_cerad <- metadata$CERAD %in% c(1, 2)
+    metadata$high_braak <- metadata$Braak >= 4
   }
 
   # Rows where either ad_cerad or high_braak are NA do not get changed by this code
@@ -880,11 +900,15 @@ ReadMetadata_BulkData <- function(dataset, files) {
   metadata$diagnosis[!metadata$ad_cerad & metadata$high_braak] <- "PATH_HIGH_BRAAK"
   metadata$diagnosis[metadata$ad_cerad & !metadata$high_braak] <- "PATH_HIGH_CERAD"
 
+  # Drop samples with RIN < 3. The threshold of 3 was determined by ranking the
+  # RIN values in each data set and looking for the inflection point where RIN
+  # dropped rapidly. All Mayo samples are above 5, but both MSBB and ROSMAP
+  # have an inflection point at ~3.
   metadata$RIN[is.na(metadata$RIN)] <- 0
 
   print(str_glue("{sum(metadata$RIN < 3)} sample(s) will be removed from ",
                  "{dataset} due to low RIN."))
-  metadata <- subset(metadata, RIN >= 3) # Drop samples with RIN < 3
+  metadata <- subset(metadata, RIN >= 3)
 
   # Necessary because the column names of the counts matrix get converted this
   # way automatically
@@ -896,11 +920,6 @@ ReadMetadata_BulkData <- function(dataset, files) {
   if (dataset == "MSBB") {
     metadata <- subset(metadata, !grepl("resequenced", specimenID) &
                          tissue != "prefrontal cortex")
-  }
-
-  # Rename ROSMAP age_death column
-  if (dataset == "ROSMAP") {
-    metadata <- dplyr::rename(metadata, ageDeath = age_death)
   }
 
   covariates <- metadata
@@ -1004,15 +1023,6 @@ FindOutliers_BulkData <- function(dataset, covariates, counts, sd_threshold = 4,
 FindSexMismatches_BulkData <- function(dataset, covariates, counts,
                                        y_expr_threshold = 2,
                                        do_plot = FALSE) {
-  # ROSMAP has an "msex" column where 0 = female and 1 = male, convert to
-  # character sex values
-  if (dataset == "ROSMAP") {
-    covariates$sex <- case_match(covariates$msex,
-                                 0 ~ "female",
-                                 1 ~ "male",
-                                 .default = as.character(covariates$msex))
-  }
-
   mismatches <- sageRNAUtils::find_sex_mismatches(
     covariates,
     simple_lognorm(counts),

@@ -154,13 +154,20 @@ for (dataset in datasets) {
                             dataset_name = dataset,
                             n_cores = n_cores)
   } else {
-    # Remove bulk samples with > 35% mito genes by count. The percentages in
-    # Mayo and ROSMAP especially can get pretty high and these samples should be
-    # removed as low-quality. The 35% threshold was chosen by looking at the
-    # value of median(pct_mt) + 3*mad(pct_mt), which is near 0.35 for both Mayo
-    # and ROSMAP (MSBB is much lower), and visual inspection of the distribution
-    # of pct_mt for each data set.
-    mt_threshold <- 0.35
+    # Remove bulk samples with > 45% mito genes by count. The percentages in
+    # ROSMAP can get pretty high and these samples should be removed as
+    # low-quality. The 45% threshold was chosen by looking at the value of Q3 +
+    # 1.5*IQR for each data set, both as a whole and by tissue.
+    # Values:
+    #   Mayo: CBE = 0.25, TCX = 0.41, all = 0.36
+    #   MSBB: <= 0.05 for all tissues and as a whole
+    #   ROSMAP: ACC and PCC <= 0.2, DLPFC = 0.76, all = 0.57
+    #   All 3 data sets together: 0.41
+    # Due to the large skew for DLPFC, I set the cutoff to 0.45, which is
+    # slightly higher than the highest threshold for any tissue excluding DLPFC.
+    # This threshold excludes no MSBB samples, 4 Mayo samples, and 211 ROSMAP
+    # samples.
+    mt_threshold <- 0.45
 
     if (any(pct_mt > mt_threshold)) {
       print(str_glue(paste("Removing {sum(pct_mt > mt_threshold)} samples from",

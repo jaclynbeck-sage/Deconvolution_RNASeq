@@ -740,7 +740,7 @@ Clean_BulkCovariates <- function(metadata, covariates, scale_numerical = TRUE) {
 
   for (col in c("diagnosis", "sex", "race", "spanish", "ethnicity",
                 "individualID", "apoeGenotype", "projid", "batch", "Braak",
-                "Thal", "CERAD")) {
+                "Thal", "CERAD", "cogdx", "spanish", "dcfdx_lv", "CDR")) {
     if (col %in% colnames(covariates)) {
       covariates[, col] <- factor(covariates[, col])
     }
