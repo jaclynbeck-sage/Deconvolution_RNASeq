@@ -118,7 +118,7 @@ for (dataset in datasets) {
 # For every combination of reference data set, bulk data set, normalization,
 # regression, and granularity
 
-params_loop <- expand_grid(test_data_name = c("Mayo", "MSBB", "ROSMAP"),
+params_loop <- expand_grid(test_data_name = c("Mayo_TCX", "Mayo_CBE", "ROSMAP_ACC", "ROSMAP_DLPFC", "ROSMAP_PCC"), # TODO MSBB
                            normalization = c("cpm", "tmm", "tpm"),
                            regression_method = c("none", "edger", "lme", "dream"))
 

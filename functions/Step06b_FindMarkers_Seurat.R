@@ -44,8 +44,12 @@ FindMarkers_Seurat <- function(datasets, granularities) {
 
       markers <- subset(markers, !(gene %in% dupes))
 
-      avgs <- AverageExpression(seurat, features = markers$gene, slot = "data")
-      avgs <- as.data.frame(avgs[[1]])
+      avgs <- AggregateExpression(seurat,
+                                  features = unique(markers$gene),
+                                  group.by = "celltype",
+                                  return.seurat = TRUE)
+      avgs <- GetAssayData(avgs, layer = "data") |>
+        as.data.frame()
 
       getLog2FC <- function(cols) {
         sorted <- sort(cols, decreasing = TRUE)

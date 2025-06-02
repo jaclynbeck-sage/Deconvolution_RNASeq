@@ -70,15 +70,16 @@ n_cells <- round(ncol(seurat) * 0.1)
 seurat <- SCTransform(seurat,
                       ncells = n_cells,
                       method = "glmGamPoi",
-                      do.correct.umi = FALSE)
+                      do.correct.umi = FALSE,
+                      conserve.memory = TRUE)
 
 seurat <- RunPCA(seurat) %>%
   RunUMAP(dims = 1:30, return.model = TRUE)
 
 metadata_fixed <- seurat@meta.data
 
-seurat <- DietSeurat(seurat, counts = FALSE, data = TRUE,
-                     scale.data = TRUE, assays = "SCT",
+seurat <- DietSeurat(seurat, layers = c("data", "scale.data"),
+                     assays = "SCT",
                      dimreducs = c("pca", "umap"))
 
 Save_MapReference(reference_dataset, seurat, "broad_class")
@@ -104,7 +105,7 @@ pcs <- list("Astrocyte" = 30,
 seurat <- lapply(seurat, function(S) {
   bc <- unique(as.character(S$broad_class))
 
-  S <- SCTransform(S, method = "glmGamPoi", do.correct.umi = FALSE) %>%
+  S <- SCTransform(S, method = "glmGamPoi", do.correct.umi = FALSE, conserve.memory = TRUE) %>%
     RunPCA() %>%
     RunUMAP(dims = 1:pcs[[bc]], return.model = TRUE)
 
