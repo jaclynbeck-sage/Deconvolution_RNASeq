@@ -256,7 +256,6 @@ DownloadData_Lau <- function(metadata_only = FALSE) {
   write.csv(geo_metadata, file_geo_metadata)
 
   if (!metadata_only) {
-    # For some reason this function call is failing
     geo <- getGEOSuppFiles(GEO = "GSE157827", makeDirectory = FALSE,
                            baseDir = dir_lau_raw)
     untar(rownames(geo)[1], exdir = dir_lau_raw)
@@ -563,7 +562,8 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
   }
 
   # Seed for reproducible results with scDblFinder, based on the dataset name
-  seed <- sum(as.numeric(charToRaw(dataset_name)))
+  seed <- sageRNAUtils::string_to_seed(paste(dataset_name, "QC"))
+  set.seed(seed)
 
   stats <- list(total_cells = ncol(counts))
 
@@ -705,9 +705,10 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
 # Individual metadata: https://www.synapse.org/#!Synapse:syn23277389
 # Filtered counts: https://www.synapse.org/#!Synapse:syn27024951
 # Biomart gene conversion: https://www.synapse.org/#!Synapse:syn27024953
+# TODO temporary: use harmonized/corrected data from syn66639062
 
 DownloadData_Mayo <- function(metadata_only = FALSE) {
-  synIDs <- list("individual_metadata" = list(id = "syn23277389", version = 7),
+  synIDs <- list("individual_metadata" = list(id = "syn66639062", version = 1),
                  "biospecimen_metadata" = list(id = "syn20827192", version = 13),
                  "assay_metadata" = list(id = "syn20827193", version = 4),
                  "metrics" = list(id = "syn21544637", version = 1),
@@ -730,9 +731,10 @@ DownloadData_Mayo <- function(metadata_only = FALSE) {
 # Individual metadata: https://www.synapse.org/#!Synapse:syn6101474
 # Filtered counts: https://www.synapse.org/#!Synapse:syn27068754
 # Biomart gene conversion: https://www.synapse.org/#!Synapse:syn27068755
+# TODO temporary: Use harmonized/corrected data from syn66639063
 
 DownloadData_MSBB <- function(metadata_only = FALSE) {
-  synIDs <- list("individual_metadata" = list(id = "syn6101474", version = 9),
+  synIDs <- list("individual_metadata" = list(id = "syn66639063", version = 1),
                  "biospecimen_metadata" = list(id = "syn21893059", version = 14),
                  "assay_metadata" = list(id = "syn22447899", version = 6),
                  "metrics" = list(id = "syn21544666", version = 1),
@@ -755,9 +757,10 @@ DownloadData_MSBB <- function(metadata_only = FALSE) {
 # Individual metadata: https://www.synapse.org/#!Synapse:syn3191087
 # Filtered counts: https://www.synapse.org/#!Synapse:syn26967451
 # Biomart gene conversion: https://www.synapse.org/#!Synapse:syn26967452
+# TODO Temporary: use harmonized/corrected data from syn66639064
 
 DownloadData_ROSMAP <- function(metadata_only = FALSE) {
-  synIDs <- list("individual_metadata" = list(id = "syn3191087", version = 11),
+  synIDs <- list("individual_metadata" = list(id = "syn66639064", version = 2),
                  "biospecimen_metadata" = list(id = "syn21323366", version = 19),
                  "assay_metadata" = list(id = "syn21088596", version = 5),
                  "metrics1" = list(id = "syn22283384", version = 4),
@@ -834,22 +837,10 @@ ReadMetadata_BulkData <- function(dataset, files) {
       batch = paste0(tissue, "_", batch)
     )
 
-  # Rename some ROSMAP columns
+  # Move a singleton batch in ROSMAP to batch 0
   if (dataset == "ROSMAP") {
     metadata <- metadata |>
-      dplyr::rename(ageDeath = age_death,
-                    sex = msex,
-                    CERAD = ceradsc,
-                    Braak = braaksc,
-                    apoeGenotype = apoe_genotype) |>
-      # ROSMAP's "msex" column is coded 0 = female and 1 = male, convert to
-      # character sex values
-      mutate(sex = case_match(sex,
-                              0 ~ "female",
-                              1 ~ "male",
-                              .default = as.character(sex)),
-             # Move a singleton batch to batch 0
-             batch = case_match(batch,
+      mutate(batch = case_match(batch,
                                 "DLPFC_0, 6, 7" ~ "DLPFC_0",
                                 .default = batch))
   }
@@ -872,33 +863,45 @@ ReadMetadata_BulkData <- function(dataset, files) {
     renames <- c("Alzheimer Disease" = "AD", "control" = "CT",
                  "pathological aging" = "PATH_AGE",
                  "progressive supranuclear palsy" = "PSP")
-    metadata$diagnosis <- renames[metadata$diagnosis]
-    metadata$ad_cerad <- metadata$Thal >= 2
-    metadata$high_braak <- metadata$Braak >= 4
-    metadata$ad_cerad[metadata$diagnosis == "PSP"] <- NA # Forces PSP to be left alone below
-  } else if (dataset == "MSBB") {
-    # MSBB CERAD values:
-    #   1 = Normal
-    #   2 = Definite AD
-    #   3 = Probable AD
-    #   4 = Possible AD
-    metadata$ad_cerad <- metadata$CERAD %in% c(2, 3)
-    metadata$high_braak <- metadata$Braak >= 4
-  } else if (dataset == "ROSMAP") {
-    # ROSMAP CERAD values
-    #  1 = Definite AD
-    #  2 = Probable AD
-    #  3 = Possible AD
-    #  4 = No AD/Normal
-    metadata$ad_cerad <- metadata$CERAD %in% c(1, 2)
-    metadata$high_braak <- metadata$Braak >= 4
+    metadata <- metadata |>
+      mutate(
+        diagnosis = renames[diagnosis],
+        ad_cerad = case_match(amyThal,
+          paste("Phase", 2:5) ~ TRUE,
+          c("missing or unknown", NA) ~ NA,
+          .default = FALSE
+        ),
+        # Forces PSP to be left alone below
+        ad_cerad = ifelse(diagnosis == "PSP", NA, ad_cerad)
+      )
+  } else {
+    # TODO
+    metadata$ad_cerad <- case_match(metadata$amyCerad,
+      c("Moderate/Probable/C2", "Frequent/Definite/C3") ~ TRUE,
+      c("missing or unknown", NA) ~ NA,
+      .default = FALSE
+    )
   }
 
-  # Rows where either ad_cerad or high_braak are NA do not get changed by this code
-  metadata$diagnosis[metadata$ad_cerad & metadata$high_braak] <- "AD"
-  metadata$diagnosis[!metadata$ad_cerad & !metadata$high_braak] <- "CT"
-  metadata$diagnosis[!metadata$ad_cerad & metadata$high_braak] <- "PATH_HIGH_BRAAK"
-  metadata$diagnosis[metadata$ad_cerad & !metadata$high_braak] <- "PATH_HIGH_CERAD"
+  if (!("diagnosis" %in% colnames(metadata))) {
+    metadata$diagnosis <- NA
+  }
+
+  metadata <- metadata |>
+    mutate(
+      high_braak = case_match(Braak,
+                              paste("Stage", c("IV", "V", "VI")) ~ TRUE,
+                              c("missing or unknown", NA) ~ NA,
+                              .default = FALSE),
+      # Re-code diagnosis based on CERAD/Braak scores
+      diagnosis = case_when(
+        is.na(ad_cerad) | is.na(high_braak) ~ diagnosis,
+        ad_cerad & high_braak ~ "AD",
+        !ad_cerad & !high_braak ~ "CT",
+        !ad_cerad & high_braak ~ "PATH_HIGH_BRAAK",
+        ad_cerad & !high_braak ~ "PATH_HIGH_CERAD"
+      )
+    )
 
   # Drop samples with RIN < 3. The threshold of 3 was determined by ranking the
   # RIN values in each data set and looking for the inflection point where RIN
