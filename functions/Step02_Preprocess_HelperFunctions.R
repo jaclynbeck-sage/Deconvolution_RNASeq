@@ -997,7 +997,7 @@ FindOutliers_BulkData <- function(dataset, covariates, counts, sd_threshold = 4,
 
   # Find outliers by batch
   pca_results <- sageRNAUtils::find_pca_outliers_by_group(
-    data = sageRNAUtils::simple_lognorm(as.matrix(counts)),
+    data = sageRNAUtils::simple_log2norm(as.matrix(counts)),
     pca_group = "batch",
     n_sds = sd_threshold,
     metadata = covariates,
@@ -1025,7 +1025,7 @@ FindSexMismatches_BulkData <- function(dataset, covariates, counts,
                                        do_plot = FALSE) {
   mismatches <- sageRNAUtils::find_sex_mismatches(
     covariates,
-    simple_lognorm(counts),
+    sageRNAUtils::simple_log2norm(counts),
     y_expr_threshold = y_expr_threshold
   )
 

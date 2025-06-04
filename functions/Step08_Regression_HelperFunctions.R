@@ -17,9 +17,9 @@
 #   covariates - a samples x variables data frame with covariates to consider.
 #                Must contain only factors or numerical values.
 Find_BestModel <- function(dataset, tissue, bulk_se, covariates) {
-  expr_norm <- sageRNAUtils::simple_lognorm(as.matrix(assay(bulk_se, "counts")),
-                                            size_factors = bulk_se$tmm_factors,
-                                            pseudocount = 0.5)
+  expr_norm <- sageRNAUtils::simple_log2norm(as.matrix(assay(bulk_se, "counts")),
+                                             size_factors = bulk_se$tmm_factors,
+                                             pseudocount = 0.5)
 
   # Remove variables that should not be in the model. RIN2 is also removed due
   # to extremely high correlation with RIN. We explicitly keep some biological

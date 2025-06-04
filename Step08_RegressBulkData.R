@@ -146,9 +146,9 @@ for (dataset in datasets) {
     # Basic LM or LME fit ------------------------------------------------------
 
     message("Performing LME fit...")
-    expr_norm <- sageRNAUtils::simple_lognorm(as.matrix(assay(bulk_tissue, "counts")),
-                                              size_factors = bulk_tissue$tmm_factors,
-                                              pseudocount = 0.5)
+    expr_norm <- sageRNAUtils::simple_log2norm(as.matrix(assay(bulk_tissue, "counts")),
+                                               size_factors = bulk_tissue$tmm_factors,
+                                               pseudocount = 0.5)
 
     # For Mayo: No mixed effects in model, run a linear fixed-effects model
     if (formulas$formula_mixed == formulas$formula_fixed) {
@@ -193,7 +193,7 @@ for (dataset in datasets) {
     adjust <- tcrossprod(coefs_lme[, coefs_bio], mod_lme[, coefs_bio])
 
     # Convert back to counts
-    corrected_lme <- sageRNAUtils::log_cpm_to_counts(
+    corrected_lme <- sageRNAUtils::log2_cpm_to_counts(
       data = resid_lme + adjust,
       library_size = colSums(assay(bulk_tissue, "counts")) * bulk_tissue$tmm_factors,
       pseudocount = 0.5
@@ -243,7 +243,7 @@ for (dataset in datasets) {
 
     # voomWithDreamWeights uses edgeR to normalize counts so we reverse the
     # operation
-    corrected_dream <- sageRNAUtils::edger_log_cpm_to_counts(
+    corrected_dream <- sageRNAUtils::edger_log2_cpm_to_counts(
       data = resid_dream + adjust,
       library_size = expr$samples$lib.size * expr$samples$norm.factors,
       prior_count = 0.5 # this is what voomWithDreamWeights uses
