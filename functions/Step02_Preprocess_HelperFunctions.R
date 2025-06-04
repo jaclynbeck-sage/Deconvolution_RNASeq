@@ -9,7 +9,7 @@ library(dplyr)
 library(readxl)
 library(SingleCellExperiment)
 library(sageRNAUtils)
-#library(scDblFinder)
+library(scDblFinder)
 
 source("Filenames.R")
 
