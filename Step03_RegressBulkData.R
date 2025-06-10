@@ -31,7 +31,7 @@ library(parallel)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
 source(file.path("functions", "General_HelperFunctions.R"))
-source(file.path("functions", "Step08_Regression_HelperFunctions.R"))
+source(file.path("functions", "Step03_Regression_HelperFunctions.R"))
 
 datasets <- c("Mayo", "MSBB", "ROSMAP")
 
@@ -64,8 +64,8 @@ for (dataset in datasets) {
 
     # I'm not sure if there is a random component to any of these algorithms,
     # but just in case, we set a seed specific to the data set / tissue
-    numerical_name <- as.numeric(charToRaw(paste(dataset, tissue)))
-    set.seed(sum(numerical_name))
+    seed <- sageRNAUtils::string_to_seed(paste(dataset, tissue, "regression"))
+    set.seed(seed)
 
     message("Winsorizing counts...")
 
@@ -91,8 +91,7 @@ for (dataset in datasets) {
 
     # Load or calculate formulas for fixed/mixed models ------------------------
 
-    #formulas <- Load_ModelFormulas(str_glue("{dataset}_{tissue}"))
-    formulas <- NULL
+    formulas <- Load_ModelFormulas(str_glue("{dataset}_{tissue}"))
 
     # Only run the stepwise regression if the formulas don't already exist. This
     # part takes a long time.
@@ -168,7 +167,7 @@ for (dataset in datasets) {
       genes <- rownames(expr_norm)
       names(genes) <- genes
 
-      n_cores <- 4 #parallel::detectCores()-1
+      n_cores <- max(parallel::detectCores()/2, 1)
 
       fits_lme <- parallel::mclapply(genes, function(gene) {
         row <- expr_norm[gene, ]
@@ -213,7 +212,7 @@ for (dataset in datasets) {
     expr <- DGEList(assay(bulk_tissue, "counts"))
     expr$samples$norm.factors <- bulk_tissue$tmm_factors
 
-    n_cores <- 4 #parallel::detectCores()-1
+    n_cores <- max(parallel::detectCores()/4, 1)
     voom_counts <- voomWithDreamWeights(counts = expr,
                                         formula = formula_mixed,
                                         data = covar_tissue,
@@ -254,13 +253,13 @@ for (dataset in datasets) {
     # Save results/fits for further examination --------------------------------
 
     message("Saving final results...")
-    saveRDS(list(fit_edger = fit_edger,
-                 corrected_edger = corrected_edger,
-                 fits_lme = fits_lme,
-                 corrected_lme = corrected_lme,
-                 fit_dream = fit_dream,
-                 corrected_dream = corrected_dream),
-            file.path(dir_tmp, str_glue("{dataset}_{tissue}_models.rds")))
+    #saveRDS(list(fit_edger = fit_edger,
+    #             corrected_edger = corrected_edger,
+    #             fits_lme = fits_lme,
+    #             corrected_lme = corrected_lme,
+    #             fit_dream = fit_dream,
+    #             corrected_dream = corrected_dream),
+    #        file.path(dir_tmp, str_glue("{dataset}_{tissue}_models.rds")))
 
 
     # Create final bulk data object --------------------------------------------

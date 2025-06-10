@@ -34,6 +34,9 @@ BiocManager::install(
 #BiocManager::install(c("Biobase", "GenomicFeatures", "snpStats", "glmGamPoi"))
 #BiocManager::install("preprocessCore", configure.args="--disable-threading")
 
+# install presto for faster marker finding in Seurat
+remotes::install_github("immunogenomics/presto", clean = TRUE)
+
 # install my utility package
 remotes::install_github("jaclynbeck-sage/sageRNAUtils", clean = TRUE)
 
@@ -50,12 +53,10 @@ remotes::install_github("jaclynbeck-sage/hspe", subdir = "lib_hspe", clean = TRU
 # Extra package needed for pre-processing seaRef
 reticulate::virtualenv_install("r-reticulate", packages = c("anndata"))
 
-# virtualenv setup for AutogeneS
-#reticulate::virtualenv_create("autogenes_env",
-#                              packages = c("scanpy", "anndata", "autogenes",
-#                                           "scikit-misc"))
-
 # Install omnideconv and its DWLS add-on. Uses my fork of omnideconv
 remotes::install_github("jaclynbeck-sage/omnideconv", ref = "use_virtualenv", clean = TRUE)
 remotes::install_github("omnideconv/DWLS", clean = TRUE)
 omnideconv::install_all_python()
+
+# virtualenv setup for AutogeneS marker finding
+reticulate::virtualenv_install("r-omnideconv", packages = c("scanpy", "scikit-misc"))

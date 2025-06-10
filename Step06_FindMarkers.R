@@ -2,9 +2,8 @@
 # Dtangle, Seurat/MAST, AutogeneS, and DESeq2
 
 library(dplyr)
-library(foreach)
-library(doParallel)
 library(stringr)
+library(parallel)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
 source(file.path("functions", "General_HelperFunctions.R"))
@@ -14,13 +13,14 @@ source(file.path("functions", "General_HelperFunctions.R"))
 # Which algorithms to run for marker finding
 marker_types_run <- c("dtangle", "seurat", "autogenes", "deseq2", "excluded_genes")
 
-# Run multiple parameter sets in parallel for dtangle/HSPE marker finding if
-# dtangle_do_parallel is TRUE. Other algorithms can't be run in parallel.
-# Assume most data sets use <20 GB of RAM per core, but seaRef will use > 100 GB
-# for single cell.
-dtangle_do_parallel <- TRUE
-dtangle_n_cores <- 4
-dtangle_clust_type <- "FORK" # Use PSOCK for non-Unix systems
+# Run multiple parameter sets in parallel where possible. Dtangle, Seurat, and
+# Deseq2 marker finding can be run in parallel. Dtangle and Deseq2 use pseudobulk
+# data while Seurat uses single cell data, so the memory requirements will
+# change how many cores should be used.
+do_parallel <- TRUE
+clust_type <- "FORK" # Use PSOCK for non-Unix systems
+dtangle_n_cores <- detectCores() - 1
+deseq2_n_cores <- detectCores() - 1
 
 # Which datasets to run on
 datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
@@ -28,30 +28,28 @@ datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
 # What granularities?
 granularities <- c("broad_class", "sub_class")
 
-# Dtangle/HSPE only: input types
-dtangle_input_types <- c("singlecell", "pseudobulk")
-
 
 # Dtangle/HSPE markers ---------------------------------------------------------
 
 if ("dtangle" %in% marker_types_run) {
-  if (dtangle_do_parallel) {
-    cl <- makeCluster(dtangle_n_cores, type = dtangle_clust_type, outfile = "")
-    registerDoParallel(cl)
+  if (do_parallel) {
+    cl <- makeCluster(dtangle_n_cores, type = clust_type, outfile = "")
+  } else {
+    cl <- NULL
   }
 
   source(file.path("functions", "Step06a_FindMarkers_DtangleHSPE.R"))
-  FindMarkers_DtangleHSPE(datasets, granularities, dtangle_input_types)
+  FindMarkers_DtangleHSPE(datasets, granularities, cl)
 
-  if (dtangle_do_parallel) {
+  if (do_parallel) {
     stopCluster(cl)
   }
 }
 
 
-# Seurat / MAST markers --------------------------------------------------------
+# Seurat markers ---------------------------------------------------------------
 
-# Uses all available CPUs already, so this isn't run in parallel.
+# This is pretty fast already and needs a lot of memory, so this isn't run in parallel.
 
 if ("seurat" %in% marker_types_run) {
   source(file.path("functions", "Step06b_FindMarkers_Seurat.R"))
@@ -74,7 +72,10 @@ if ("autogenes" %in% marker_types_run) {
 
 if ("deseq2" %in% marker_types_run) {
   source(file.path("functions", "Step06d_FindMarkers_DESeq2.R"))
-  FindMarkers_DESeq2(datasets, granularities)
+  if (!do_parallel) {
+    deseq2_n_cores <- 1
+  }
+  FindMarkers_DESeq2(datasets, granularities, deseq2_n_cores)
 }
 
 

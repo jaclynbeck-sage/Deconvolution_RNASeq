@@ -8,7 +8,7 @@
 #      distance are equally weighted
 #
 # This script assumes there is already a python virtual environment called
-# "autogenes_env" that has been set up with all needed packages
+# "r-omnideconv" that has been set up with all needed packages
 # (see Step00_InitialSetupInstall.R).
 
 library(reticulate)
@@ -18,7 +18,7 @@ library(dplyr)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
 
-use_virtualenv("autogenes_env")
+use_virtualenv("r-omnideconv")
 
 FindMarkers_AutogeneS <- function(datasets, granularities) {
   for (dataset in datasets) {
@@ -40,8 +40,11 @@ FindMarkers_AutogeneS <- function(datasets, granularities) {
       sc$pp$highly_variable_genes(adata, flavor = "seurat_v3", n_top_genes = 6000)
       sc$pp$normalize_total(adata, target_sum = 1e6) # cpm
 
+      seed <- sageRNAUtils::string_to_seed(paste(dataset, granularity, "AutogeneS")) |>
+        as.integer()
+
       ag$init(adata, use_highly_variable = TRUE, celltype_key = "celltype")
-      ag$optimize(ngen = 5000L, seed = 0L, mode = "standard",
+      ag$optimize(ngen = 5000L, seed = seed, mode = "standard",
                   offspring_size = 100L, verbose = FALSE)
 
       wts <- list("correlation" = c(-1, 0),
@@ -62,9 +65,15 @@ FindMarkers_AutogeneS <- function(datasets, granularities) {
 
         # Which cell type has the highest expression for each gene
         maxs <- apply(X, 1, which.max)
+
+        # For broad class, compare highest and 2nd highest expressor. For sub
+        # class, allow for a gene to be a marker for up to 2 cell types, so
+        # compare highest and 3rd highest expressor.
+        cell_thresh <- ifelse(granularity == "broad_class", 1, 2)
+
         log2FC <- apply(log2(X + 1), 1, function(row) {
           sorted <- sort(row, decreasing = TRUE)
-          return(sorted[1] - sorted[2]) # Log space is subtraction
+          return(sorted[1] - sorted[cell_thresh]) # Log space is subtraction
         })
 
         sorted_logfc <- data.frame(celltype = sc_means$var_names[maxs],
@@ -72,7 +81,9 @@ FindMarkers_AutogeneS <- function(datasets, granularities) {
                                    gene = markers) %>%
           dplyr::arrange(desc(log2FC))
 
-        markers_filt <- subset(sorted_logfc, log2FC >= 1)
+        # Much lower threshold for sub_class than broad_class
+        thresh <- ifelse(granularity == "broad_class", 1, 0.25)
+        markers_filt <- subset(sorted_logfc, log2FC >= thresh)
 
         print(str_glue("Markers for {dataset} / {granularity} cell types ({key}):"))
         print(table(markers_filt$celltype))
@@ -87,7 +98,8 @@ FindMarkers_AutogeneS <- function(datasets, granularities) {
 
         # Save all the markers just for reference, but we also want a filtered
         # list with genes where the log2FC between the highest and
-        # second-highest expressing cell type is >= 1
+        # second-highest expressing cell type is >= 1 (broad_class) or >= 0.25
+        # (sub_class)
         list_final <- list("all" = markers_list,
                            "filtered" = markers_filt_list)
 

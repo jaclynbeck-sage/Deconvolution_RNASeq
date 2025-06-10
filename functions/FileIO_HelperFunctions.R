@@ -827,12 +827,8 @@ Get_MarkerFileFormat <- function(dataset, granularity, marker_type,
 
   marker_file_format <- paste0("{marker_type}_markers_{dataset}_{granularity}")
 
-  # Dtangle, and AutogeneS need extra information added to the name
-  if (marker_type == "dtangle") {
-    marker_file_format <- paste0(marker_file_format,
-                                 "_input_{input_type}_method_{marker_subtype}")
-  }
-  else if (marker_type == "autogenes") {
+  # Dtangle and AutogeneS need extra information added to the name
+  if (marker_type %in% c("dtangle", "autogenes")) {
     marker_file_format <- paste0(marker_file_format, "_{marker_subtype}")
   }
 

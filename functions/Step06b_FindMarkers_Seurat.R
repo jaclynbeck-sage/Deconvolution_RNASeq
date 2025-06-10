@@ -21,6 +21,8 @@ library(dplyr)
 source(file.path("functions", "FileIO_HelperFunctions.R"))
 
 FindMarkers_Seurat <- function(datasets, granularities) {
+  options(future.globals.maxSize = 5 * 1024^3) # 5 GB
+
   for (dataset in datasets) {
     for (granularity in granularities) {
       message(str_glue("Finding markers for {dataset} / {granularity}..."))
@@ -36,53 +38,37 @@ FindMarkers_Seurat <- function(datasets, granularities) {
       markers <- FindAllMarkers(seurat,
                                 logfc.threshold = 0.5,
                                 min.pct = 0.1,
-                                only.pos = TRUE, test.use = "MAST",
-                                latent.vars = c("nCount_originalexp"))
+                                only.pos = TRUE)
 
-      markers <- subset(markers, p_val_adj <= 0.05)
-      dupes <- markers$gene[duplicated(markers$gene)]
-
-      markers <- subset(markers, !(gene %in% dupes))
+      markers <- subset(markers, p_val_adj <= 0.05) |>
+        dplyr::rename(celltype = cluster)
 
       avgs <- AggregateExpression(seurat,
                                   features = unique(markers$gene),
-                                  group.by = "celltype",
-                                  return.seurat = TRUE)
-      avgs <- GetAssayData(avgs, layer = "data") |>
-        as.data.frame()
+                                  return.seurat = TRUE) |>
+        GetAssayData(layer = "data")
 
-      getLog2FC <- function(cols) {
-        sorted <- sort(cols, decreasing = TRUE)
-        return(sorted[1] - sorted[2]) # Log space is subtraction
-      }
+      # Filter to markers that have a large enough gap between the target cell
+      # type and non-target cell types
+      res <- Get_QualityMarkers(avgs, markers, granularity)
+      sorted_logfc <- res$sorted_logfc
+      markers <- res$markers
 
-      # Mark which cell type has the highest expression for each gene, get the
-      # log2-fold-change between the highest expression and the 2nd-highest
-      # expression for each gene, sort the dataframe with highest log2FC first.
-      sorted_logfc <- avgs %>%
-        dplyr::mutate(highest = colnames(avgs)[apply(., 1, which.max)],
-                      log2FC = apply(., 1, getLog2FC),
-                      gene = rownames(.)) %>%
-        subset(log2FC >= 1) %>%
-        dplyr::arrange(desc(log2FC)) %>%
-        select(gene, highest)
-
-      # Create one full list containing all genes that are unique to one cell
-      # type, and one list filtered to (log2FC between highest and
+      # Create one full list containing all genes that were identified as
+      # markers, and one list filtered to (log2FC between highest and
       # second-highest expression) > 1
-      markers_all <- sapply(levels(markers$cluster), function(ct) {
-        return(subset(markers, cluster == ct)$gene)
+      markers_all <- sapply(levels(markers$celltype), function(ct) {
+        return(subset(markers, celltype == ct)$gene)
       })
-      names(markers_all) <- levels(markers$cluster)
 
-      markers_filt <- sapply(colnames(avgs), function(ct) {
-        return(sorted_logfc$gene[sorted_logfc$highest == ct])
+      markers_filt <- sapply(levels(markers$celltype), function(ct) {
+        return(sorted_logfc$gene[sorted_logfc$celltype == ct])
       })
 
       print(str_glue("Markers for {dataset} / {granularity} cell types:"))
       print(lengths(markers_filt))
 
-      markers_list <- list("mast_results" = markers,
+      markers_list <- list("seurat_results" = markers,
                            "all" = markers_all,
                            "filtered" = markers_filt)
 

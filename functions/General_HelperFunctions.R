@@ -837,3 +837,57 @@ List_to_DF <- function(input_list, sublist_name = NULL) {
 
   return(do.call(rbind, lapply(input_list, "[[", sublist_name)))
 }
+
+
+# Helper function for marker finding. Given a data frame of average expression
+# for each gene/cell type, filter to genes where the log2-FC between the
+# target celltype and the highest-expressing non-target celltype is above a
+# certain threshold. The threshold is 1 for broad class and 0.25 for sub class.
+# A gene can only be a marker for exactly one cell type for broad class, but can
+# be a marker for up to 2 cell types for sub class. This function handles both
+# cases: for broad class, the log2-FC is expr[celltype] - max(expr[!celltype]),
+# while for sub class it is similar except that that instead of looking for the
+# max among all non-target celltypes, it looks for the max among all non-target
+# celltypes for which this gene is not a marker. This allows for two cell types
+# with the same marker gene to have similar expression as long as the rest of
+# the cell types have lower expression.
+Get_QualityMarkers <- function(expr_df, markers, granularity) {
+  # For broad class, markers need to be unique to one cell type. For sub
+  # class, markers can be for up to 2 cell types
+  cell_thresh <- ifelse(granularity == "broad_class", 1, 2)
+  unique_genes <- table(markers$gene)
+  unique_genes <- names(unique_genes)[unique_genes <= cell_thresh]
+  markers <- subset(markers, gene %in% unique_genes)
+
+  # Turn expression df into long format
+  expr_df <- expr_df[unique(markers$gene), ] |>
+    as.data.frame() |>
+    tibble::rownames_to_column("gene") |>
+    tidyr::pivot_longer(cols = -gene,
+                        names_to = "celltype",
+                        values_to = "expr") |>
+    group_by(celltype) |>
+    mutate(
+      is_marker = gene %in% markers$gene[markers$celltype == unique(celltype)]
+    ) |>
+    ungroup()
+
+  # Helper function
+  getLog2FC <- function(celltype, expr, is_marker) {
+    sapply(celltype, function(ct) {
+      expr[celltype == ct] - max(expr[celltype != ct & !is_marker])
+    })
+  }
+
+  log_thresh <- ifelse(granularity == "broad_class", 1, 0.25)
+
+  # Filtered marker list sorted by log2FC
+  sorted_logfc <- expr_df |>
+    group_by(gene) |>
+    mutate(log2FC = getLog2FC(celltype, expr, is_marker)) |>
+    subset(is_marker == TRUE) |>
+    subset(log2FC >= log_thresh) |>
+    dplyr::arrange(desc(log2FC))
+
+  return(list("sorted_logfc" = sorted_logfc, "markers" = markers))
+}
