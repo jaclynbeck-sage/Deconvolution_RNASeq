@@ -6,7 +6,7 @@ source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 # TODO add markers to provenance?
 
 # Deconvolution WG Synapse space
-output_folder <- Folder("09_estimates", parent = "syn58802522")
+output_folder <- Folder("09_estimates", parent = "syn68238853")
 output_folder <- synStore(output_folder, forceVersion = FALSE)
 
 # Get provenance IDs

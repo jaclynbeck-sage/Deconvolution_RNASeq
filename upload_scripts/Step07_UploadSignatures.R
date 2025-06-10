@@ -2,7 +2,7 @@ source("Filenames.R")
 source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
 # Deconvolution WG Synapse space
-sig_folder <- Folder("07_signatures", parent = "syn58802522")
+sig_folder <- Folder("07_signatures", parent = "syn68238853")
 sig_folder <- synStore(sig_folder, forceVersion = FALSE)
 
 provenance <- GetChildrenAsDf("syn58807549")

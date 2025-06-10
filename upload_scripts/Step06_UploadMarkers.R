@@ -4,10 +4,10 @@ source("Filenames.R")
 source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
 # Deconvolution WG Synapse space
-markers_folder <- Folder("06_markers", parent = "syn58802522")
+markers_folder <- Folder("06_markers", parent = "syn68238853")
 markers_folder <- synStore(markers_folder, forceVersion = FALSE)
 
-meta_folder <- Folder("01_metadata", parent = "syn58802522")
+meta_folder <- Folder("01_metadata", parent = "syn68238853")
 meta_folder <- synStore(meta_folder, forceVersion = FALSE)
 
 # Get provenance IDs

@@ -3,7 +3,7 @@ library(dplyr)
 source("Filenames.R")
 source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
-params_folder <- Folder("12_top_parameters", parent = "syn58802522")
+params_folder <- Folder("12_top_parameters", parent = "syn68238853")
 params_folder <- synStore(params_folder, forceVersion = FALSE)
 
 hspe_folder <- Folder("hspe_params", parent = params_folder)

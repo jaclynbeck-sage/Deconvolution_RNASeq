@@ -734,7 +734,7 @@ DownloadData_Mayo <- function(metadata_only = FALSE) {
 # TODO temporary: Use harmonized/corrected data from syn66639063
 
 DownloadData_MSBB <- function(metadata_only = FALSE) {
-  synIDs <- list("individual_metadata" = list(id = "syn66639063", version = 1),
+  synIDs <- list("individual_metadata" = list(id = "syn66639063", version = 2),
                  "biospecimen_metadata" = list(id = "syn21893059", version = 14),
                  "assay_metadata" = list(id = "syn22447899", version = 6),
                  "metrics" = list(id = "syn21544666", version = 1),

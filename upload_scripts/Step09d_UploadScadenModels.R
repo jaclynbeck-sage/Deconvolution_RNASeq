@@ -3,7 +3,7 @@ library(dplyr)
 source("Filenames.R")
 source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
-models_folder <- Folder("09_algorithm_models", parent = "syn58802522")
+models_folder <- Folder("09_algorithm_models", parent = "syn68238853")
 models_folder <- synStore(models_folder, forceVersion = FALSE)
 
 # Deconvolution WG Synapse space

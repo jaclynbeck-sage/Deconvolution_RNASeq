@@ -4,17 +4,20 @@ source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
 # Deconvolution WG Synapse space
 
-meta_folder <- Folder("01_metadata", parent = "syn58802522")
+meta_folder <- Folder("01_metadata", parent = "syn68238853")
 meta_folder <- synStore(meta_folder, forceVersion = FALSE)
 
-bulk_folder <- Folder("08_bulk", parent = "syn58802522")
+bulk_folder <- Folder("03_bulk", parent = "syn68238853")
 bulk_folder <- synStore(bulk_folder, forceVersion = FALSE)
 
-provenance <- list("Mayo" = c("syn58803962.1", "syn29855549.2", "syn23277389.6"),
-                   "MSBB" = c("syn58803964.1", "syn29855570.2", "syn6101474.9"),
-                   "ROSMAP" = c("syn58803965.1", "syn29855598.2", "syn3191087.11"))
+provenance <- list(
+  "Mayo" = c("syn68239093.1", "syn66639062.1", "syn21544637.1"),
+  "MSBB" = c("syn68239156.1", "syn66639063.2", "syn21544666.1"),
+  "ROSMAP" = c("syn68239095.1", "syn66639064.2", "syn22283384.4",
+               "syn22301603.4", "syn22314232.4", "syn25817663.4")
+)
 
-github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step08_RegressBulkData.R"
+github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step03_RegressBulkData.R"
 
 # Processed bulk datasets
 for (dataset in names(provenance)) {

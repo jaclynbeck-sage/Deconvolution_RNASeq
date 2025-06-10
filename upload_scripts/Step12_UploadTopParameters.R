@@ -4,7 +4,7 @@ source("Filenames.R")
 source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
 # Deconvolution WG Synapse space
-top_params_folder <- Folder("12_top_parameters", parent = "syn58802522")
+top_params_folder <- Folder("12_top_parameters", parent = "syn68238853")
 top_params_folder <- synStore(top_params_folder, forceVersion = FALSE)
 
 # Provenance TODO

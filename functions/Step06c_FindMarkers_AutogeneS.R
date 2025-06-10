@@ -73,7 +73,7 @@ FindMarkers_AutogeneS <- function(datasets, granularities) {
 
         log2FC <- apply(log2(X + 1), 1, function(row) {
           sorted <- sort(row, decreasing = TRUE)
-          return(sorted[1] - sorted[cell_thresh]) # Log space is subtraction
+          return(sorted[1] - sorted[cell_thresh + 1]) # Log space is subtraction
         })
 
         sorted_logfc <- data.frame(celltype = sc_means$var_names[maxs],

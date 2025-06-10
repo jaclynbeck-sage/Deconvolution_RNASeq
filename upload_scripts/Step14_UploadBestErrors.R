@@ -4,7 +4,7 @@ source("Filenames.R")
 source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
 # Deconvolution WG Synapse space
-errors_folder <- Folder("14_best_error_calculations", parent = "syn58802522")
+errors_folder <- Folder("14_best_error_calculations", parent = "syn68238853")
 errors_folder <- synStore(errors_folder, forceVersion = FALSE)
 
 github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step14_CalculateBestErrors.R"

@@ -6,7 +6,7 @@ source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 # TODO provenance
 
 # Deconvolution WG Synapse space
-output_folder <- Folder("13_top_estimates", parent = "syn58802522")
+output_folder <- Folder("13_top_estimates", parent = "syn68238853")
 output_folder <- synStore(output_folder, forceVersion = FALSE)
 
 algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "HSPE",
