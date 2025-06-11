@@ -16,25 +16,48 @@
 #   Sub class:
 #     "Endothelial", "VLMC" => "Vascular"
 #     "Lamp5", "Lamp5 Lhx6" => "Lamp5 / Lamp5 Lhx6"
+#     "L2/3 IT", "L6 IT" => "L2/3/6 IT"
 #     "L4 IT", "L5 IT" => "L4/5 IT"
-#     "Pax6", "Sncg", "Vip" => "Pax6 / Sncg / Vip"
+#     "L5 ET" => removed
+#     "Pax6", "Sncg" => "Pax6 / Sncg"
 #     "Sst", "Sst Chodl" => "Sst / Sst Chodl"
 #     All others: as-is
 #
 # Group merges were determined by examining UMAPs and dendrograms of all data
-# sets after label transfer but before re-adjusting the labels. Although
-# Endothelial and VLMC cells form semi-distinct clusters in all data sets, the
-# cell populations were so small that it made sense to merge them. Lamp5 and
-# Lamp5 Lhx6 are distinct populations in cain and seaRef but on the dendrograms
-# and the other datasets' UMAPS they intermix and are smaller populations, so
-# they were merged. In the case of Pax6, Sncg, and Vip, these are somewhat
-# distinct populations that form a gradient on the UMAP with no clear borders
-# between the cell types. On the dendrograms of every data set, Pax6 and some
-# Sncg supertypes intermix, and some Sngc and some Vip supertypes intermix,
-# making it difficult to separate them into clear clusters. As both Pax6 and
-# Sncg are small populations, all three types were merged into one cluster. Sst
-# Chodl is an extremely small population in all data sets and consistently
-# clusters with Sst cells, so these were merged.
+# sets after label transfer. Notes:
+#   * Although Endothelial and VLMC cells form semi-distinct clusters in all
+#     data sets, the cell populations were so small that it made sense to merge
+#     them.
+#   * Lamp5 and Lamp5 Lhx6 are distinct populations in cain and seaRef but on
+#     the dendrograms and the other datasets' UMAPS they intermix and are
+#     smaller populations, so they were merged.
+#   * Although L2/3 IT and L6 IT are distinct populations on the UMAPs of most
+#     data sets, on the dendrograms L6 IT nests inside L2/3 IT supertypes.
+#     Initial marker finding with L6 IT as a separate cluster resulted in
+#     too few markers being found for L6 IT in many cases, due to the high level
+#     of similarity between L6 IT and L2/3 IT. Therefore these two clusters were
+#     merged.
+#   * L4 IT and L5 IT do not separate by sub-class on UMAPs or dendrograms.
+#     Rather, they form two distinct but closely-related clusters that contain a
+#     mix of certain L4 IT and L5 IT supertypes together. The two subclasses
+#     were merged rather than splitting by supertype in order to avoid having
+#     too many highly-similar IT clusters from L2, 3, 4, 5, and 6.
+#   * In the case of Pax6, Sncg, and Vip, these are somewhat distinct
+#     populations that form a gradient on the UMAP with no clear borders
+#     between the cell types. On the dendrograms of most data sets, Pax6 and
+#     some Sncg supertypes intermix, and some Sngc and some Vip supertypes
+#     intermix, making it difficult to separate them into clear clusters. As
+#     both Pax6 and Sncg are small populations, they were merged together and
+#     Vip was left separated to avoid Vip cells dominating the expression
+#     profile of a combined cluster.
+#   * Sst Chodl is an extremely small population in all data sets and
+#     consistently clusters with Sst cells, so these were merged.
+#   * L5 ET cells are a distinct population in all data sets but make up a
+#     fraction of a percent of each sample on average, which makes it difficult
+#     to confidently find markers for these cells or accurately predict in
+#     deconvolution. The population does not cluster with any other populations,
+#     so there was no clear subclass to combine it with and the L5 ET subclass
+#     as a whole was removed.
 #
 # NOTE: Annotation files were obtained by uploading all pre-processed h5ad files
 # from Step02 to MapMyCells (https://knowledge.brain-map.org/mapmycells/process/),
@@ -117,9 +140,10 @@ for (dataset in datasets) {
       sub_class = case_match(
         subclass_name,
         c("Endothelial", "VLMC") ~ "Vascular",
+        c("L2/3 IT", "L6 IT") ~ "L2/3/6 IT",
         c("L4 IT", "L5 IT") ~ "L4/5 IT",
         c("Lamp5", "Lamp5 Lhx6") ~ "Lamp5 / Lamp5 Lhx6",
-        c("Pax6", "Sncg", "Vip") ~ "Pax6 / Sncg / Vip",
+        c("Pax6", "Sncg") ~ "Pax6 / Sncg",
         c("Sst", "Sst Chodl") ~ "Sst / Sst Chodl",
         .default = subclass_name),
 
@@ -140,6 +164,10 @@ for (dataset in datasets) {
   # Add new metadata back to the sce object
   rownames(new_metadata) <- new_metadata$cell_id
   colData(sce) <- new_metadata[colnames(sce), ]
+
+  # Remove L5 ET cells
+  sce <- sce[, sce$sub_class != "L5 ET"]
+  sce$sub_class <- factor(sce$sub_class)
 
   # Only keep cells where the probability for the annotation is >= 0.95 for
   # broad and sub class, and > 0.5 for supertype. The min broad class confidence

@@ -1,17 +1,14 @@
-# Finds marker genes for each cell type using Seurat / MAST. A gene is
-# considered a marker gene if:
+# Finds marker genes for each cell type using Seurat. A gene is considered a
+# marker gene if:
 #   1) It is significantly up-regulated in the cell type at p <= 0.05
 #   2) The log fold-change is > 0.5
-#   3) The gene is not significantly up-regulated in any other cell type
+#   3) The gene is not significantly up-regulated in any other cell type (broad
+#      class) or is up-regulated in at most one other cell type (sub class)
 #   4) The log fold-change between the highest-expressing cell type and the
-#      second-highest expressing cell type is >= 1.
-#
-# We use Seurat's FindAllMarkers instead of calling MAST directly, to take
-# advantage of Seurat's built-in pre-filtering of genes that don't meet cluster
-# expression percentage or logFC thresholds prior to calling MAST.
-#
-# We don't run multiple datasets in parallel for this script because one call to
-# MAST needs and will use all available CPUs.
+#      second-highest expressing cell type is >= 1 (broad class), or the log
+#      fold-change between the highest-expressing cell type and the highest
+#      expressing cell type for which the gene is not a marker is >= 0.25 (sub
+#      class)
 
 library(SingleCellExperiment)
 library(Seurat)

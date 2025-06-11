@@ -14,6 +14,17 @@ library(reshape2)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
 
+# Shortcut functions for listing out all single cell and bulk data sets
+all_singlecell_datasets <- function() {
+  c("cain", "lau", "leng", "mathys", "seaRef")
+}
+
+all_bulk_datasets <- function() {
+  c("Mayo_CBE", "Mayo_TCX",
+    "MSBB_FP", "MSBB_IFG", "MSBB_PHG", "MSBB_STG",
+    "ROSMAP_ACC", "ROSMAP_DLPFC", "ROSMAP_ACC")
+}
+
 # Load_AlgorithmInputData: Ease-of-use function that gets both the reference
 # data and the test data from a set of different formats, and makes sure
 # both data sets have the same genes in the same order.
