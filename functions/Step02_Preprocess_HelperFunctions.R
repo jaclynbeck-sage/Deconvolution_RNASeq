@@ -770,10 +770,10 @@ DownloadData_MSBB <- function(metadata_only = FALSE) {
 # Individual metadata: https://www.synapse.org/#!Synapse:syn3191087
 # Filtered counts: https://www.synapse.org/#!Synapse:syn26967451
 # Biomart gene conversion: https://www.synapse.org/#!Synapse:syn26967452
-# TODO Temporary: use harmonized/corrected data from syn66639064
+# TODO Temporary: use harmonized/corrected data from syn64759878
 
 DownloadData_ROSMAP <- function(metadata_only = FALSE) {
-  synIDs <- list("individual_metadata" = list(id = "syn66639064", version = 2),
+  synIDs <- list("individual_metadata" = list(id = "syn64759878", version = 6),
                  "biospecimen_metadata" = list(id = "syn21323366", version = 19),
                  "assay_metadata" = list(id = "syn21088596", version = 5),
                  "metrics1" = list(id = "syn22283384", version = 4),
