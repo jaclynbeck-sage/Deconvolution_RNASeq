@@ -47,9 +47,7 @@ FindMarkers_Seurat <- function(datasets, granularities) {
 
       # Filter to markers that have a large enough gap between the target cell
       # type and non-target cell types
-      res <- Get_QualityMarkers(avgs, markers, granularity)
-      sorted_logfc <- res$sorted_logfc
-      markers <- res$markers
+      sorted_logfc <- Get_QualityMarkers(avgs, markers, granularity)
 
       # Create one full list containing all genes that were identified as
       # markers, and one list filtered to (log2FC between highest and

@@ -13,17 +13,9 @@ source(file.path("functions", "General_HelperFunctions.R"))
 
 # Setup ------------------------------------------------------------------------
 
-datasets <- c("cain", "lau", "leng", "mathys", "seaRef", # Single cell
-              "Mayo", "MSBB", "ROSMAP") # Bulk
+datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "seaRef", # Single cell
+              "Mayo", "MSBB", "ROSMAP") # Bulk -- not separated by tissue yet
 
-# Helper functions
-is_bulk <- function(dataset) {
-  return(dataset %in% c("Mayo", "MSBB", "ROSMAP"))
-}
-
-is_singlecell <- function(dataset) {
-  return(!is_bulk(dataset))
-}
 
 # Download files and process data ----------------------------------------------
 
@@ -35,7 +27,7 @@ for (dataset in datasets) {
   # assumes 8 GB of RAM per CPU.
   if (dataset == "seaRef") {
     n_cores <- max(parallel::detectCores() / 2, 1)
-    setAutoBPPARAM(BPPARAM = BiocParallel::SnowParam(n_cores))
+    setAutoBPPARAM(BPPARAM = BiocParallel::MulticoreParam(n_cores))
   }
 
   ## Read in metadata file -----------------------------------------------------

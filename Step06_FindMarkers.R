@@ -23,7 +23,7 @@ dtangle_n_cores <- detectCores() - 1
 deseq2_n_cores <- detectCores() - 1
 
 # Which datasets to run on
-datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
+datasets <- all_singlecell_datasets()
 
 # What granularities?
 granularities <- c("broad_class", "sub_class")
@@ -119,7 +119,7 @@ for (dataset in datasets) {
 # For every combination of reference data set, bulk data set, normalization,
 # regression, and granularity
 
-params_loop <- expand_grid(test_data_name = c("Mayo_TCX", "Mayo_CBE", "ROSMAP_ACC", "ROSMAP_DLPFC", "ROSMAP_PCC"), # TODO MSBB
+params_loop <- expand_grid(test_data_name = all_bulk_datasets(),
                            normalization = c("cpm", "tmm", "tpm"),
                            regression_method = c("none", "edger", "lme", "dream"))
 

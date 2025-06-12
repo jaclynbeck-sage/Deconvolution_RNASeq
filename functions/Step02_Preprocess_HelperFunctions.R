@@ -73,7 +73,8 @@ UpdateGeneSymbols <- function(dataset, gene_list) {
   version <- switch(dataset,
                     "cain" = "symbol_v98",
                     "lau" = "symbol_v93",
-                    "leng" = "symbol_v84",
+                    "lengEC" = "symbol_v84",
+                    "lengSFG" = "symbol_v84",
                     "mathys" = "symbol_Mathys", # They provided their mapping as a file
                     "seaRef" = "symbol_seaRef")
 
@@ -98,7 +99,8 @@ DownloadData <- function(dataset, metadata_only = FALSE) {
   files <- switch(dataset,
                   "cain" = DownloadData_Cain(metadata_only),
                   "lau" = DownloadData_Lau(metadata_only),
-                  "leng" = DownloadData_Leng(metadata_only),
+                  "lengEC" = DownloadData_Leng(metadata_only, "EC"),
+                  "lengSFG" = DownloadData_Leng(metadata_only, "SFG"),
                   "mathys" = DownloadData_Mathys(metadata_only),
                   "seaRef" = DownloadData_SEARef(metadata_only),
                   "Mayo" = DownloadData_Mayo(metadata_only),
@@ -111,7 +113,8 @@ ReadMetadata <- function(dataset, files) {
   metadata <- switch(dataset,
                      "cain" = ReadMetadata_Cain(files),
                      "lau" = ReadMetadata_Lau(files),
-                     "leng" = ReadMetadata_Leng(files),
+                     "lengEC" = ReadMetadata_Leng(files),
+                     "lengSFG" = ReadMetadata_Leng(files),
                      "mathys" = ReadMetadata_Mathys(files),
                      "seaRef" = ReadMetadata_SEARef(files),
                      "Mayo" = ReadMetadata_BulkData(dataset, files),
@@ -124,7 +127,8 @@ ReadCovariates <- function(dataset, files) {
   covariates <- switch(dataset,
                        "cain" = ReadMetadata_Cain(files)$covariates,
                        "lau" = ReadCovariates_Lau(files),
-                       "leng" = ReadMetadata_Leng(files)$covariates,
+                       "lengEC" = ReadMetadata_Leng(files)$covariates,
+                       "lengSFG" = ReadMetadata_Leng(files)$covariates,
                        "mathys" = ReadMetadata_Mathys(files)$covariates,
                        "seaRef" = ReadMetadata_SEARef(files)$covariates,
                        "Mayo" = ReadMetadata_BulkData(dataset, files)$covariates,
@@ -137,7 +141,8 @@ ReadCounts <- function(dataset, files) {
   counts <- switch(dataset,
                    "cain" = ReadCounts_Cain(files),
                    "lau" = ReadCounts_Lau(files),
-                   "leng" = ReadCounts_Leng(files),
+                   "lengEC" = ReadCounts_Leng(files),
+                   "lengSFG" = ReadCounts_Leng(files),
                    "mathys" = ReadCounts_Mathys(files),
                    "seaRef" = ReadCounts_SEARef(files),
                    "Mayo" = ReadCounts_BulkData(files),
@@ -360,18 +365,21 @@ QC_Lau <- function(seurat) {
 
 # metadata_only is an unused variable for this dataset as the metadata is
 # embedded in the counts RDS files
-DownloadData_Leng <- function(metadata_only = FALSE) {
-  synIDs <- list("counts_ec" = list(id = "syn22722817", version = 1),
-                 "counts_sfg" = list(id = "syn22722860", version = 1))
+DownloadData_Leng <- function(metadata_only = FALSE, tissue) {
+  synIDs <- list("counts" = switch(
+    tissue,
+    "EC" = list(id = "syn22722817", version = 1),
+    "SFG" = list(id = "syn22722860", version = 1)
+  ))
+
   files <- DownloadFromSynapse(synIDs, dir_leng_raw)
   return(files)
 }
 
 ReadMetadata_Leng <- function(files) {
-  sce_ec <- readRDS(files$counts_ec$path)
-  sce_sfg <- readRDS(files$counts_sfg$path)
+  sce <- readRDS(files$counts$path)
 
-  metadata <- rbind(colData(sce_ec), colData(sce_sfg))
+  metadata <- colData(sce) |> as.data.frame()
 
   braak <- list("0" = "Control",
                 "2" = "Early Pathology",
@@ -381,31 +389,35 @@ ReadMetadata_Leng <- function(files) {
   metadata$diagnosis <- unlist(braak[metadata$BraakStage])
   metadata$sub_cluster <- str_replace(metadata$clusterAssignment, "EC:|SFG:", "")
 
-  metadata <- as.data.frame(metadata)
-
-  covariates <- metadata %>%
-    select(SampleID, PatientID, BrainRegion, BraakStage, SampleBatch, diagnosis) %>%
-    distinct() %>%
+  covariates <- metadata |>
+    select(SampleID, PatientID, BrainRegion, BraakStage, SampleBatch, diagnosis) |>
+    distinct() |>
     dplyr::rename(sample = SampleID)
 
-  metadata <- metadata %>%
-    select(cell_id, SampleID, diagnosis, clusterCellType, sub_cluster)
+  metadata <- metadata |>
+    select(cell_id, SampleID, diagnosis, clusterCellType, sub_cluster, BrainRegion) |>
+    dplyr::rename(tissue = BrainRegion)
 
   return(list("metadata" = metadata, "covariates" = covariates))
 }
 
 ReadCounts_Leng <- function(files) {
-  sce_ec <- readRDS(files[["counts_ec"]]$path)
-  sce_sfg <- readRDS(files[["counts_sfg"]]$path)
-
-  # Both counts matrices have the same genes in the same order already
-  return(cbind(counts(sce_ec), counts(sce_sfg)))
+  # This is a SummarizedExperiment
+  readRDS(files[["counts"]]$path) |> counts()
 }
 
-QC_Leng <- function(seurat) {
+QC_LengEC <- function(seurat) {
   # This data has really low counts in general so the cap for high expression
   # is fairly low too
   seurat$high_expression <- seurat$nCount_RNA > 10000
+  seurat$pass_QC <- seurat$pass_QC & !seurat$high_expression
+
+  return(seurat)
+}
+
+QC_LengSFG <- function(seurat) {
+  # Several samples with higher overall counts than lengEC, so higher threshold
+  seurat$high_expression <- seurat$nCount_RNA > 20000
   seurat$pass_QC <- seurat$pass_QC & !seurat$high_expression
 
   return(seurat)
@@ -610,7 +622,7 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
     clusters = TRUE,
     samples = "sample",
     nfeatures = 4000,
-    BPPARAM = BiocParallel::SnowParam(n_cores, RNGseed = seed)
+    BPPARAM = BiocParallel::MulticoreParam(n_cores, RNGseed = seed)
   )
 
   stats$doublets <- sum(sce$scDblFinder.class == "doublet")
@@ -655,7 +667,8 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
   seurat <- switch(dataset_name,
                    "cain" = QC_Cain(seurat),
                    "lau" = QC_Lau(seurat),
-                   "leng" = QC_Leng(seurat),
+                   "lengEC" = QC_LengEC(seurat),
+                   "lengSFG" = QC_LengSFG(seurat),
                    "mathys" = QC_Mathys(seurat))
 
   # Collect some final stats for printout

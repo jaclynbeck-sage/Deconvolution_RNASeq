@@ -3,7 +3,7 @@ install.packages(
     "BiocManager", "remotes", "reticulate", "foreach", "doParallel",  # general
     "stringr", "tidyr", "purrr", "dplyr", "ggplot2", "readxl", "vroom",  # tidyverse
     "anndata",  # h5ad ingest / AutogeneS
-    "Metrics", "Hmisc", "lme4",  # analysis
+    "Metrics", "Hmisc", "lme4", "DescTools",  # analysis
     "uuid",  # omnideconv dependency
     "RColorBrewer", "viridis", "patchwork" # plotting
   ),

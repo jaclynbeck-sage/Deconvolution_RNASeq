@@ -21,22 +21,24 @@ FindMarkers_DESeq2 <- function(datasets, granularities, n_cores) {
       pb <- Load_PseudobulkPureSamples(dataset, granularity,
                                        output_type = "counts")
 
-      # Use only genes that express > 10 counts in > 10% of at least one cell
-      # type's cells (or > 5 cells if the cell type has < 50 cells)
-      over_10 <- assay(pb, "counts") > 10
-      expr_genes <- sapply(levels(pb$celltype), function(ct) {
-        rowSums(over_10[, pb$celltype == ct]) > max(0.1 * sum(pb$celltype == ct), 5)
-      })
+      # Use only genes that express > 10 counts in at least 3 samples
+      over_10 <- rowSums(assay(pb, "counts") > 10)
+      expr_genes <- names(over_10)[over_10 >= 3]
 
-      expr_genes <- rownames(expr_genes)[rowSums(expr_genes) > 0]
-
-      dds <- DESeqDataSet(pb[expr_genes, ], design = ~celltype)
+      # For most datasets, we model the interaction between diagnosis and
+      # celltype as explanatory for gene expression. For the seaRef dataset,
+      # there is no diagnosis, so the model has to be just '~ celltype'.
+      if (dataset == "seaRef") {
+        dds <- DESeqDataSet(pb[expr_genes, ], design = ~ celltype)
+      } else {
+        dds <- DESeqDataSet(pb[expr_genes, ], design = ~ celltype * diagnosis)
+      }
 
       dds <- DESeq(dds, test = "Wald",
                    fitType = "parametric",
                    sfType = "poscounts",
                    parallel = (n_cores > 1),
-                   BPPARAM = BiocParallel::SnowParam(n_cores))
+                   BPPARAM = BiocParallel::MulticoreParam(n_cores))
 
       mod <- model.matrix(design(dds), data = colData(dds))
 
@@ -49,7 +51,7 @@ FindMarkers_DESeq2 <- function(datasets, granularities, n_cores) {
 
         res <- results(dds, contrast = cont, alpha = 0.05,
                        parallel = (n_cores > 1),
-                       BPPARAM = BiocParallel::SnowParam(n_cores))
+                       BPPARAM = BiocParallel::MulticoreParam(n_cores))
 
         res <- subset(res, padj <= 0.05 & log2FoldChange > 0.5)
         res <- data.frame(res) |> dplyr::arrange(desc(log2FoldChange))
@@ -67,9 +69,7 @@ FindMarkers_DESeq2 <- function(datasets, granularities, n_cores) {
         return(rowMeans(tmp[, data_norm$celltype == ct]))
       })
 
-      res <- Get_QualityMarkers(data_means, dds_res, granularity)
-      sorted_logfc <- res$sorted_logfc
-      dds_res <- res$markers
+      sorted_logfc <- Get_QualityMarkers(data_means, dds_res, granularity)
 
       # Create a list of markers per cell type, with genes that are only
       # differentially expressed in one (or two) cell type

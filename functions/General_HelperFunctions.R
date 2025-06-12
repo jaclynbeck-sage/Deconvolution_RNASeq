@@ -16,7 +16,7 @@ source(file.path("functions", "FileIO_HelperFunctions.R"))
 
 # Shortcut functions for listing out all single cell and bulk data sets
 all_singlecell_datasets <- function() {
-  c("cain", "lau", "leng", "mathys", "seaRef")
+  c("cain", "lau", "lengEC", "lengSFG", "mathys", "seaRef")
 }
 
 all_bulk_datasets <- function() {
@@ -24,6 +24,15 @@ all_bulk_datasets <- function() {
     "MSBB_FP", "MSBB_IFG", "MSBB_PHG", "MSBB_STG",
     "ROSMAP_ACC", "ROSMAP_DLPFC", "ROSMAP_ACC")
 }
+
+is_bulk <- function(dataset) {
+  return(dataset %in% c("Mayo", "MSBB", "ROSMAP", all_bulk_datasets()))
+}
+
+is_singlecell <- function(dataset) {
+  return(dataset %in% all_singlecell_datasets())
+}
+
 
 # Load_AlgorithmInputData: Ease-of-use function that gets both the reference
 # data and the test data from a set of different formats, and makes sure
@@ -868,10 +877,10 @@ Get_QualityMarkers <- function(expr_df, markers, granularity) {
   cell_thresh <- ifelse(granularity == "broad_class", 1, 2)
   unique_genes <- table(markers$gene)
   unique_genes <- names(unique_genes)[unique_genes <= cell_thresh]
-  markers <- subset(markers, gene %in% unique_genes)
+  markers_mod <- subset(markers, gene %in% unique_genes)
 
   # Turn expression df into long format
-  expr_df <- expr_df[unique(markers$gene), ] |>
+  expr_df <- expr_df[unique(markers_mod$gene), ] |>
     as.data.frame() |>
     tibble::rownames_to_column("gene") |>
     tidyr::pivot_longer(cols = -gene,
@@ -879,26 +888,23 @@ Get_QualityMarkers <- function(expr_df, markers, granularity) {
                         values_to = "expr") |>
     group_by(celltype) |>
     mutate(
-      is_marker = gene %in% markers$gene[markers$celltype == unique(celltype)]
+      is_marker = gene %in% markers_mod$gene[markers_mod$celltype == unique(celltype)]
     ) |>
     ungroup()
 
   # Helper function
-  getLog2FC <- function(celltype, expr, is_marker) {
+  getLog2FC <- function(celltype, expr) {
     sapply(celltype, function(ct) {
-      expr[celltype == ct] - max(expr[celltype != ct & !is_marker])
+      expr[celltype == ct] - max(expr[celltype != ct])
     })
   }
-
-  log_thresh <- ifelse(granularity == "broad_class", 1, 0.25)
 
   # Filtered marker list sorted by log2FC
   sorted_logfc <- expr_df |>
     group_by(gene) |>
-    mutate(log2FC = getLog2FC(celltype, expr, is_marker)) |>
+    mutate(log2FC = getLog2FC(celltype, expr)) |>
     subset(is_marker == TRUE) |>
-    subset(log2FC >= log_thresh) |>
     dplyr::arrange(desc(log2FC))
 
-  return(list("sorted_logfc" = sorted_logfc, "markers" = markers))
+  return(sorted_logfc)
 }

@@ -69,21 +69,22 @@ library(synapser)
 library(MatrixGenerics)
 library(dplyr)
 
-source(file.path("functions", "FileIO_HelperFunctions.R"))
+source(file.path("functions", "General_HelperFunctions.R"))
 
-datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
+datasets <- all_singlecell_datasets()
 
 synLogin()
 
 # Annotation files from MapMyCells
-anno_ids <- list(cain = "syn68155497",
-                 lau = "syn68155498",
-                 leng = "syn68155499",
-                 mathys = "syn68155501")
+anno_ids <- list(cain = "syn68239068.1",
+                 lau = "syn68239074.1",
+                 lengEC = "syn68252071.1",
+                 lengSFG = "syn68252122.1",
+                 mathys = "syn68239087.1")
 
 # For threaded processing of seaRef
 n_cores <- max(parallel::detectCores() / 2, 1)
-DelayedArray::setAutoBPPARAM(BPPARAM = BiocParallel::SnowParam(n_cores))
+DelayedArray::setAutoBPPARAM(BPPARAM = BiocParallel::MulticoreParam(n_cores))
 
 # Process each data set
 for (dataset in datasets) {

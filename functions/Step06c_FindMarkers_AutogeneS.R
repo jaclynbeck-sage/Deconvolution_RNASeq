@@ -66,14 +66,10 @@ FindMarkers_AutogeneS <- function(datasets, granularities) {
         # Which cell type has the highest expression for each gene
         maxs <- apply(X, 1, which.max)
 
-        # For broad class, compare highest and 2nd highest expressor. For sub
-        # class, allow for a gene to be a marker for up to 2 cell types, so
-        # compare highest and 3rd highest expressor.
-        cell_thresh <- ifelse(granularity == "broad_class", 1, 2)
-
+        # Compare LFC between highest and 2nd highest expressor
         log2FC <- apply(log2(X + 1), 1, function(row) {
           sorted <- sort(row, decreasing = TRUE)
-          return(sorted[1] - sorted[cell_thresh + 1]) # Log space is subtraction
+          return(sorted[1] - sorted[2]) # Log space is subtraction
         })
 
         sorted_logfc <- data.frame(celltype = sc_means$var_names[maxs],
@@ -81,20 +77,15 @@ FindMarkers_AutogeneS <- function(datasets, granularities) {
                                    gene = markers) %>%
           dplyr::arrange(desc(log2FC))
 
-        # Much lower threshold for sub_class than broad_class
-        thresh <- ifelse(granularity == "broad_class", 1, 0.25)
-        markers_filt <- subset(sorted_logfc, log2FC >= thresh)
-
         print(str_glue("Markers for {dataset} / {granularity} cell types ({key}):"))
-        print(table(markers_filt$celltype))
+        print(table(sorted_logfc$celltype))
 
         markers_list <- sapply(sort(unique(sorted_logfc$celltype)), function(ct) {
           return(sorted_logfc$gene[sorted_logfc$celltype == ct])
         })
 
-        markers_filt_list <- sapply(markers_list, function(M) {
-          return(intersect(M, markers_filt$gene))
-        })
+        # No filtering
+        markers_filt_list <- markers_list
 
         # Save all the markers just for reference, but we also want a filtered
         # list with genes where the log2FC between the highest and

@@ -49,13 +49,16 @@ FindMarkers_DtangleHSPE <- function(datasets, granularities, cl = NULL) {
       #   diff: all Vs with >= 1 log-fold change
       #   p.value: all Vs >= 0.95 (signifying p <= 0.05)
       #   regression: all Vs with >= 1 log-fold change
+
+      # LFC needs a smaller threshold for sub class
+      lfc_thresh <- ifelse(granularity == "broad_class", 1, 0.5)
+
       markers[["filtered"]] <- lapply(markers$V, function(vals) {
         new_vals <- switch(method,
                            "ratio" = vals[vals >= mean(vals)],
-                           # This one needs a lower threshold for sub class
-                           "diff" = vals[vals >= ifelse(granularity == "broad_class", 1, 0.25)],
+                           "diff" = vals[vals >= lfc_thresh],
                            "p.value" = vals[vals >= 0.95],
-                           "regression" = vals[vals >= 1])
+                           "regression" = vals[vals >= lfc_thresh])
         return(names(new_vals))
       })
 
