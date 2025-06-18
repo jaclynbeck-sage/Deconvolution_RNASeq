@@ -6,19 +6,18 @@ library(Matrix)
 library(dplyr)
 library(stringr)
 library(purrr)
-library(foreach)
-library(doParallel)
+library(parallel)
 
 source(file.path("functions", "General_HelperFunctions.R"))
 source(file.path("functions", "Step11_Error_HelperFunctions.R"))
 
 granularity <- "broad_class"
-bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
-singlecell_datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
+bulk_datasets <- all_bulk_datasets()
+singlecell_datasets <- all_singlecell_datasets()
 
 cores <- 12
-cl <- makeCluster(cores, type = "FORK", outfile = "errors_output.txt")
-registerDoParallel(cl)
+cluster_type <- "FORK"
+cluster_outfile <- "errors_output.txt"
 
 # Which algorithms to calculate errors for
 algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "Music",
@@ -103,7 +102,9 @@ for (bulk_dataset in bulk_datasets) {
 
       ## Calculate error for each parameter set --------------------------------
 
-      error_list <- foreach(deconv_result = deconv_list) %dopar% {
+      cl <- makeCluster(cores, type = cluster_type, outfile = cluster_outfile)
+
+      error_list <- parLapply(cl, deconv_list, function(deconv_result) {
         source(file.path("functions", "General_HelperFunctions.R"))
         source(file.path("functions", "Step11_Error_HelperFunctions.R"))
 
@@ -158,7 +159,9 @@ for (bulk_dataset in bulk_datasets) {
 
         Save_ErrorIntermediate(errors)
         return(errors)
-      }
+      })
+
+      stopCluster(cl)
 
       # Remove NULL (skipped) entries
       error_list <- error_list[lengths(error_list) > 0]
@@ -187,5 +190,3 @@ for (bulk_dataset in bulk_datasets) {
     print(str_glue("{all_valid} of {all_possible}"))
   }
 }
-
-stopCluster(cl)

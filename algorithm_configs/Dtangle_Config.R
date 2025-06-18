@@ -43,5 +43,5 @@ alg_config <- list(
   required_libraries = c("dtangle"),
 
   # How many cores to use in parallel
-  cores = 6 # Machine this was set up for has 16 cores
+  cores = parallel::detectCores() - 1 # Machine this was set up for has 16 cores
 )

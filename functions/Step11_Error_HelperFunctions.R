@@ -58,7 +58,7 @@ Too_Many_Zeros <- function(est_pct, granularity, zero_thresh = 0.25) {
   } else {
     # sub_class uses cell types >5% of the population, plus the most abundant
     # excitatory and inhibitory subclasses
-    major_celltypes <- c("Astrocyte", "Exc.1", "Inh.1", "Oligodendrocyte")
+    major_celltypes <- c("Astrocyte", "L2/3/6 IT", "L4/5 IT", "Pvalb", "Oligodendrocyte")
   }
 
   zeros <- colSums(est_pct == 0)[major_celltypes]
@@ -137,11 +137,6 @@ CalcGOF_Means <- function(gof_by_sample, bulk_metadata, param_id) {
                          select(bulk_metadata, sample, tissue),
                          by = "sample") %>%
     mutate(tissue = as.character(tissue))
-
-  # Add duplicate rows and label the duplicates with tissue = "All" so we can
-  # get means for all samples plus samples from each tissue separately
-  gof_by_sample <- rbind(gof_by_sample,
-                         mutate(gof_by_sample, tissue = "All"))
 
   gof_means <- gof_by_sample %>%
     group_by(param_id, tissue, signature) %>%

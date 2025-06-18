@@ -43,5 +43,5 @@ alg_config <- list(
   required_libraries = c("DeconRNASeq"),
 
   # How many cores to use in parallel
-  cores = 6 # Machine this was set up for has 16 cores
+  cores = parallel::detectCores() / 2 # Machine this was set up for has 16 cores
 )

@@ -1,5 +1,4 @@
-library(foreach)
-library(doParallel)
+library(parallel)
 library(dplyr)
 library(tidyr)
 library(stringr)
@@ -12,7 +11,7 @@ source(file.path("functions", "Step09_Deconvolution_HelperFunctions.R"))
 # options: "CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "Music", "Scaden"
 algorithm <- "CibersortX"
 
-datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
+datasets <- all_singlecell_datasets()
 
 ct_ad_only <- TRUE
 
@@ -28,7 +27,7 @@ source(file.path("algorithm_configs", str_glue("{algorithm}_Config.R")))
 params_loop1 <- tidyr::expand_grid(
   algorithm = algorithm,
   reference_data_name = datasets,
-  test_data_name = c("Mayo", "MSBB", "ROSMAP"),
+  test_data_name = all_bulk_datasets(),
   granularity = c("broad_class", "sub_class"),
   reference_input_type = alg_config$reference_input_types,
   normalization = alg_config$normalizations,
@@ -48,16 +47,13 @@ params_loop2 <- tidyr::expand_grid(alg_config$params_markers,
 # NOTE: Recommendations for number of cores, per algorithm:
 #   DWLS: 1/2 the available cores, as this doesn't need much RAM but multi-threads a little
 #   DeconRNASeq and Music: 1/4 to 1/2 the available cores, as these algorithms multi-thread
-#   Dtangle and HSPE: as many cores as will fit in RAM. Assume between 5-20 GB
-#                     of RAM needed per core, depending on the dataset.
+#   Dtangle: All available cores
 #   CibersortX and Scaden: only 1 core because of the memory usage
 # NOTE: "FORK" is more memory-efficient but only works on Unix systems. For
 #       other systems, use "PSOCK" and reduce the number of cores.
 cores <- alg_config$cores
-cl <- makeCluster(cores, type = "FORK", outfile = str_glue("{algorithm}_output.txt"))
-registerDoParallel(cl)
-
-required_libraries <- alg_config$required_libraries
+cluster_type <- "FORK"
+cluster_outfile <- str_glue("{algorithm}_output.txt")
 
 
 # Iterate through parameters ---------------------------------------------------
@@ -104,8 +100,9 @@ for (P in 1:nrow(params_loop1)) {
   # Inner loop - each row of params_loop2 represents a single/unique call to
   # the algorithm with specific parameters like which markers to use, how many
   # from each cell type, and any changes to arguments in the function call.
+  cl <- makeCluster(cores, type = cluster_type, outfile = cluster_outfile)
 
-  results_list <- foreach(R = 1:nrow(params_loop2), .packages = required_libraries) %dopar% {
+  results_list <- parLapply(cl, 1:nrow(params_loop2), function(R) {
     source(file.path("functions", "General_HelperFunctions.R"))
     source(file.path("functions", "Step09_ArgumentChecking_HelperFunctions.R"))
     source(alg_config$inner_loop_file) # defined in the config
@@ -138,7 +135,7 @@ for (P in 1:nrow(params_loop1)) {
 
     # Otherwise, call the algorithm-specific function to run it with this
     # set of parameters
-    set.seed(12345)
+    set.seed(sageRNAUtils::string_to_seed(paste(params, collapse = " ")))
     inner_loop_func <- match.fun(alg_config$inner_loop_func)
 
     res <- inner_loop_func(data, params)
@@ -151,7 +148,9 @@ for (P in 1:nrow(params_loop1)) {
     # Save each result in case of crashing
     Save_AlgorithmIntermediate(res)
     return(res)
-  } # end foreach loop
+  }) # end parLapply loop
+
+  stopCluster(cl)
 
   # It's possible for some items in results_list to be null if there was an error.
   # Filter them out.
@@ -171,5 +170,3 @@ for (P in 1:nrow(params_loop1)) {
   rm(results_list, data)
   gc()
 }
-
-stopCluster(cl)

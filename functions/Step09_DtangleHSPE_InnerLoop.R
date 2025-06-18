@@ -31,11 +31,11 @@ DtangleHSPE_InnerLoop <- function(data, params) {
 
   # Dtangle-specific function call ---------------------------------------------
   if (params$algorithm == "Dtangle") {
-    result <- dtangle(Y = data$Y[, unlist(markers)],
-                      pure_samples = data$pure_samples,
-                      data_type = "rna-seq",
-                      n_markers = lengths(markers), # pass the actual number of markers we have after filtering
-                      markers = markers)
+    result <- dtangle::dtangle(Y = data$Y[, unlist(markers)],
+                               pure_samples = data$pure_samples,
+                               data_type = "rna-seq",
+                               n_markers = lengths(markers), # pass the actual number of markers we have after filtering
+                               markers = markers)
 
     # Only keep results for bulk test samples
     test_samples <- setdiff(1:nrow(data$Y), unlist(data$pure_samples))
@@ -43,13 +43,13 @@ DtangleHSPE_InnerLoop <- function(data, params) {
   }
   # HSPE-specific function call ------------------------------------------------
   else if (params$algorithm == "HSPE") {
-    result <- hspe(Y = data$Y[, unlist(markers)],
-                   pure_samples = data$pure_samples,
-                   n_markers = lengths(markers), # pass the actual number of markers we have after filtering
-                   markers = markers,
-                   loss_fn = "L2", # 'L2' usually converges faster than 'var' with nearly identical results
-                   seed = 12345,
-                   verbose = TRUE)
+    result <- hspe::hspe(Y = data$Y[, unlist(markers)],
+                         pure_samples = data$pure_samples,
+                         n_markers = lengths(markers), # pass the actual number of markers we have after filtering
+                         markers = markers,
+                         loss_fn = "L2", # 'L2' usually converges faster than 'var' with nearly identical results
+                         seed = 12345,
+                         verbose = TRUE)
 
     # Get rid of "diag" (index 5), which is huge and unneeded
     result <- result[1:4]
