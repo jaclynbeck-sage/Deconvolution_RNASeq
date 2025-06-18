@@ -118,7 +118,8 @@ for (dataset in datasets) {
   # Keep track of original library size before excluding mito/nc genes
   metadata$lib_size <- colSums(counts)
 
-  mt_genes <- grepl("^MT-", rownames(counts))
+  mt_genes <- grepl("^MT-", rownames(counts)) |
+    (!is.na(genes$chromosome_name) & genes$chromosome_name == "chrM")
   pct_mt <- colSums(counts[mt_genes, ]) / metadata$lib_size
   metadata$percent_mito <- pct_mt
 
@@ -127,7 +128,10 @@ for (dataset in datasets) {
   pct_nc <- colSums(counts[nc_genes, ]) / metadata$lib_size
   metadata$percent_noncoding <- pct_nc
 
-  genes$exclude <- mt_genes | nc_genes
+  # Remove Y-chromosome genes
+  y_genes <- !is.na(genes$chromosome_name) & genes$chromosome_name == "chrY"
+
+  genes$exclude <- mt_genes | nc_genes | y_genes
 
   if (is_singlecell(dataset)) {
     # Since all of these are single nucleus datasets, we expect the percent of
