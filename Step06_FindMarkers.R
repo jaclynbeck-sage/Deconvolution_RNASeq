@@ -13,10 +13,8 @@ source(file.path("functions", "General_HelperFunctions.R"))
 # Which algorithms to run for marker finding
 marker_types_run <- c("dtangle", "seurat", "autogenes", "deseq2", "excluded_genes")
 
-# Run multiple parameter sets in parallel where possible. Dtangle, Seurat, and
-# Deseq2 marker finding can be run in parallel. Dtangle and Deseq2 use pseudobulk
-# data while Seurat uses single cell data, so the memory requirements will
-# change how many cores should be used.
+# Run multiple parameter sets in parallel where possible. Dtangle and Deseq2
+# marker finding can be run in parallel.
 do_parallel <- TRUE
 clust_type <- "FORK" # Use PSOCK for non-Unix systems
 dtangle_n_cores <- detectCores() - 1

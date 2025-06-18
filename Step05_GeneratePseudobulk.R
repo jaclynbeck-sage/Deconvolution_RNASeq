@@ -33,13 +33,12 @@ library(stringr)
 library(dplyr)
 library(edgeR)
 
-source(file.path("functions", "FileIO_HelperFunctions.R"))
 source(file.path("functions", "General_HelperFunctions.R"))
 source(file.path("functions", "Step05a_CreatePseudobulk_BySample.R"))
 source(file.path("functions", "Step05b_CreatePseudobulk_PureSamples.R"))
 #source(file.path("functions", "Step05c_CreatePseudobulk_Training.R"))
 
-datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
+datasets <- all_singlecell_datasets()
 
 for (dataset in datasets) {
   sce <- Load_SingleCell(dataset, "broad_class", output_type = "counts")

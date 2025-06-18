@@ -22,7 +22,7 @@ all_singlecell_datasets <- function() {
 all_bulk_datasets <- function() {
   c("Mayo_CBE", "Mayo_TCX",
     "MSBB_FP", "MSBB_IFG", "MSBB_PHG", "MSBB_STG",
-    "ROSMAP_ACC", "ROSMAP_DLPFC", "ROSMAP_ACC")
+    "ROSMAP_ACC", "ROSMAP_DLPFC", "ROSMAP_PCC")
 }
 
 is_bulk <- function(dataset) {
@@ -157,7 +157,7 @@ CreateParams_MarkerTypes <- function(n_markers = NULL, marker_types = NULL,
                                      marker_order = c("distance", "correlation")) {
   # Default values for n_markers and marker_types if they are not defined
   if (is.null(n_markers)) {
-    n_markers <- c(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
+    n_markers <- c(0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
                    3, 5, 10, 20, 50, 100, 200, 500)
   }
   if (is.null(marker_types)) {
@@ -536,29 +536,36 @@ FilterMarkers <- function(reference_data_name, granularity, n_markers,
     intersect(X, available_genes)
   })
 
-  # We can't use these markers if any cell type has 1 or 0 markers after filtering
-  if (any(lengths(markers) < 2)) {
+  # We can't use these markers if any cell type has < 3 markers after filtering
+  if (any(lengths(markers) < 3)) {
     return(NULL)
   }
 
   # Percentage of each cell type's markers
   if (n_markers <= 1) {
     n_markers <- ceiling(lengths(markers) * n_markers)
-  }
-  # Fixed number of markers for each cell type
-  else {
+  } else {
+    # Fixed number of markers for each cell type
     n_markers <- sapply(lengths(markers), min, n_markers)
   }
+
+  # Regardless of method, make sure there are at least 3 markers per cell type
+  # if possible
+  n_markers <- pmax(n_markers, 3) |> # At least 3
+    pmin(lengths(markers)) # But if there are less than 3 markers for a cell
+                           # type, use that number instead
 
   if (any(n_markers == 0)) {
     return(NULL)
   }
 
-  markers <- lapply(names(markers), function(N) {
+  markers_filt <- lapply(names(markers), function(N) {
     markers[[N]][1:n_markers[N]]
   })
 
-  return(markers)
+  names(markers_filt) <- names(markers)
+
+  return(markers_filt)
 }
 
 
@@ -758,9 +765,9 @@ Clean_BulkCovariates <- function(metadata, covariates, scale_numerical = TRUE) {
                                  levels = c("Under 65", "65 - 69", "70 - 74",
                                             "75 - 79", "80 - 84", "85 - 89", "90+"))
 
-  for (col in c("diagnosis", "sex", "race", "spanish", "ethnicity",
-                "individualID", "apoeGenotype", "projid", "batch", "Braak",
-                "Thal", "CERAD", "cogdx", "spanish", "dcfdx_lv", "CDR")) {
+  for (col in c("diagnosis", "sex", "race", "isHispanic", "individualID",
+                "apoeGenotype", "projid", "batch", "Braak",
+                "amyThal", "amyCerad", "cogdx", "dcfdx_lv", "CDR")) {
     if (col %in% colnames(covariates)) {
       covariates[, col] <- factor(covariates[, col])
     }

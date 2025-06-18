@@ -5,10 +5,9 @@
 library(SingleCellExperiment)
 library(omnideconv)
 
-source(file.path("functions", "FileIO_HelperFunctions.R"))
 source(file.path("functions", "General_HelperFunctions.R"))
 
-datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
+datasets <- all_singlecell_datasets()
 
 for (dataset in datasets) {
   # Calculate the "A" matrix that is needed to convert propCells to pctRNA
@@ -23,10 +22,10 @@ for (dataset in datasets) {
   signatures <- lapply(c("cpm", "tmm"), function(output_type) {
     sig_broad <- CalculateSignature(dataset, "broad_class",
                                     output_type,
-                                    geom_mean = FALSE)
+                                    geom_mean = TRUE)
     sig_sub <- CalculateSignature(dataset, "sub_class",
                                   output_type,
-                                  geom_mean = FALSE)
+                                  geom_mean = TRUE)
     return(list("broad_class" = sig_broad, "sub_class" = sig_sub))
   })
 

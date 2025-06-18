@@ -59,9 +59,9 @@ EnsemblIdToGeneSymbol <- function(gene_list) {
 
   gene_conversions <- gene_conversions[overlap, ]
 
-  genes <- gene_conversions %>%
-    dplyr::select(ensembl_gene_id, canonical_symbol, gene_length) %>%
-    dplyr::rename(hgnc_symbol = canonical_symbol) %>%
+  genes <- gene_conversions |>
+    dplyr::select(ensembl_gene_id, canonical_symbol, gene_length, chromosome_name) |>
+    dplyr::rename(hgnc_symbol = canonical_symbol) |>
     dplyr::arrange(ensembl_gene_id)
   return(genes)
 }
@@ -85,7 +85,7 @@ UpdateGeneSymbols <- function(dataset, gene_list) {
   rownames(genes) <- make.unique(genes$original_symbol, sep = "/")
 
   genes <- genes[rownames(genes) %in% gene_list, ] |>
-    dplyr::select(ensembl_gene_id, canonical_symbol, original_symbol) |>
+    dplyr::select(ensembl_gene_id, canonical_symbol, original_symbol, chromosome_name) |>
     dplyr::rename(hgnc_symbol = canonical_symbol) |>
     dplyr::arrange(ensembl_gene_id)
 
