@@ -1,0 +1,852 @@
+library(Matrix)
+library(ggplot2)
+library(viridis)
+library(RColorBrewer)
+library(dplyr)
+library(stringr)
+library(patchwork)
+library(sagethemes)
+
+source(file.path("functions", "FileIO_HelperFunctions.R"))
+source(file.path("functions", "Step15_Analysis_HelperFunctions.R"))
+source(file.path("functions", "Step15_Plotting_HelperFunctions.R"))
+
+options(scipen = 999)
+
+bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
+
+best_errors_list <- Load_BestErrors()
+quality_stats <- Load_QualityStats()
+
+# Unpack error variables into environment for readability
+list2env(best_errors_list, globalenv())
+
+tissues_use <- c("TCX", "PHG", "ACC") # When subsetting
+tissues_use_full <- c("Mayo TCX", "MSBB PHG", "ROSMAP ACC") # When subsetting
+
+
+# Color setup ------------------------------------------------------------------
+
+algs <- unique(best_errors$algorithm)
+regs <- unique(best_errors$regression_method)
+
+# Algorithms
+algorithm_colors <- RColorBrewer::brewer.pal(length(algs), "Set2")
+names(algorithm_colors) <- sort(algs)
+
+# Regression methods
+# F45533CC is several shades lighter than viridis::turbo(1, alpha = 0.8, begin = 0.9, end = 0.9)
+#regression_colors <- c(viridis::turbo(length(regs)-1, alpha = 0.8, begin = 0.15, end = 0.5),
+#                       "#F45533CC")
+regression_colors <- c(
+  sage_colors$royal[["500"]],
+  sage_colors$turquoise[["500"]],
+  sage_colors$butterscotch[["500"]],
+  sage_colors$apple[["500"]]
+) |> paste0("CC") # Add 80% opacity
+
+granularity_colors <- c(
+  sage_colors$slate[["600"]],
+  sage_colors$blueberry[["400"]]
+)
+
+# Tissues (modified viridis turbo color scheme)
+tiss <- colSums(table(best_errors$tissue, best_errors$test_data_name) > 1)
+tissue_colors <- c(viridis::turbo(tiss[["Mayo"]], begin = 0.1, end = 0.2),
+                   viridis::turbo(tiss[["MSBB"]], begin = 0.35, end = 0.6),
+                   viridis::turbo(tiss[["ROSMAP"]], begin = 0.7, end = 0.9))
+names(tissue_colors) <- sort(unique(best_errors$tissue_full))
+
+# MSBB colors need to be darker and a little more differentiated -- original
+# colors are 20EAABFF, 67FD68FF, AEFA37FF, E1DD37FF
+tissue_colors[grepl("MSBB", names(tissue_colors))] <- c("#00CA8BFF", "#37CD38FF",
+                                                        "#7ECA07FF", "#C1BD17FF")
+
+# Slightly more pastel than default looks better
+tissue_fill_colors <- str_replace(tissue_colors, "FF$", "88")
+names(tissue_fill_colors) <- names(tissue_colors)
+
+
+# Figure 1B --------------------------------------------------------------------
+
+baselines_plot_tissue <- baselines %>%
+  subset(granularity == "Broad class" & reference_data_name != "All zeros") %>%
+  Create_BoxStats(c("tissue_full", "error_metric")) %>%
+  mutate(best_val = case_when(error_metric == "Correlation" ~ max_val,
+                              TRUE ~ min_val))
+
+errs_box_noalg <- best_errors %>%
+  subset(granularity == "Broad class") %>%
+  Create_BoxStats(c("tissue_full", "error_metric",
+                    "normalization", "regression_method"))
+
+# One tissue where regression helps, one where it doesn't
+plt1B <- ggplot(subset(errs_box_noalg,
+                       tissue_full %in% c("MSBB PHG", "ROSMAP ACC")),
+                aes(x = normalization, fill = regression_method,
+                    y = median_val, ymin = min_val, ymax = max_val)) +
+  geom_hline(aes(yintercept = best_val, color = "Baseline"),
+             data = subset(baselines_plot_tissue,
+                           tissue_full %in% c("MSBB PHG", "ROSMAP ACC")),
+             linetype = "twodash") +
+  geom_crossbar(position = position_dodge2(padding = 0),
+                fatten = 1.5, width = 0.75) +
+  theme_bw() +
+  scale_fill_manual(values = regression_colors) +
+  scale_color_manual(values = "slategray") +
+  facet_grid(error_metric ~ tissue_full, scales = "free", switch = "y") +
+  labs(fill = "Regression Method", color = "") +
+  xlab(NULL) +
+  ylab(NULL) +
+  theme(text = element_text(family = "DM Sans"),
+        strip.background = element_blank(),
+        strip.text = element_text(size = 10, face = "bold"),
+        strip.placement.y = "outside",
+        panel.spacing.x = unit(10, "pt"),
+        panel.spacing.y = unit(20, "pt"))
+
+ggsave("plt1B.svg", plt1B, path = file.path("figures", "poster"),
+       width = 750, height = 600, units = "px", dpi = 72)
+
+
+# Figure 1C --------------------------------------------------------------------
+
+plt1C <- ggplot(Count_Grouped(top3_by_tissue,
+                              c("tissue", "normalization", "regression_method")),
+                aes(x = normalization, y = regression_method,
+                    color = count, size = count)) +
+  geom_count() + theme_bw() +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5,
+                      limits = c(0, 12),
+                      breaks = c(0, 3, 6, 9, 12)) +
+  facet_wrap(~tissue, nrow = 1) +
+  labs(color = "Count") +
+  xlab(NULL) +
+  ylab(NULL) +
+  guides(size = "none") +
+  theme(text = element_text(family = "DM Sans"),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.key.width = unit(10, "pt"),
+        legend.title = element_text(margin = margin(b = 10)),
+        legend.text = element_text(size = 8),
+        strip.background = element_blank(),
+        strip.text = element_text(size = 10, face = "bold"))
+
+ggsave("plt1C.svg", plt1C, path = file.path("figures", "poster"),
+       width = 850, height = 170, units = "px", dpi = 72)
+
+
+# Figure 1D --------------------------------------------------------------------
+
+top3_by_tissue_broad <- subset(top3_by_tissue, granularity == "Broad class")
+top3_by_tissue_sub <- subset(top3_by_tissue, granularity == "Sub class")
+
+plt1Dv1a <- ggplot(Count_Grouped(top3_by_tissue_broad,
+                                 c("tissue", "reference_data_name")),
+                   aes(x = tissue, y = reference_data_name, color = count, size = count)) +
+  geom_count() +
+  theme_classic() +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5,
+                      limits = c(1, 9),
+                      breaks = c(1, 3, 5, 7, 9)) +
+  labs(color = "Count") +
+  xlab(NULL) +
+  ylab(NULL) +
+  ggtitle("Broad class") +
+  guides(size = "none") +
+  theme(text = element_text(family = "DM Sans"),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.key.width = unit(10, "pt"),
+        legend.title = element_text(size = 10, margin = margin(b = 10)),
+        legend.text = element_text(size = 8),
+        plot.title = element_text(face = "bold", size = 10))
+
+plt1Dv1b <- ggplot(Count_Grouped(top3_by_tissue_sub,
+                                 c("tissue", "reference_data_name")),
+                   aes(x = tissue, y = reference_data_name, color = count, size = count)) +
+  geom_count() + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.key.width = unit(10, "pt")) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5,
+                      limits = c(1, 9),
+                      breaks = c(1, 3, 5, 7, 9)) +
+  labs(color = "Count") +
+  xlab(NULL) +
+  ylab(NULL) +
+  ggtitle("Sub class") +
+  guides(size = "none") +
+  theme(text = element_text(family = "DM Sans"),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.key.width = unit(10, "pt"),
+        legend.title = element_text(size = 10, margin = margin(b = 10)),
+        legend.text = element_text(size = 8),
+        plot.title = element_text(face = "bold", size = 10))
+
+print(plt1Dv1a / plt1Dv1b)
+
+ggsave("plt1D.svg", (plt1Dv1a / plt1Dv1b), path = file.path("figures", "poster"),
+       width = 400, height = 380, units = "px", dpi = 72)
+
+
+# Figure 1E --------------------------------------------------------------------
+
+total_valid <- quality_stats$n_valid_by_algorithm |>
+  # So something shows up for DeconRNASeq
+  mutate(pct_valid = ifelse(pct_valid < 0.01, 0.01, pct_valid))
+
+plt1E <- ggplot(total_valid,
+                aes(x = algorithm, y = pct_valid, fill = granularity)) +
+  geom_col(position = "dodge2", width = 0.6) +
+  theme_bw() +
+  scale_fill_manual(values = granularity_colors) +
+  labs(fill = NULL) +
+  xlab(NULL) +
+  ylab("Percent") +
+  theme(text = element_text(family = "DM Sans"),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.y = element_text(margin = margin(r = 10, unit = "pt")))
+
+plt1E
+
+ggsave("plt1E.svg", plt1E, path = file.path("figures", "poster"),
+       width = 540, height = 350, units = "px", dpi = 72)
+
+
+
+
+# Figure 2 variations ----------------------------------------------------------
+
+
+
+# Figure 2A --------------------------------------------------------------------
+
+cap <- paste("Took the top 3 scoring estimates for each tissue and error metric\n",
+             "(9 total per tissue) and counted how many times each algorithm\n",
+             "appeared. This can also be changed to a 3x3 grid.")
+
+plt2Av1a <- ggplot(Count_Grouped(top3_by_tissue_broad, c("tissue", "algorithm", "error_type")),
+                   aes(x = error_type, y = algorithm, color = count, size = count)) +
+  geom_count() + theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.key.width = unit(10, "pt")) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5) +
+  facet_wrap(~tissue, nrow = 1) +
+  labs(color = "Count") +
+  xlab(NULL) +
+  ylab(NULL) +
+  guides(size = "none") +
+  ggtitle("Figure 2A v1: Best algorithm per tissue for each error metric",
+          subtitle = "Broad class")
+
+# Sub class is missing several algorithms that dropped out, fill these in
+alg_info <- best_errors %>%
+  select(tissue, algorithm) %>%
+  distinct()
+alg_sub <- Count_Grouped(top3_by_tissue_sub,
+                         c("tissue", "algorithm", "error_type")) %>%
+  merge(alg_info, all = TRUE)
+
+# Value of error_type is not important for cases where an algorithm was missing,
+# it just has to be one of the ones we want displayed
+alg_sub$error_type[is.na(alg_sub$error_type)] <- "Correlation"
+
+plt2Av1b <- ggplot(alg_sub,
+                   aes(x = error_type, y = algorithm, color = count, size = count)) +
+  geom_count() + theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.key.width = unit(10, "pt")) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5) +
+  facet_wrap(~tissue, nrow = 1) +
+  labs(color = "Count", caption = cap) +
+  xlab(NULL) +
+  ylab(NULL) +
+  guides(size = "none") +
+  ggtitle(NULL, subtitle = "Sub class")
+
+cap <- paste("Original: get rid of error metric to make the graph simpler.\n",
+             "Thematically this fits better in Figure 1 but there wasn't room.")
+plt2Av2a <- ggplot(Count_Grouped(top3_by_tissue_broad, c("tissue", "algorithm")),
+                   aes(x = tissue, y = algorithm, color = count, size = count)) +
+  geom_count() + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.key.width = unit(10, "pt")) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5) +
+  xlab(NULL) +
+  ylab(NULL) +
+  guides(color = "none", size = "none") +
+  ggtitle("Figure 2A v2: Best algorithm per tissue", subtitle = "Broad class")
+
+# Sub class is missing several algorithms that dropped out, fill these in
+alg_sub <- Count_Grouped(top3_by_tissue_sub, c("tissue", "algorithm")) %>%
+  merge(alg_info, all = TRUE)
+
+plt2Av2b <- ggplot(alg_sub,
+                   aes(x = tissue, y = algorithm, color = count, size = count)) +
+  geom_count() + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.key.width = unit(10, "pt")) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5) +
+  labs(color = "Count", caption = cap) +
+  xlab(NULL) +
+  ylab(NULL) +
+  guides(size = "none") +
+  ggtitle(NULL, subtitle = "Sub class")
+
+plt2Av2 <- plt2Av2a + plt2Av2b
+
+print(plt2Av1a / plt2Av1b / (plt2Av2 + plot_layout(widths = c(1,1)))) # + plot_layout(heights = c(2, 2, 1)))
+
+
+# Figure 2B --------------------------------------------------------------------
+
+better_stats <- quality_stats$better_than_baseline_by_tissue
+
+better_stats_broad <- subset(better_stats, granularity == "Broad class")
+better_stats_sub <- subset(better_stats, granularity == "Sub class") %>%
+  # So something shows up for 0 values
+  mutate(pct_better_than_baseline = ifelse(pct_better_than_baseline < 0.01, 0.01,
+                                           pct_better_than_baseline))
+
+cap <- paste("This graph is filtered to the top 3 errors for each algorithm, for\n",
+             "the best norm/regression for each tissue. Breaking out by\n",
+             "error metric doesn't provide better information. This could also\n",
+             "be a supplementary figure if no room. This graph is for broad class.")
+plt2Bv1 <- ggplot(better_stats_broad,
+                  aes(x = algorithm, y = pct_better_than_baseline, fill = algorithm)) +
+  geom_col() +
+  facet_wrap(~tissue_full) +
+  scale_fill_manual(values = algorithm_colors) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(caption = cap) +
+  xlab(NULL) +
+  ylab("Percent") +
+  guides(fill = "none") +
+  ggtitle("Figure 2B v1: Percent of test results better than baseline", subtitle = "Filtered")
+
+cap <- paste("Showing 3 representative tissues and putting \nthe rest in supplemental",
+             "figures. This graph \nis for broad class. We could also wedge\n",
+             "sub class next to it.")
+
+plt2Bv2 <- ggplot(subset(better_stats_broad, tissue_full %in% tissues_use_full),
+                  aes(x = algorithm, y = pct_better_than_baseline, fill = algorithm)) +
+  geom_col() +
+  facet_wrap(~tissue_full, ncol = 1) +
+  scale_fill_manual(values = algorithm_colors) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylim(0, 1.05) +
+  labs(caption = cap) +
+  xlab(NULL) +
+  ylab("Percent") +
+  guides(fill = "none") +
+  ggtitle(NULL)
+
+
+better_stats_alg <- quality_stats$better_than_baseline_by_algorithm
+
+better_stats_broad_alg <- subset(better_stats_alg, granularity == "Broad class")
+better_stats_sub_alg <- subset(better_stats_alg, granularity == "Sub class") %>%
+  # So something shows up for 0 values
+  mutate(pct_better_than_baseline = ifelse(pct_better_than_baseline < 0.01, 0.01,
+                                           pct_better_than_baseline))
+
+cap <- paste("All data is collapsed across all tissues, and we \ncan put the",
+             "tissue-specific breakout \nin supplemental.")
+plt2Bv3a <- ggplot(better_stats_broad_alg,
+                   aes(x = algorithm, y = pct_better_than_baseline, fill = algorithm)) +
+  geom_col() +
+  scale_fill_manual(values = algorithm_colors) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylim(0, 1.05) +
+  xlab(NULL) +
+  ylab("Percent") +
+  guides(fill = "none") +
+  ggtitle("Figure 2B v3", subtitle = "Broad class")
+
+plt2Bv3b <- ggplot(better_stats_sub_alg,
+                   aes(x = algorithm, y = pct_better_than_baseline, fill = algorithm)) +
+  geom_col() +
+  scale_fill_manual(values = algorithm_colors) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylim(0, 1.05) +
+  labs(caption = cap) +
+  xlab(NULL) +
+  ylab("Percent") +
+  ggtitle(NULL, subtitle = "Sub class") +
+  guides(fill = "none")
+
+plt2Bv3 <- plt2Bv3a + plt2Bv3b
+
+cap <- "Original. Classes combined in the same graph."
+plt2Bv4 <- ggplot(rbind(better_stats_broad_alg, better_stats_sub_alg),
+                  aes(x = algorithm, y = pct_better_than_baseline, fill = granularity)) +
+  geom_col(position = "dodge2") +
+  scale_fill_manual(values = regression_colors) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(fill = NULL, caption = cap) +
+  ylim(0, 1.05) +
+  xlab(NULL) +
+  ylab("Percent") +
+  ggtitle("Figure 2B v4")
+
+print((plt2Bv1 + plt2Bv2 + plot_layout(widths = c(3, 2))) /
+        (plt2Bv3 + plt2Bv4 + plot_layout(widths = c(1, 1, 3))) + plot_layout(heights = c(3, 1)))
+
+
+# Figure 2? --------------------------------------------------------------------
+
+inh_ratio <- quality_stats$exc_inh_ratio %>%
+  subset(granularity == "Broad class") %>%
+  # Cap to remove large values. We'll manually put a break in or something...
+  mutate(median_exc_inh_ratio = ifelse(median_exc_inh_ratio > 20, 20,
+                                       median_exc_inh_ratio))
+
+cap <- paste("Median ratio of excitatory to inhibitory neurons for broad class\n",
+             "estimates, for the top 3 estimates / best norm/regression. Values\n",
+             "larger than 20 have been capped so the graph is readable: Mean\n",
+             "values range from 2.37 to 2.76e17 :( and 11 of the bars in this\n",
+             "graph would go above 100 without capping. Median values are similar.\n",
+             "DWLS is the biggest offender, followed by MuSiC.\n",
+             "This particular data isn't encouraging and shows that inhibitory\n",
+             "neurons are being way under-estimated and likely have values close\n",
+             "to zero in a lot of cases.")
+plt <- ggplot(inh_ratio,
+              aes(x = algorithm, y = median_exc_inh_ratio, fill = algorithm)) +
+  geom_col() + theme_bw() +
+  facet_wrap(~tissue, nrow = 3) +
+  scale_fill_manual(values = algorithm_colors) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(caption = cap) +
+  ggtitle("Median ratio of Excitatory:Inhibitory neurons") +
+  xlab(NULL) +
+  ylab("Ratio") +
+  guides(fill = "none")
+print(plt)
+
+
+# Figure 2? --------------------------------------------------------------------
+
+if (FALSE) {
+  bulk_dataset <- "Mayo"
+  algorithm <- "Music"
+  err_files <- Get_ErrorFiles(bulk_dataset, algorithm, granularity)
+
+  marker_summary <- lapply(err_files, function(EF) {
+    err_list <- readRDS(EF)
+
+    if (length(err_list) == 0) {
+      next
+    }
+
+    errs_all <- err_list$means %>%
+      subset(tissue != "All") %>%
+      merge(err_list$params, by.x = "param_id", by.y = "row.names") %>%
+      mutate(marker_combo = paste(marker_type, marker_subtype, marker_input_type),
+             marker_combo = str_replace_all(marker_combo, " None", ""),
+             algorithm = algorithm) %>%
+      Paper_Renames() %>%
+      merge(best_dt_broad, by = colnames(best_dt_broad))
+
+    if (nrow(errs_all) == 0) {
+      return(NULL)
+    }
+
+    errs_all$n_marker_type <- sapply(errs_all$n_markers, function(N) {
+      if (N <= 1) {
+        return("percent")
+      }
+      return("fixed")
+    })
+
+    errs_summary <- errs_all %>%
+      group_by(tissue, tissue_full, data_transform, marker_combo, marker_order,
+               n_marker_type, total_markers_used) %>%
+      dplyr::summarize(Correlation = max(Correlation),
+                       RMSE = min(RMSE),
+                       MAPE = min(MAPE),
+                       .groups = "drop")
+    return(errs_summary)
+  })
+
+  marker_summary <- do.call(rbind, marker_summary)
+
+  markers_plot <- best_errors_broad
+
+  # TODO
+}
+
+dev.off()
+
+
+# Draft Main Figure 2 ----------------------------------------------------------
+
+row1 <- (plt2Av2a + ggtitle("A")) + (plt2Av2b + labs(caption = NULL))
+row2 <- (plt2Bv4 + ggtitle("B") + labs(caption = NULL)) +
+  ggplot() + ggtitle("C: Placeholder for ??") + plot_layout(widths = c(1,1))
+row3 <- ggplot() + ggtitle("D: Placeholder for line graph",
+                           subtitle = "Best errors for each algorithm vs tissue") +
+  ggplot() + ggtitle("E: Placeholder for Exc:Inh ratio graph")
+
+cap <- paste(
+  "Figure 2. Comparison of algorithm quality. A) Count of how many times each algorithm",
+  "appears in the top three best-performing \nestimates per error metric and tissue",
+  "(maximum of 9 estimates per tissue, 3 error metrics with 3 estimates each). B)",
+  "Percent of \nestimates from each algorithm that out-perform the baseline error rate.",
+  "Data is filtered to the top three best-performing estimates \nper algorithm per",
+  "tissue, one estimate per error metric. C) ?? we can think of something to put here.",
+  "D) comparison of the best \ncorrelation between algorithms across tissues. E) Median",
+  "ratio of excitatory to inhibitory neurons in the top three estimates \nfrom each",
+  "algorithm. <We might have room for another row of small graphs if necessary.>"
+)
+
+main_fig2 <- (row1) / (row2) / (row3) +
+  plot_annotation("Draft main figure 2 -- please ignore weird formatting / sizing for now",
+                  caption = cap)
+
+
+# TODO I'm thinking Fig 1 is general stats, Fig 2 is comparison of algorithms
+# across broad/sub class, and Fig 3 is significance + some bar graphs of
+# individual estimates
+
+# Figure 3 variations ----------------------------------------------------------
+
+pdf(file.path(dir_figures,
+              str_glue("draft_figure3_variations.pdf")),
+    width=7.5, height = 10)
+
+
+# Figure 3A --------------------------------------------------------------------
+
+significance_broad <- quality_stats$significance %>%
+  subset(granularity == "Broad class") %>%
+  Load_Significance(best_dt, p_sig = 0.01, log2_cap = 1)
+
+plot_limit <- c(-1, 1)
+n_cols <- 4 #if (granularity == "Broad class") 4 else 6
+
+cap <- paste("Squares with color are significant at p < 0.01. Intensity of color",
+             "is log2 fold change. This graph uses the \nbest norm/regression for",
+             "each tissue, with significance calculated on the average of the top 3",
+             "estimates \nfor each algorithm. I can also make this graph for any combination",
+             "of normalization/regression for \nsupplementary, in case we want to",
+             "show that the same patterns show up across data transforms.")
+plt3Av1 <- ggplot(significance_broad, aes(x = tissue, y = algorithm, fill = log2_fc)) +
+  geom_tile(color = "black") + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.key.width = unit(10, "pt")) +
+  facet_wrap(~celltype, ncol = n_cols) +
+  coord_fixed() +
+  scale_fill_distiller(palette = "RdBu", limit = plot_limit, na.value = "white") +
+  xlab(NULL) + ylab(NULL) +
+  labs(fill = "log2-FC", caption = cap) +
+  ggtitle("Figure 3A v1: Broad class significant changes at p < 0.01")
+
+ok <- subset(significance_broad, is.finite(log2_fc))
+sig_final_ok <- subset(significance_broad, celltype %in% unique(ok$celltype))
+
+cap <- paste("Only cell types with at least one significant value. Alternately we could\n",
+             "cut down even further to cell types that have >= 3 differences, as in v3.")
+plt3Av2 <- ggplot(sig_final_ok, aes(x = tissue, y = algorithm, fill = log2_fc)) +
+  geom_tile(color = "black") + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.key.width = unit(10, "pt")) +
+  facet_wrap(~celltype, ncol = 6) +
+  coord_fixed() +
+  scale_fill_distiller(palette = "RdBu", limit = plot_limit, na.value = "white") +
+  xlab(NULL) + ylab(NULL) +
+  labs(fill = "log2-FC", caption = cap) +
+  ggtitle("Figure 3A v2")
+
+ok2 <- significance_broad %>%
+  group_by(celltype) %>%
+  summarize(n_significant = sum(is.finite(log2_fc))) %>%
+  subset(n_significant >= 3)
+
+sig_final_ok2 <- subset(significance_broad, celltype %in% ok2$celltype)
+
+# Main figure but not graphed here
+plt3Av3 <- ggplot(sig_final_ok2, aes(x = tissue, y = algorithm, fill = log2_fc)) +
+  geom_tile(color = "black") + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.key.width = unit(10, "pt")) +
+  facet_wrap(~celltype, ncol = 4) +
+  coord_fixed() +
+  scale_fill_distiller(palette = "RdBu", limit = plot_limit, na.value = "white") +
+  xlab(NULL) + ylab(NULL) +
+  labs(fill = "log2-FC") +
+  ggtitle("Figure 3A v3")
+
+print(plt3Av1 / plt3Av2 / plt3Av3)
+
+
+# Figure 3B --------------------------------------------------------------------
+
+significance_sub <- quality_stats$significance %>%
+  subset(granularity == "Sub class") %>%
+  Load_Significance(best_dt, p_sig = 0.01, log2_cap = 1)
+
+plot_limit <- c(-1, 1)
+n_cols <- 6
+
+cap <- paste("Same idea as broad class.")
+plt3Bv1 <- ggplot(significance_sub, aes(x = tissue, y = algorithm, fill = log2_fc)) +
+  geom_tile(color = "black") + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.key.width = unit(10, "pt")) +
+  facet_wrap(~celltype, ncol = n_cols) +
+  coord_fixed() +
+  scale_fill_distiller(palette = "RdBu", limit = plot_limit, na.value = "white") +
+  xlab(NULL) + ylab(NULL) +
+  labs(fill = "log2-FC", caption = cap) +
+  ggtitle("Figure 3B v1: Sub class significant changes at p < 0.01")
+
+ok <- subset(significance_sub, is.finite(log2_fc))
+sig_final_ok <- subset(significance_sub, celltype %in% unique(ok$celltype))
+
+# Not shown
+cap <- paste("Only cell types with at least one significant value.")
+plt3Bv2 <- ggplot(sig_final_ok, aes(x = tissue, y = algorithm, fill = log2_fc)) +
+  geom_tile(color = "black") + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.key.width = unit(10, "pt")) +
+  facet_wrap(~celltype, ncol = 6) +
+  coord_fixed() +
+  scale_fill_distiller(palette = "RdBu", limit = plot_limit, na.value = "white") +
+  xlab(NULL) + ylab(NULL) +
+  labs(fill = "log2-FC", caption = cap) +
+  ggtitle("Figure 3A v2")
+
+ok2 <- significance_sub %>%
+  group_by(celltype) %>%
+  summarize(n_significant = sum(is.finite(log2_fc))) %>%
+  subset(n_significant >= 3)
+
+sig_final_ok2 <- subset(significance_sub, celltype %in% ok2$celltype)
+
+cap <- paste("Cell types with >= 3 significant values. If we show everything with any\n",
+             "significant values, we get 16 of 24 cell types which is a lot.")
+plt3Bv3 <- ggplot(sig_final_ok2, aes(x = tissue, y = algorithm, fill = log2_fc)) +
+  geom_tile(color = "black") + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.key.width = unit(10, "pt")) +
+  facet_wrap(~celltype, ncol = 5) +
+  coord_fixed() +
+  scale_fill_distiller(palette = "RdBu", limit = plot_limit, na.value = "white") +
+  labs(caption = cap) +
+  xlab(NULL) + ylab(NULL) +
+  labs(fill = "log2-FC") +
+  ggtitle("Figure 3B v2")
+
+print(plt3Bv1 / plt3Bv3)
+
+dev.off()
+
+
+# Draft Main Figure 3 ----------------------------------------------------------
+
+row1 <- (plt3Av3 + ggtitle("A") + labs(caption = NULL))
+row2 <- (plt3Bv3 + ggtitle("B") + labs(caption = NULL))
+row3 <- ggplot() + ggtitle("C: Placeholder for some individual estimate stuff")
+
+cap <- paste(
+  "Figure 3. Consensus between algorithms shows significant AD-related changes in",
+  "multiple cell types and tissues. A, B) Significant \ndifferences in broad class (A)",
+  "and sub class (B) cell types between AD and control samples. Squares are colored in",
+  "if the difference \nis significant at p < 0.01. Only cell types with more than three",
+  "significant values are shown. C) Range of individual estimates for",
+  "\n<select algorithms>. This graph will show that they're mostly reasonable estimates."
+)
+
+main_fig3 <- (row1) / (row2) / (row3) +
+  plot_annotation("Draft main figure 3 -- please ignore weird formatting / sizing for now",
+                  caption = cap)
+
+pdf(file.path(dir_figures,
+              str_glue("draft_main_figures.pdf")),
+    width=7.5, height = 10)
+
+print(main_fig1)
+print(main_fig2)
+print(main_fig3)
+
+dev.off()
+
+
+# TODO PDF for supplemental
+
+# Supplementary Figure 1a and 1b -----------------------------------------------
+
+baselines_plot_tissue <- baselines %>%
+  subset(reference_data_name != "All zeros") %>%
+  Create_BoxStats(c("tissue_full", "error_metric"))
+
+errs_box_noalg <- best_errors %>%
+  subset(granularity == "Broad class") %>%
+  Create_BoxStats(c("tissue_full", "error_metric",
+                    "normalization", "regression_method"))
+
+cap <- paste("Not sure if it's better to have everything on the same scale or\n",
+             "have each plot on its own scale due to TCX scaling.")
+plts1a <- ggplot(subset(errs_box_noalg, error_metric == "RMSE"),
+                 aes(x = normalization, fill = regression_method,
+                     y = median_val, ymin = min_val, ymax = max_val)) +
+  geom_hline(aes(yintercept = min_val, color = "Baseline"),
+             data = subset(baselines_plot_tissue, error_metric == "RMSE"),
+             linetype = "twodash") +
+  geom_crossbar(position = position_dodge2(padding = 0),
+                fatten = 1.5, width = 0.75) +
+  theme_bw() +
+  scale_fill_manual(values = regression_colors) +
+  scale_color_manual(values = "darkgray") +
+  facet_wrap(~tissue_full, nrow = 3, scales = "fixed") +
+  labs(fill = "Regression Method", color = "", caption = cap) +
+  xlab("Normalization Strategy") +
+  ylab("RMSE") +
+  ggtitle("Supplementary Figure S1a: RMSE: normalization vs regression")
+print(plts1a / plot_spacer() + plot_layout(heights = c(3, 1)))
+
+plts1b <- ggplot(subset(errs_box_noalg, error_metric == "MAPE"),
+                 aes(x = normalization, fill = regression_method,
+                     y = median_val, ymin = min_val, ymax = max_val)) +
+  geom_hline(aes(yintercept = min_val, color = "Baseline"),
+             data = subset(baselines_plot_tissue, error_metric == "MAPE"),
+             linetype = "twodash") +
+  geom_crossbar(position = position_dodge2(padding = 0),
+                fatten = 1.5, width = 0.75) +
+  theme_bw() +
+  scale_fill_manual(values = regression_colors) +
+  scale_color_manual(values = "darkgray") +
+  facet_wrap(~tissue_full, nrow = 3, scales = "fixed") +
+  labs(fill = "Regression Method", color = "") +
+  xlab("Normalization Strategy") +
+  ylab("MAPE") +
+  ggtitle("Supplementary Figure S1b: MAPE: normalization vs regression")
+print(plts1b / plot_spacer() + plot_layout(heights = c(3, 1)))
+
+
+# Supplementary Figure 1c ------------------------------------------------------
+
+baselines_plot <- baselines %>%
+  subset(reference_data_name != "All zeros") %>%
+  Create_BoxStats(c("test_data_name", "algorithm", "normalization",
+                    "regression_method", "error_metric"))
+
+errs_box <- best_errors %>%
+  subset(granularity == "Broad class") %>%
+  Create_BoxStats(c("test_data_name", "algorithm", "normalization",
+                    "regression_method", "error_metric")) %>%
+  rbind(baselines_plot)
+
+cap <- paste("Errors broken out by algorithm, including baseline. For readability,\n",
+             "Tissues have been collapsed to study level.")
+plts1cv1 <- ggplot(subset(errs_box, error_metric == "Correlation"),
+                   aes(x = normalization, fill = regression_method,
+                       y = median_val, ymin = min_val, ymax = max_val)) +
+  geom_crossbar(position = position_dodge2(padding = 0),
+                fatten = 1.5, width = 0.75) +
+  theme_bw() +
+  scale_fill_manual(values = regression_colors) +
+  scale_color_manual(values = "darkgray") +
+  facet_grid(test_data_name ~ algorithm, scales = "fixed") +
+  labs(fill = "Regression Method", color = "", caption = cap) +
+  xlab("Normalization Strategy") +
+  ylab("Correlation") +
+  ggtitle("Supplementary Figure S1c v1: Correlation: normalization vs regression by algorithm")
+print(plts1cv1 / plot_spacer() + plot_layout(heights = c(3, 1)))
+
+
+baselines_plot <- baselines %>%
+  subset(reference_data_name != "All zeros") %>%
+  Create_BoxStats(c("tissue_full", "tissue", "algorithm", "normalization",
+                    "regression_method", "error_metric"))
+
+errs_box_best <- best_errors %>%
+  subset(granularity == "Broad class") %>%
+  Create_BoxStats(c("tissue_full", "tissue", "algorithm", "normalization",
+                    "regression_method", "error_metric")) %>%
+  rbind(baselines_plot) %>%
+  merge(best_dt)
+
+cap <- paste("Or we can just use the best norm/regressions for each tissue and\n",
+             "put a dashed line for baseline.")
+plts1cv2 <- ggplot(subset(errs_box_best, error_metric == "Correlation" & algorithm != "Baseline"),
+                   aes(x = algorithm, fill = algorithm,
+                       y = median_val, ymin = min_val, ymax = max_val)) +
+  geom_hline(aes(yintercept = max_val, color = "Baseline"),
+             data = subset(errs_box_best, error_metric == "Correlation" & algorithm == "Baseline"),
+             linetype = "twodash") +
+  geom_crossbar(fatten = 1.5, width = 0.5) +
+  theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_manual(values = algorithm_colors) +
+  scale_color_manual(values = "darkgray") +
+  facet_wrap(~tissue_full, nrow = 3, scales = "fixed") +
+  ggtitle("Supplementary Figure S1c v2")
+#print(plts1cv2 / plot_spacer() + plot_layout(heights = c(3, 1)))
+
+cap <- paste("Or we can use the best norm/regressions and put it all in one\n",
+             "plot, but I need to fix this data to pull in more than one \n", "
+             baseline value per tissue. Repeat for RMSE and MAPE.")
+plts1cv3 <- ggplot(subset(errs_box_best, error_metric == "Correlation"), # & algorithm != "Baseline"),
+                   aes(x = tissue_full, fill = algorithm,
+                       y = median_val, ymin = min_val, ymax = max_val)) +
+  geom_crossbar(position = position_dodge2(padding = 0),
+                fatten = 1.5, width = 0.75) +
+  theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_manual(values = c(algorithm_colors, "Baseline" = "darkgray")) +
+  scale_color_manual(values = "darkgray") +
+  labs(fill = "Regression Method", color = "", caption = cap) +
+  xlab("Normalization Strategy") +
+  ylab("Correlation") +
+  ggtitle("Supplementary Figure S1c v3")
+print(plts1cv2 / plts1cv3)
+
+
+# Supplmentary Figure 2a and 2b ------------------------------------------------
+
+# Quality stats, TODO
+
+
+# Supplementary Figure 3a, 3b --------------------------------------------------
+
+plts3a <- ggplot(Count_Grouped(top3_by_tissue_broad, c("algorithm", "error_type")),
+                 aes(x = algorithm, y = error_type, color = count, size = count)) +
+  geom_count() + theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5) +
+  labs(color = "Count", size = "Count") +
+  xlab("Algorithm") +
+  ylab("Error Metric") +
+  ggtitle("Supplementary Figure S3a", subtitle = "Best algorithm per error metric") +
+  guides(size = "none")
+
+cap <- "Not sure how useful/interesting these graphs are."
+plts3b <- ggplot(Count_Grouped(top3_by_tissue_broad,
+                               c("error_type", "normalization", "regression_method")),
+                 aes(x = normalization, y = regression_method, color = count, size = count)) +
+  geom_count() + theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_fixed() +
+  scale_color_viridis(option = "plasma", direction = -1, begin = 0.5) +
+  facet_wrap(~error_type, nrow = 1) +
+  labs(color = "Count", size = "Count", caption = cap) +
+  xlab("Normalization") +
+  ylab("Regression Method") +
+  ggtitle("Supplementary Figure S3b", subtitle = "Best normalization/regression per error type") +
+  guides(size = "none")
+
+print((plts3a + plts3b) / plot_spacer())
+
+dev.off()
+
