@@ -212,7 +212,7 @@ plt1E <- ggplot(total_valid,
 plt1E
 
 ggsave("plt1E.svg", plt1E, path = file.path("figures", "poster"),
-       width = 540, height = 350, units = "px", dpi = 72)
+       width = 540, height = 250, units = "px", dpi = 72)
 
 
 
