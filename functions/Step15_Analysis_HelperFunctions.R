@@ -438,22 +438,22 @@ Get_AverageStats <- function(avg_id, errs_df, ests_df, group_cols, with_mean_ran
     errs_df <- subset(errs_df, type != "best_mean")
   }
 
-  avg_err <- errs_df %>%
-    dplyr::group_by_at(c(group_cols, "avg_id")) %>%
+  avg_err <- errs_df |>
+    dplyr::group_by_at(c(group_cols, "avg_id")) |>
     dplyr::summarize(across(c(cor, rMSE, mAPE),
                             list("mean" = ~ mean(.x),
                                  "sd" = ~ sd(.x))),
-                     .groups = "drop") %>%
+                     .groups = "drop") |>
     as.data.frame()
 
   weights <- as.data.frame(table(errs_df$param_id))
   colnames(weights) <- c("param_id", "weight")
 
   ests_df <- subset(ests_df, param_id %in% errs_df$param_id &
-                      tissue == unique(errs_df$tissue)) %>%
+                      tissue == unique(errs_df$tissue)) |>
     tidyr::pivot_longer(cols = where(is.numeric),
                         names_to = "celltype",
-                        values_to = "percent") %>%
+                        values_to = "percent") |>
     dplyr::mutate(avg_id = avg_id,
                   algorithm = unique(errs_df$algorithm),
                   granularity = unique(errs_df$granularity))
@@ -478,11 +478,11 @@ Get_AverageStats <- function(avg_id, errs_df, ests_df, group_cols, with_mean_ran
     sd_fun <- function(value, weights) { sqrt(Hmisc::wtd.var(value, weights)) }
   }
 
-  avg_est <- ests_df %>%
-    dplyr::group_by_at(cols_keep_ests) %>%
+  avg_est <- ests_df |>
+    dplyr::group_by_at(cols_keep_ests) |>
     dplyr::summarize(percent_mean = mean_fun(percent, weight),
                      percent_sd = sd_fun(percent, weight),
-                     .groups = "drop") %>%
+                     .groups = "drop") |>
     as.data.frame()
 
   return(list("avg_error" = avg_err, "avg_estimates" = avg_est))
@@ -491,7 +491,6 @@ Get_AverageStats <- function(avg_id, errs_df, ests_df, group_cols, with_mean_ran
 
 Create_AveragesList <- function(errs_df, ests_df, group_cols, n_cores = 2, with_mean_rank = TRUE) {
   cl <- parallel::makeCluster(n_cores, outfile = "")
-  parallel::clusterEvalQ(cl, library(magrittr, include.only = c("%>%")))
 
   # Although we could do this in one lapply statement, subsetting ests_df
   # takes a non-trivial amount of time because it's so large, so we do this to

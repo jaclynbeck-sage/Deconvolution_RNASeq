@@ -22,17 +22,12 @@ quality_stats <- Load_QualityStats()
 # Unpack error variables into environment for readability
 list2env(best_errors_list, globalenv())
 
-tissues_use <- c("TCX", "PHG", "ACC") # When subsetting
-tissues_use_full <- c("Mayo TCX", "MSBB PHG", "ROSMAP ACC") # When subsetting
-
 
 # Color setup ------------------------------------------------------------------
 
-algs <- unique(best_errors$algorithm)
-regs <- unique(best_errors$regression_method)
-
 # Algorithms
-algorithm_colors <- RColorBrewer::brewer.pal(length(algs), "Set2")
+algs <- unique(best_errors$algorithm)
+algorithm_colors <- sage_hue_pal(level = "400")(length(algs))
 names(algorithm_colors) <- sort(algs)
 
 # Regression methods
@@ -48,45 +43,34 @@ granularity_colors <- c(
   sage_colors$blueberry[["400"]]
 )
 
-# Tissues (modified viridis turbo color scheme)
-tiss <- colSums(table(best_errors$tissue, best_errors$test_data_name) > 1)
-tissue_colors <- c(viridis::turbo(tiss[["Mayo"]], begin = 0.1, end = 0.2),
-                   viridis::turbo(tiss[["MSBB"]], begin = 0.35, end = 0.6),
-                   viridis::turbo(tiss[["ROSMAP"]], begin = 0.7, end = 0.9))
-names(tissue_colors) <- sort(unique(best_errors$tissue_full))
-
-# MSBB colors need to be darker and a little more differentiated -- original
-# colors are 20EAABFF, 67FD68FF, AEFA37FF, E1DD37FF
-tissue_colors[grepl("MSBB", names(tissue_colors))] <- c("#00CA8BFF", "#37CD38FF",
-                                                        "#7ECA07FF", "#C1BD17FF")
-
-# Slightly more pastel than default looks better
-tissue_fill_colors <- str_replace(tissue_colors, "FF$", "88")
-names(tissue_fill_colors) <- names(tissue_colors)
-
-
 # ggplot2 settings that generally apply to all plots
 poster_theme <- theme(
   # All text
   text = element_text(family = "DM Sans"),
   # Add space between axis titles and axis text
-  axis.title.x = element_text(margin = margin(t = 10, unit = "pt")),
-  axis.title.y = element_text(margin = margin(r = 10, unit = "pt")),
+  axis.title.x = element_text(size = 20, margin = margin(t = 10, unit = "pt")),
+  axis.title.y = element_text(size = 20, margin = margin(r = 10, unit = "pt")),
+  # Larger axis labels
+  axis.text = element_text(size = 16),
   # Plot title
-  plot.title = element_text(face = "bold", size = 10),
+  plot.title = element_text(face = "bold", size = 24),
   # Facet labels
   strip.background = element_blank(),
-  strip.text = element_text(size = 10, face = "bold"),
-  strip.placement.y = "outside"
+  strip.text = element_text(size = 24, face = "bold"),
+  strip.placement.y = "outside",
+  # Legend text
+  legend.title = element_text(size = 16, margin = margin(b = 10)),
+  legend.text = element_text(size = 16),
 )
 
-numerical_legend <- theme(
-  legend.title = element_text(size = 10, margin = margin(b = 10)),
-  legend.text = element_text(size = 8),
-  legend.key.width = unit(10, "pt")
+dotplot_theme <- theme(
+  axis.text = element_text(size = 14),
+  title = element_text(size = 18),
+  legend.text = element_text(size = 14)
 )
 
-angled_x_axis <- theme(axis.text.x = element_text(angle = 45, hjust = 1))
+x_axis_45 <- theme(axis.text.x = element_text(angle = 45, hjust = 1))
+x_axis_90 <- theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
 
 no_axis_lines <- theme(axis.line = element_blank(),
                        axis.ticks = element_blank())
@@ -95,45 +79,46 @@ no_axis_lines <- theme(axis.line = element_blank(),
 # Figure 1B --------------------------------------------------------------------
 
 baselines_plot_tissue <- baselines |>
-  subset(granularity == "Broad class" & reference_data_name != "All zeros") |>
+  subset(reference_data_name != "All zeros" & error_metric == "Correlation") |>
   Create_BoxStats(c("tissue_full", "error_metric")) |>
   mutate(best_val = case_when(error_metric == "Correlation" ~ max_val,
                               TRUE ~ min_val))
 
 errs_box_noalg <- best_errors |>
-  subset(granularity == "Broad class") |>
+  subset(error_metric == "Correlation") |>
   Create_BoxStats(c("tissue_full", "error_metric",
                     "normalization", "regression_method"))
 
 # One tissue where regression helps, one where it doesn't
 plt1B <- ggplot(subset(errs_box_noalg,
-                       tissue_full %in% c("MSBB PHG", "ROSMAP ACC")),
+                       tissue_full %in% c("Mayo TCX", "MSBB PHG", "ROSMAP ACC")),
                 aes(x = normalization, fill = regression_method,
                     y = median_val, ymin = min_val, ymax = max_val)) +
   geom_hline(aes(yintercept = best_val, color = "Baseline"),
              data = subset(baselines_plot_tissue,
-                           tissue_full %in% c("MSBB PHG", "ROSMAP ACC")),
+                           tissue_full %in% c("Mayo TCX", "MSBB PHG", "ROSMAP ACC")),
              linetype = "twodash") +
   geom_crossbar(position = position_dodge2(padding = 0),
                 fatten = 1.5, width = 0.75) +
   theme_bw() +
   scale_fill_manual(values = regression_colors) +
-  scale_color_manual(values = "slategray") +
-  facet_grid(error_metric ~ tissue_full, scales = "free", switch = "y") +
+  scale_color_manual(values = sage_colors$blueberry[["700"]]) +
+  facet_wrap(~tissue_full) +
   labs(fill = "Regression Method", color = "") +
   xlab(NULL) +
-  ylab(NULL) +
+  ylab("Correlation") +
   poster_theme +
-  theme(panel.spacing.x = unit(10, "pt"),
-        panel.spacing.y = unit(20, "pt"))
+  theme(panel.spacing.x = unit(20, "pt")) #,
+  #      panel.spacing.y = unit(20, "pt"))
 
 print(plt1B)
 
 ggsave("plt1B.svg", plt1B, path = file.path("figures", "poster"),
-       width = 750, height = 600, units = "px", dpi = 72)
+       width = 800, height = 240, units = "px", dpi = 72)
 
 
 # Figure 1C --------------------------------------------------------------------
+# Not used
 
 plt1C <- ggplot(Count_Grouped(top3_by_tissue,
                               c("tissue", "normalization", "regression_method")),
@@ -149,15 +134,16 @@ plt1C <- ggplot(Count_Grouped(top3_by_tissue,
   xlab(NULL) +
   ylab(NULL) +
   guides(size = "none") +
-  poster_theme + angled_x_axis + numerical_legend
+  poster_theme + x_axis_45
 
 print(plt1C)
 
-ggsave("plt1C.svg", plt1C, path = file.path("figures", "poster"),
-       width = 850, height = 170, units = "px", dpi = 72)
+#ggsave("plt1C.svg", plt1C, path = file.path("figures", "poster"),
+#       width = 850, height = 170, units = "px", dpi = 72)
 
 
 # Figure 1D --------------------------------------------------------------------
+# Not used
 
 top3_by_tissue_broad <- subset(top3_by_tissue, granularity == "Broad class")
 top3_by_tissue_sub <- subset(top3_by_tissue, granularity == "Sub class")
@@ -176,7 +162,7 @@ plt1Da <- ggplot(Count_Grouped(top3_by_tissue_broad,
   ylab(NULL) +
   ggtitle("Broad class") +
   guides(size = "none") +
-  poster_theme + angled_x_axis + numerical_legend
+  poster_theme + x_axis_45
 
 plt1Db <- ggplot(Count_Grouped(top3_by_tissue_sub,
                                c("tissue", "reference_data_name")),
@@ -189,51 +175,57 @@ plt1Db <- ggplot(Count_Grouped(top3_by_tissue_sub,
   labs(color = "Count") +
   xlab(NULL) +
   ylab(NULL) +
-  ggtitle("Sub class") +
+  ggtitle("Subtypes") +
   guides(size = "none") +
-  poster_theme + angled_x_axis + numerical_legend
+  poster_theme + x_axis_45
 
 print(plt1Da / plt1Db)
 
-ggsave("plt1D.svg", (plt1Da / plt1Db), path = file.path("figures", "poster"),
-       width = 400, height = 380, units = "px", dpi = 72)
+#ggsave("plt1D.svg", (plt1Da / plt1Db), path = file.path("figures", "poster"),
+#       width = 400, height = 380, units = "px", dpi = 72)
 
 
 # Figure 1E --------------------------------------------------------------------
 
 total_valid <- quality_stats$n_valid_by_algorithm |>
   # So something shows up for DeconRNASeq
-  mutate(pct_valid = ifelse(pct_valid < 0.01, 0.01, pct_valid))
+  mutate(pct_valid = ifelse(pct_valid < 0.01, 0.01, pct_valid),
+         granularity = ifelse(granularity == "Sub class", "Subtypes", granularity))
 
 plt1E <- ggplot(total_valid,
                 aes(x = algorithm, y = pct_valid, fill = granularity)) +
-  geom_col(position = "dodge2", width = 0.6) +
+  geom_col(position = "dodge2", width = 0.7) +
   theme_bw() +
   scale_fill_manual(values = granularity_colors) +
   labs(fill = NULL) +
   xlab(NULL) +
   ylab("Percent") +
-  poster_theme + angled_x_axis
+  poster_theme + x_axis_90 +
+  theme(legend.position = "bottom")
 
 print(plt1E)
 
 ggsave("plt1E.svg", plt1E, path = file.path("figures", "poster"),
-       width = 540, height = 250, units = "px", dpi = 72)
+       width = 315, height = 285, units = "px", dpi = 72)
 
 
 # Figure 2A --------------------------------------------------------------------
 
-plt2Aa <- ggplot(Count_Grouped(top3_by_tissue_broad, c("tissue", "algorithm")),
+best_algs <- Count_Grouped(top3_by_tissue_broad, c("tissue", "algorithm")) |>
+  subset(tissue != "CBE")
+
+plt2Aa <- ggplot(best_algs,
                  aes(x = tissue, y = algorithm, color = count, size = count)) +
   geom_count() +
   theme_classic() +
   coord_fixed() +
   scale_color_viridis(option = "plasma", direction = -1, begin = 0.5) +
+  scale_y_discrete(limits = rev) +
   xlab(NULL) +
   ylab(NULL) +
   guides(color = "none", size = "none") +
   ggtitle("Broad class") +
-  poster_theme + angled_x_axis + numerical_legend
+  poster_theme + x_axis_90 + dotplot_theme
 
 # Sub class is missing several algorithms that dropped out, fill these in
 alg_info <- best_errors |>
@@ -241,7 +233,8 @@ alg_info <- best_errors |>
   distinct()
 
 alg_sub <- Count_Grouped(top3_by_tissue_sub, c("tissue", "algorithm")) |>
-  merge(alg_info, all = TRUE)
+  merge(alg_info, all = TRUE) |>
+  subset(tissue != "CBE")
 
 plt2Ab <- ggplot(alg_sub,
                  aes(x = tissue, y = algorithm, color = count, size = count)) +
@@ -249,19 +242,20 @@ plt2Ab <- ggplot(alg_sub,
   theme_classic() +
   coord_fixed() +
   scale_color_viridis(option = "plasma", direction = -1, begin = 0.5) +
+  scale_y_discrete(limits = rev) +
   labs(color = "Count") +
   xlab(NULL) +
   ylab(NULL) +
   guides(size = "none") +
-  ggtitle("Sub class") +
-  poster_theme + angled_x_axis + numerical_legend
+  ggtitle("Subtypes") +
+  poster_theme + x_axis_90 + dotplot_theme
 
 plt2A <- plt2Aa + plt2Ab
 
 print(plt2A)
 
 ggsave("plt2A.svg", plt2A, path = file.path("figures", "poster"),
-       width = 700, height = 240, units = "px", dpi = 72)
+       width = 620, height = 230, units = "px", dpi = 72)
 
 
 # Figure 2B --------------------------------------------------------------------
@@ -269,114 +263,75 @@ ggsave("plt2A.svg", plt2A, path = file.path("figures", "poster"),
 better_stats_alg <- quality_stats$better_than_baseline_by_algorithm |>
   # So something shows up for 0 values
   mutate(pct_better_than_baseline = ifelse(pct_better_than_baseline < 0.01, 0.01,
-                                           pct_better_than_baseline))
+                                           pct_better_than_baseline),
+         granularity = ifelse(granularity == "Sub class", "Subtypes", granularity))
 
 plt2B <- ggplot(better_stats_alg,
                 aes(x = algorithm, y = pct_better_than_baseline, fill = granularity)) +
-  geom_col(position = "dodge2") +
+  geom_col(position = "dodge2", width = 0.7) +
   scale_fill_manual(values = granularity_colors) +
   theme_bw() +
   labs(fill = NULL) +
   ylim(0, 1.05) +
   xlab(NULL) +
   ylab("Percent") +
-  poster_theme + angled_x_axis
+  poster_theme + x_axis_90 +
+  theme(legend.position = "bottom")
 
 print(plt2B)
 
 ggsave("plt2B.svg", plt2B, path = file.path("figures", "poster"),
-       width = 600, height = 350, units = "px", dpi = 72)
+       width = 315, height = 285, units = "px", dpi = 72)
 
 
 # Figure 2C --------------------------------------------------------------------
 
 inh_ratio <- quality_stats$exc_inh_ratio |>
-  subset(granularity == "Broad class") |>
-  mutate(median_inh_exc_ratio = 1/median_exc_inh_ratio)
+  subset(tissue %in% c("TCX", "PHG", "ACC")) |>
+  mutate(median_inh_exc_ratio = 1/median_exc_inh_ratio,
+         granularity = str_replace(granularity, "Sub class", "Subtypes"),
+         tissue_full = case_match(tissue,
+                                  "TCX" ~ "Mayo TCX",
+                                  "PHG" ~ "MSBB PHG",
+                                  "ACC" ~ "ROSMAP ACC"))
 
 plt2C <- ggplot(inh_ratio,
                 aes(x = algorithm, y = median_inh_exc_ratio, fill = algorithm)) +
   geom_col() +
-  geom_hline(yintercept = 0.5, linetype = "twodash", color = "slategray") +
+  geom_hline(yintercept = 0.5, linetype = "twodash", color = sage_colors$blueberry[["700"]]) +
   theme_bw() +
-  facet_wrap(~tissue, nrow = 3) +
+  #facet_wrap(~tissue_full, nrow = 1) +
+  facet_grid(tissue_full ~ granularity) +
   scale_fill_manual(values = algorithm_colors) +
-  ggtitle("Median ratio of Inhibitory:Excitatory neurons") +
+  scale_y_continuous(limits = c(0, 1)) +
   xlab(NULL) +
   ylab("Ratio") +
   guides(fill = "none") +
-  poster_theme + angled_x_axis
+  poster_theme + x_axis_90 +
+  theme(panel.spacing = unit(20, "pt"),
+        strip.text = element_text(size = 23))
 
 print(plt2C)
 
-
-# Figure 2? --------------------------------------------------------------------
-
-if (FALSE) {
-  bulk_dataset <- "Mayo"
-  algorithm <- "Music"
-  err_files <- Get_ErrorFiles(bulk_dataset, algorithm, granularity)
-
-  marker_summary <- lapply(err_files, function(EF) {
-    err_list <- readRDS(EF)
-
-    if (length(err_list) == 0) {
-      next
-    }
-
-    errs_all <- err_list$means |>
-      subset(tissue != "All") |>
-      merge(err_list$params, by.x = "param_id", by.y = "row.names") |>
-      mutate(marker_combo = paste(marker_type, marker_subtype, marker_input_type),
-             marker_combo = str_replace_all(marker_combo, " None", ""),
-             algorithm = algorithm) |>
-      Paper_Renames() |>
-      merge(best_dt_broad, by = colnames(best_dt_broad))
-
-    if (nrow(errs_all) == 0) {
-      return(NULL)
-    }
-
-    errs_all$n_marker_type <- sapply(errs_all$n_markers, function(N) {
-      if (N <= 1) {
-        return("percent")
-      }
-      return("fixed")
-    })
-
-    errs_summary <- errs_all |>
-      group_by(tissue, tissue_full, data_transform, marker_combo, marker_order,
-               n_marker_type, total_markers_used) |>
-      dplyr::summarize(Correlation = max(Correlation),
-                       RMSE = min(RMSE),
-                       MAPE = min(MAPE),
-                       .groups = "drop")
-    return(errs_summary)
-  })
-
-  marker_summary <- do.call(rbind, marker_summary)
-
-  markers_plot <- best_errors_broad
-
-  # TODO
-}
-
+ggsave("plt2C.svg", plt2C, path = file.path("figures", "poster"),
+       width = 450, height = 650, units = "px", dpi = 72)
 
 
 # Figure 3A --------------------------------------------------------------------
 
 significance_broad <- quality_stats$significance |>
-  subset(granularity == "Broad class" & tissue != "CBE") |>
+  subset(granularity == "Broad class" & tissue != "CBE" & algorithm != "Baseline") |>
   Load_Significance(best_dt, p_sig = 0.01, log2_cap = 1)
 
 plot_limit <- c(-1, 1)
-n_cols <- 4 #if (granularity == "Broad class") 4 else 6
+n_cols <- 4
 
 ok <- significance_broad |>
   group_by(celltype) |>
   summarize(n_significant = sum(is.finite(log2_fc))) |>
   subset(n_significant >= 3)
-sig_final_ok <- subset(significance_broad, celltype %in% unique(ok$celltype))
+sig_final_ok <- subset(significance_broad, celltype %in% unique(ok$celltype)) |>
+  mutate(celltype = ifelse(celltype == "Oligodendrocyte", "Oligo.", celltype))
 
 plt3A <- ggplot(sig_final_ok, aes(x = algorithm, y = tissue, fill = log2_fc)) +
   geom_tile(color = "black") +
@@ -387,46 +342,53 @@ plt3A <- ggplot(sig_final_ok, aes(x = algorithm, y = tissue, fill = log2_fc)) +
   scale_y_discrete(limits = rev) +
   xlab(NULL) + ylab(NULL) +
   labs(fill = "log2-FC") +
-  poster_theme + angled_x_axis + numerical_legend + no_axis_lines +
-  theme(panel.spacing = unit(10, "pt"))
+  poster_theme + x_axis_90 + no_axis_lines +
+  theme(panel.spacing = unit(10, "pt"),
+        strip.text = element_text(size = 18, face = "bold"))
 
 print(plt3A)
 
-# Sizing is set up to make each grid ~130x150 px
+# Sizing is set up to make each grid ~130x170 px
 ggsave("plt3A.svg", plt3A, path = file.path("figures", "poster"),
-       width = 720, height = 260, units = "px", dpi = 72)
+       width = 740, height = 335, units = "px", dpi = 72)
 
 
 # Figure 3B --------------------------------------------------------------------
 
 significance_sub <- quality_stats$significance |>
-  subset(granularity == "Sub class" & tissue != "CBE") |>
+  subset(granularity == "Sub class" & tissue != "CBE" & algorithm != "Baseline") |>
   Load_Significance(best_dt, p_sig = 0.01, log2_cap = 1)
 
 plot_limit <- c(-1, 1)
 n_cols <- 6
 
+lev <- levels(significance_sub$celltype) |> str_replace("Oligodendrocyte", "Oligo.")
+
 ok <- significance_sub |>
   group_by(celltype) |>
   summarize(n_significant = sum(is.finite(log2_fc))) |>
   subset(n_significant >= 3)
-sig_final_ok <- subset(significance_sub, celltype %in% unique(ok$celltype))
+sig_final_ok <- subset(significance_sub, celltype %in% unique(ok$celltype)) |>
+  mutate(celltype = ifelse(celltype == "Oligodendrocyte", "Oligo.", as.character(celltype)),
+         celltype = factor(celltype, levels = lev))
 
 plt3B <- ggplot(sig_final_ok, aes(x = algorithm, y = tissue, fill = log2_fc)) +
   geom_tile(color = "black") + theme_classic() +
   facet_wrap(~celltype, ncol = 5) +
   coord_fixed() +
   scale_fill_distiller(palette = "RdBu", limit = plot_limit, na.value = "white") +
+  scale_y_discrete(limits = rev) +
   xlab(NULL) + ylab(NULL) +
   labs(fill = "log2-FC") +
-  poster_theme + angled_x_axis + numerical_legend + no_axis_lines +
-  theme(panel.spacing = unit(10, "pt"))
+  poster_theme + x_axis_90 + no_axis_lines +
+  theme(panel.spacing = unit(10, "pt"),
+        strip.text = element_text(size = 18, face = "bold"))
 
 print(plt3B)
 
 # Sizing is set up to make each grid ~130x150 px
 ggsave("plt3B.svg", plt3B, path = file.path("figures", "poster"),
-       width = 850, height = 450, units = "px", dpi = 72)
+       width = 900, height = 530, units = "px", dpi = 72)
 
 
 # Plot 3C ----------------------------------------------------------------------
@@ -434,44 +396,51 @@ ggsave("plt3B.svg", plt3B, path = file.path("figures", "poster"),
 # From differential expression of each cell type vs all other excitatory
 # neurons, plus markers from the Cain paper
 markers <- list(
-  "Exc.1" = c("CUX2", "GLIS3", "CARTPT"),
+  "Exc.1" = c("CUX2", "CARTPT", "GLIS3"),
   "Exc.2" = c("TSHZ2", "GABRG1", "TDRD1", "RORB"),
-  "Exc.4" = c("RSPO3", "TMEM212", "TMSB10", "RORB"),
+  "Exc.4" = c("TMEM212", "TMSB10", "RSPO3", "RORB"),
   "Exc.7" = c("MCUB", "TMEM233", "PRRX1", "THEMIS"),
-  "Exc.10" = c("POSTN", "SMYD1", "RGS12", "THEMIS")
+  "Exc.10" = c("SMYD1", "POSTN", "RGS12", "THEMIS")
 )
 
 genes <- unlist(markers) |> unique()
 
-#pb <- Load_PseudobulkPureSamples("cain", "sub_class", output_type = "log_cpm")
-#pb_mat <- assay(pb, "counts")[genes, pb$celltype %in% names(markers)]
-#pb_mat <- scale(t(pb_mat)) |> t()
+sigs <- lapply(c("cain", "lau", "leng", "mathys", "seaRef"), function(ds) {
+  sig <- Load_SignatureMatrix(ds, "sub_class", "log_cpm")
+  sig[genes, names(markers)] |>
+    as.data.frame() |>
+    tibble::rownames_to_column("gene") |>
+    tidyr::pivot_longer(-gene, names_to = "celltype", values_to = "expression")
+})
 
-sig <- Load_SignatureMatrix("cain", "sub_class", "log_cpm")
-sig <- sig[genes, names(markers)]
+# Scale mean expression for each gene
+sigs <- do.call(rbind, sigs) |>
+  group_by(gene, celltype) |>
+  summarize(expression = mean(expression), .groups = "drop") |>
+  group_by(gene) |>
+  mutate(expression = as.numeric(scale(expression))) |>
+  ungroup()
 
-pb_plot <- pb_mat |>
-  as.data.frame() |>
-  tibble::rownames_to_column("gene") |>
-  tidyr::pivot_longer(-gene, names_to = "sample", values_to = "expression") |>
-  merge(as.data.frame(colData(pb)))
+gene_order <- genes
+cell_order <- c("Exc.1", "Exc.2", "Exc.4", "Exc.7", "Exc.10")
 
-ggplot(pb_plot, aes(x = sample, y = gene, fill = expression)) +
-  geom_tile() +
+sig_plot <- sigs |>
+  mutate(gene = factor(gene, levels = gene_order),
+         celltype = factor(celltype, levels = cell_order))
+
+plt3C <- ggplot(sig_plot, aes(x = celltype, y = gene, fill = expression)) +
+  geom_tile(color = "lightgray") +
   theme_classic() +
-  facet_wrap(~celltype, nrow = 1) +
   scale_fill_viridis() +
-  poster_theme + no_axis_lines +
-  theme(axis.text.x = element_blank())
+  scale_y_discrete(limits = rev) +
+  labs(x = NULL, y = NULL, fill = str_wrap("Scaled log2-CPM", width = 10)) +
+  poster_theme + no_axis_lines + x_axis_90 +
+  #theme(legend.title = element_text(size = 12)) +
+  coord_fixed()
 
-anno <- subset(colData(pb), sample %in% colnames(pb_mat)) |>
-  as.data.frame() |>
-  select(celltype)
+print(plt3C)
 
-pheatmap::pheatmap(t(sig),
-                   color = viridis(100),
-                   show_rownames = TRUE,
-                   #show_colnames = FALSE,
-                   treeheight_row = 0,
-                   treeheight_col = 0,
-                   scale = "column")
+ggsave("plt3C.svg", plt3C, path = file.path("figures", "poster"),
+       width = 320, height = 430, units = "px", dpi = 72)
+
+# TODO is inh:exc ratio percent RNA comparison or percent cells comparison? this might matter.
