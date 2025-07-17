@@ -261,9 +261,14 @@ DownloadData_Lau <- function(metadata_only = FALSE) {
   write.csv(geo_metadata, file_geo_metadata)
 
   if (!metadata_only) {
-    geo <- getGEOSuppFiles(GEO = "GSE157827", makeDirectory = FALSE,
-                           baseDir = dir_lau_raw)
-    untar(rownames(geo)[1], exdir = dir_lau_raw)
+    files_fetch <- geo_metadata$geo_accession
+
+    mat_files <- lapply(files_fetch, getGEOSuppFiles,
+                        makeDirectory = FALSE,
+                        baseDir = dir_lau_raw) |>
+      lapply(rownames)
+
+    names(mat_files) <- files_fetch
   }
 
   synIDs <- list("clinical_metadata" = list(id = "syn52308080", version = 1))
@@ -271,6 +276,7 @@ DownloadData_Lau <- function(metadata_only = FALSE) {
   files <- DownloadFromSynapse(synIDs, dir_lau_raw)
 
   files[["geo_metadata"]] <- file_geo_metadata
+  files[["mat_files"]] <- mat_files
   return(files)
 }
 
@@ -280,15 +286,14 @@ ReadMetadata_Lau <- function(files) {
     select(title, diagnosis.ch1) %>%
     dplyr::rename(sample = title, diagnosis = diagnosis.ch1)
 
-  barcode_files <- list.files(path = dir_lau_raw, pattern = "barcodes",
-                              full.names = TRUE)
+  barcode_files <- sapply(files$mat_files, grep, pattern = "barcodes", value = TRUE)
+
   barcodes <- lapply(barcode_files, function(filename) {
     bc <- read.table(gzfile(filename)) %>% dplyr::rename(barcode = V1)
-    file_info <- str_split(filename, pattern = "/", simplify = TRUE)
-    file_info <- str_split(file_info[, length(file_info)],
-                           pattern = "_",
-                           simplify = TRUE)
-    bc$sample <- file_info[, 2]
+    samp <- str_split(basename(filename),
+                      pattern = "_",
+                      simplify = TRUE)[2]
+    bc$sample <- samp
     bc$barcode <- paste(bc$barcode, bc$sample, sep = "_")
     return(bc)
   })
@@ -313,28 +318,23 @@ ReadCovariates_Lau <- function(files) {
 }
 
 ReadCounts_Lau <- function(files) {
-  geo_metadata <- read.csv(files$geo_metadata, row.names = 1)
-  samples <- rownames(geo_metadata)
-  counts_list <- list()
+  counts_list <- lapply(files$mat_files, function(file_list) {
+    matrix_file <- grep("matrix", file_list, value = TRUE)
+    barcodes_file <- grep("barcodes", file_list, value = TRUE)
+    features_file <- grep("features", file_list, value = TRUE)
 
-  for (sample in samples) {
-    files <- list.files(path = dir_lau_raw,
-                        pattern = paste0(sample, "_.*\\.gz"),
-                        full.names = TRUE)
-
-    matrix_file <- grep("matrix", files, value = TRUE)
-    barcodes_file <- grep("barcodes", files, value = TRUE)
-    features_file <- grep("features", files, value = TRUE)
+    samp <- str_split(basename(matrix_file),
+                      pattern = "_",
+                      simplify = TRUE)[2]
 
     counts <- ReadMtx(mtx = matrix_file,
                       cells = barcodes_file,
-                      features = features_file)
-    colnames(counts) <- paste(colnames(counts),
-                              geo_metadata[sample, "title"],
-                              sep = "_")
+                      features = features_file,
+                      feature.column = 1)
+    colnames(counts) <- paste(colnames(counts), samp, sep = "_")
 
-    counts_list[[sample]] <- counts
-  }
+    return(counts)
+  })
 
   # Make sure all counts are in the same gene order
   genes <- unique(unlist(lapply(counts_list, rownames)))
@@ -363,47 +363,102 @@ QC_Lau <- function(seurat) {
 ## Leng, et al., 2021 ----------------------------------------------------------
 # https://doi.org/10.1038/s41593-020-00764-7
 
-# metadata_only is an unused variable for this dataset as the metadata is
-# embedded in the counts RDS files
 DownloadData_Leng <- function(metadata_only = FALSE, tissue) {
-  synIDs <- list("counts" = switch(
-    tissue,
-    "EC" = list(id = "syn22722817", version = 1),
-    "SFG" = list(id = "syn22722860", version = 1)
-  ))
+  gse <- getGEO("GSE147528", destdir = dir_leng_raw)
 
-  files <- DownloadFromSynapse(synIDs, dir_leng_raw)
+  geo_metadata <- pData(phenoData(gse[[1]]))
+  file_geo_metadata <- file.path(dir_leng_raw, "geo_metadata.csv")
+  write.csv(geo_metadata, file_geo_metadata)
+
+  if (!metadata_only) {
+    files_fetch <- geo_metadata |>
+      subset(grepl(tissue, title)) |>
+      pull(geo_accession)
+
+    h5_files <- lapply(files_fetch, getGEOSuppFiles,
+                       makeDirectory = FALSE,
+                       baseDir = dir_leng_raw) |>
+      sapply(rownames)
+
+    names(h5_files) <- files_fetch
+  } else {
+    h5_files <- list()
+  }
+
+  files <- list("geo_metadata" = file_geo_metadata,
+                "h5_files" = h5_files)
+
   return(files)
 }
 
 ReadMetadata_Leng <- function(files) {
-  sce <- readRDS(files$counts$path)
+  clinical <- read.csv(files[["geo_metadata"]]) |>
+    subset(geo_accession %in% names(files$h5_files)) |>
+    select(title, donor.id.ch1, age..years..ch1, batch.ch1,
+           braak.stage..ad.neuropathological.progression..ch1, brain.region.ch1,
+           Sex.ch1)
 
-  metadata <- colData(sce) |> as.data.frame()
+  colnames(clinical) <- c("sample", "patient_id", "age", "batch",
+                          "braak_stage", "tissue", "sex")
 
   braak <- list("0" = "Control",
                 "2" = "Early Pathology",
                 "6" = "AD")
 
-  metadata$cell_id <- rownames(metadata)
-  metadata$diagnosis <- unlist(braak[metadata$BraakStage])
-  metadata$sub_cluster <- str_replace(metadata$clusterAssignment, "EC:|SFG:", "")
+  clinical$diagnosis <- unlist(braak[as.character(clinical$braak_stage)])
 
-  covariates <- metadata |>
-    select(SampleID, PatientID, BrainRegion, BraakStage, SampleBatch, diagnosis) |>
-    distinct() |>
-    dplyr::rename(sample = SampleID)
+  # We have to get barcodes from the individual files
+  h5_files <- files$h5_files
+  barcodes <- lapply(h5_files, function(filename) {
+    bc <- rhdf5::h5read(filename, "/GRCh38-1.2.0_premrna/barcodes")
+
+    samp <- str_split(basename(filename), pattern = "_", simplify = TRUE)[2]
+
+    clin_sub <- clinical |>
+      subset(sample == samp) |>
+      select(sample, diagnosis, tissue)
+
+    bc_df <- data.frame(sample = samp,
+                        cell_id = paste(bc, samp, sep = "_")) |>
+      merge(clin_sub)
+    return(bc_df)
+  })
+
+  metadata <- do.call(rbind, barcodes)
+  rownames(metadata) <- metadata$cell_id
+
+  # The h5 files don't have cluster assignments
+  metadata$broad_class <- NA
+  metadata$sub_class <- NA
 
   metadata <- metadata |>
-    select(cell_id, SampleID, diagnosis, clusterCellType, sub_cluster, BrainRegion) |>
-    dplyr::rename(tissue = BrainRegion)
+    select(cell_id, sample, diagnosis, broad_class, sub_class, tissue)
 
-  return(list("metadata" = metadata, "covariates" = covariates))
+  return(list("metadata" = metadata, "covariates" = clinical))
 }
 
 ReadCounts_Leng <- function(files) {
-  # This is a SummarizedExperiment
-  readRDS(files[["counts"]]$path) |> counts()
+  data <- lapply(files$h5_files, function(filename) {
+    samp <- str_split(basename(filename), "_", simplify = TRUE)[2]
+    mat <- Seurat::Read10X_h5(filename, use.names = FALSE)
+
+    # Remove columns that have less than 200 counts, because these files are
+    # not filtered and are extremely large
+    mat <- mat[, Matrix::colSums(mat) > 200]
+
+    colnames(mat) <- paste(colnames(mat), samp, sep = "_")
+
+    return(mat)
+  })
+
+  # Make sure all counts are in the same gene order
+  genes <- unique(unlist(lapply(data, rownames)))
+  data <- lapply(data, function(X) {
+    X[genes, ]
+  })
+
+  data <- do.call(cbind, data)
+  return(data)
 }
 
 QC_LengEC <- function(seurat) {

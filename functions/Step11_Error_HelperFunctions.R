@@ -133,6 +133,7 @@ CalcGOF_BySample <- function(meas_expr_cpm, est_expr, param_id) {
 #   row for each tissue containing the means across all samples in that tissue,
 #   for each signature used in the error calculation
 CalcGOF_Means <- function(gof_by_sample, bulk_metadata, param_id) {
+  # Add the tissue variable for easier downstream analysis
   gof_by_sample <- merge(gof_by_sample,
                          select(bulk_metadata, sample, tissue),
                          by = "sample") %>%

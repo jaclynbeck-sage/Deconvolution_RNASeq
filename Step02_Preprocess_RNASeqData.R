@@ -87,12 +87,12 @@ for (dataset in datasets) {
 
   ## Convert gene names --------------------------------------------------------
 
-  # Bulk only -- Convert bulk data Ensembl IDs to gene symbols.
-  if (is_bulk(dataset) || dataset == "mathys") {
+  # Most datasets have genes listed as Ensembl IDs
+  if (dataset != "cain" & dataset != "seaRef") {
     genes <- EnsemblIdToGeneSymbol(rownames(counts))
   } else {
-    # Single cell only -- update potentially outdated gene symbols to the most
-    # current version possible, and get the matching Ensembl IDs too.
+    # cain and seaRef only -- update potentially outdated gene symbols to the
+    # most current version possible, and get the matching Ensembl IDs too.
     genes <- UpdateGeneSymbols(dataset, rownames(counts))
   }
 

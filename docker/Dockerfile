@@ -4,6 +4,7 @@ RUN apt-get update -y && apt-get upgrade -y
 RUN apt-get install -y ssh nano less curl
 RUN apt-get install -y libpng-dev libglpk-dev liblzma-dev libbz2-dev libffi-dev libhdf5-dev
 RUN apt-get install -y libcurl4-openssl-dev # for scDblFinder
+RUN apt-get install -y patch # For hdf5r
 #RUN apt-get install -y libxt-dev
 RUN apt-get clean
 

@@ -11,9 +11,10 @@
 # much coverage as possible:
 #   1. The genes used for ROSMAP/Mayo/MSBB in the RNASeq Harmonization Study,
 #   2. The genes used for the Seattle Reference Atlas,
-#   3. All genes from Ensembl versions 98, 93, and 84, corresponding to the
-#      versions used in some of the single cell data, and
-#   4. The genes used for the Mathys data set
+#   3. All genes from Ensembl version 98 corresponding to the genome used for
+#      the Cain data set,
+#   4. The genes used for the Lau, Leng, and Mathys data sets, which are
+#      provided by the studies in the raw data
 # Some symbols from previous versions of Ensembl are different and some Ensembl
 # IDs exist in those lists that are no longer in Biomart. We merge the multiple
 # lists by Ensembl ID and create a list of all possible gene symbols associated
@@ -36,6 +37,8 @@ library(dplyr)
 library(purrr)
 library(rtracklayer)
 library(sageRNAUtils)
+library(GEOquery)
+library(rhdf5)
 source("Filenames.R")
 
 synLogin()
@@ -43,10 +46,7 @@ synLogin()
 # URLs for GTF files -----------------------------------------------------------
 
 gtf_seaRef <- "https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/67/39/67390730-a684-47a5-b9f4-89c47cd4e3fc/genesgtf.gz"
-gtf_v98 <- "https://ftp.ensembl.org/pub/release-98/gtf/homo_sapiens/Homo_sapiens.GRCh38.98.gtf.gz"
-gtf_v93 <- "https://ftp.ensembl.org/pub/release-93/gtf/homo_sapiens/Homo_sapiens.GRCh38.93.gtf.gz"
-gtf_v84 <- "https://ftp.ensembl.org/pub/release-84/gtf/homo_sapiens/Homo_sapiens.GRCh38.84.gtf.gz"
-
+gtf_v98_cain <- "https://ftp.ensembl.org/pub/release-98/gtf/homo_sapiens/Homo_sapiens.GRCh38.98.gtf.gz"
 
 # Gene symbol / Ensembl ID conversions -----------------------------------------
 
@@ -57,15 +57,26 @@ dir.create(dir_gene_files, showWarnings = FALSE)
 
 # Get exon lengths for each gene, for the purpose of calculating TPM on the
 # bulk datasets. The bulk datasets were aligned to Gencode release 31.
+
 gtf_url <- paste0("https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/",
                   "release_31/gencode.v31.primary_assembly.annotation.gtf.gz")
 fasta_url <- paste0("https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/",
                     "release_31/GRCh38.primary_assembly.genome.fa.gz")
 
+download.file(gtf_url,
+              destfile = file.path(dir_gene_files, basename(gtf_url)),
+              method = "curl")
+download.file(fasta_url,
+              destfile = file.path(dir_gene_files, basename(fasta_url)),
+              method = "curl")
+
 # We don't strictly need GC content but this function gets us gene length,
 # gene biotype, and symbols
-gene_info <- sageRNAUtils::get_gc_content_gtf(gtf_url, fasta_url,
-                                              include_introns = FALSE)
+gene_info <- sageRNAUtils::get_gc_content_gtf(
+  gtf_file = file.path(dir_gene_files, basename(gtf_url)),
+  fasta_file = file.path(dir_gene_files, basename(fasta_url)),
+  include_introns = FALSE
+)
 
 # Strip version numbers
 gene_info$ensembl_gene_id <- str_replace(gene_info$ensembl_gene_id, "\\.[0-9]+", "")
@@ -76,10 +87,34 @@ gene_info <- gene_info |>
   subset(!grepl("_PAR_Y", ensembl_gene_id))
 
 
+## Lau genes -------------------------------------------------------------------
+
+# Download one of the features.tsv files from GEO to get the gene information
+
+res <- getGEOSuppFiles("GSM4775561", makeDirectory = FALSE,
+                       baseDir = dir_gene_files,
+                       filter_regex = "features")
+
+lau_genes <- read.delim(gzfile(rownames(res)), header = FALSE) |>
+  dplyr::select(V1, V2) |>
+  dplyr::rename(ensembl_gene_id = V1, symbol_Lau = V2)
+
+
+## Leng genes ------------------------------------------------------------------
+
+# Download one h5 file from GEO to get the gene information
+res <- getGEOSuppFiles("GSM4432635", makeDirectory = FALSE,
+                       baseDir = dir_gene_files)
+symbols <- h5read(rownames(res), "/GRCh38-1.2.0_premrna/gene_names")
+gene_ids <- h5read(rownames(res), "/GRCh38-1.2.0_premrna/genes")
+
+leng_genes <- data.frame(ensembl_gene_id = gene_ids,
+                         symbol_Leng = symbols)
+
+
 ## Mathys genes ----------------------------------------------------------------
 
-# This is the only single cell data set that provides their own mapping from
-# gene symbol to Ensembl ID
+# They provided their mapping file on Synapse
 filename <- synGet("syn18687959", version = 1,
                    downloadLocation = dir_gene_files)
 
@@ -87,17 +122,13 @@ mathys_genes <- read.table(filename$path, header = FALSE) |>
   dplyr::rename(ensembl_gene_id = V1, symbol_Mathys = V2)
 
 
-## Other single cell genes -----------------------------------------------------
+## Cain and SEA-AD genes -------------------------------------------------------
 
-# GRCh38 Ensembl releases 84, 93, and 98, plus the seaRef GTF file
+# GRCh38 Ensembl release 98 (Cain) plus the seaRef GTF file
 files <- list("symbol_seaRef" = c(filename = file.path(dir_gene_files, "seaRef_genes.gtf.gz"),
                                   url = gtf_seaRef),
-              "symbol_v98" = c(filename = file.path(dir_gene_files, "Homo_sapiens.GRCh38.98.gtf.gz"),
-                               url = gtf_v98),
-              "symbol_v93" = c(filename = file.path(dir_gene_files, "Homo_sapiens.GRCh38.93.gtf.gz"),
-                               url = gtf_v93),
-              "symbol_v84" = c(filename = file.path(dir_gene_files, "Homo_sapiens.GRCh38.84.gtf.gz"),
-                               url = gtf_v84))
+              "symbol_v98_cain" = c(filename = file.path(dir_gene_files, "Homo_sapiens.GRCh38.98.gtf.gz"),
+                               url = gtf_v98_cain))
 
 gtf_genes <- lapply(names(files), function(version) {
   file_info <- files[[version]]
@@ -107,7 +138,7 @@ gtf_genes <- lapply(names(files), function(version) {
                   method = "curl")
   }
 
-  df <- rtracklayer::import(gzfile(file_info[["filename"]]), format = "gtf") |>
+  df <- rtracklayer::import(file_info[["filename"]], format = "gtf") |>
     as.data.frame() |>
     dplyr::select(gene_id, gene_name) |>
     dplyr::distinct()
@@ -121,7 +152,8 @@ gtf_genes <- purrr::reduce(gtf_genes, dplyr::full_join, by = "ensembl_gene_id")
 
 # Merge all gene sets together -------------------------------------------------
 
-all_genes <- purrr::reduce(list(gene_info, gtf_genes, mathys_genes),
+all_genes <- purrr::reduce(list(gene_info, gtf_genes, lau_genes,
+                                leng_genes, mathys_genes),
                            dplyr::full_join,
                            by = "ensembl_gene_id")
 
