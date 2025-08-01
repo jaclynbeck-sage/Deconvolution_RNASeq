@@ -108,8 +108,7 @@ plt1B <- ggplot(subset(errs_box_noalg,
   xlab(NULL) +
   ylab("Correlation") +
   poster_theme +
-  theme(panel.spacing.x = unit(20, "pt")) #,
-  #      panel.spacing.y = unit(20, "pt"))
+  theme(panel.spacing.x = unit(20, "pt"))
 
 print(plt1B)
 
@@ -443,4 +442,45 @@ print(plt3C)
 ggsave("plt3C.svg", plt3C, path = file.path("figures", "poster"),
        width = 320, height = 430, units = "px", dpi = 72)
 
-# TODO is inh:exc ratio percent RNA comparison or percent cells comparison? this might matter.
+
+# Plot 3D ----------------------------------------------------------------------
+# Not used
+
+avg_ests <- quality_stats$avg_estimates_by_algorithm |>
+  subset(granularity == "Sub class" &
+           algorithm != "Baseline" &
+           tissue == "PHG" &
+           #tissue %in% c("TCX", "PHG", "ACC") &
+           diagnosis %in% c("CT", "AD")) |>
+  merge(best_dt) |>
+  mutate(diagnosis = ifelse(as.character(diagnosis) == "CT", "Control", "AD"),
+         diagnosis = factor(diagnosis, levels = c("Control", "AD")))
+
+# Needed something darker than cloud[["800"]] and fern[["800"]] but not quite black
+control_outline <- "#303030"
+ad_outline <- "#0C490C"
+
+plt3D <- ggplot(subset(avg_ests, celltype %in% c("Astrocyte", "Exc.1")),
+                aes(x = algorithm, y = percent_mean, color = diagnosis, fill = diagnosis)) +
+  geom_boxplot(outliers = FALSE, width = 0.7) +
+  facet_wrap(~celltype, ncol = 1) +
+  theme_bw() +
+  scale_color_manual(values = c("Control" = "black", #control_outline,
+                               "AD" = "black")) + #ad_outline)) +
+  scale_fill_manual(values = c("Control" = sage_colors$blueberry[["400"]],
+                               "AD" = sage_colors$apple[["400"]])) +
+  labs(fill = NULL) +
+  xlab(NULL) +
+  ylab("Cell type proportion") +
+  guides(color = "none") +
+  poster_theme + x_axis_90 +
+  theme(panel.spacing = unit(20, "pt"),
+        legend.position = "bottom")
+
+print(plt3D)
+
+ggsave("plt3D.svg", plt3D, path = file.path("figures", "poster"),
+       width = 350, height = 500, units = "px", dpi = 72)
+
+# TODO inh:exc ratio is percent RNA comparison, not percent cells comparison. These are
+# different. pct RNA ratio is smaller than pct cells.
