@@ -22,9 +22,7 @@ DownloadFromSynapse <- function(synIDs, downloadLocation) {
   files <- list()
 
   for (name in names(synIDs)) {
-    files[[name]] <- synGet(synIDs[[name]]$id,
-                            version = synIDs[[name]]$version,
-                            downloadLocation = downloadLocation)
+    files[[name]] <- synGet(synIDs[[name]], downloadLocation = downloadLocation)
   }
 
   return(files)
@@ -145,9 +143,9 @@ ReadCounts <- function(dataset, files) {
                    "lengSFG" = ReadCounts_Leng(files),
                    "mathys" = ReadCounts_Mathys(files),
                    "seaRef" = ReadCounts_SEARef(files),
-                   "Mayo" = ReadCounts_BulkData(files),
-                   "MSBB" = ReadCounts_BulkData(files),
-                   "ROSMAP" = ReadCounts_ROSMAP(files))
+                   "Mayo" = ReadCounts_Bulk(files),
+                   "MSBB" = ReadCounts_Bulk(files),
+                   "ROSMAP" = ReadCounts_Bulk(files))
   return(counts)
 }
 
@@ -726,6 +724,10 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
                    "lengSFG" = QC_LengSFG(seurat),
                    "mathys" = QC_Mathys(seurat))
 
+  # TODO consider removing bad samples by % that don't pass QC, instead of
+  # % that have high mito genes. In LengEC, threshold of 30% passing removes
+  # EC3, threshold up to 55% removes EC1 too
+
   # Collect some final stats for printout
 
   # Cells that weren't marked as doublets but are in doublet clusters
@@ -768,19 +770,10 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
 ## Mayo ------------------------------------------------------------------------
 # Bulk RNA seq data from the Mayo RNA Seq Study:
 # https://adknowledgeportal.synapse.org/Explore/Studies/DetailsPage/StudyDetails?Study=syn5550404
-#
-# Metadata: https://www.synapse.org/#!Synapse:syn29855549
-# Individual metadata: https://www.synapse.org/#!Synapse:syn23277389
-# Filtered counts: https://www.synapse.org/#!Synapse:syn27024951
-# Biomart gene conversion: https://www.synapse.org/#!Synapse:syn27024953
-# TODO temporary: use harmonized/corrected data from syn66639062
 
 DownloadData_Mayo <- function(metadata_only = FALSE) {
-  synIDs <- list("individual_metadata" = list(id = "syn66639062", version = 1),
-                 "biospecimen_metadata" = list(id = "syn20827192", version = 13),
-                 "assay_metadata" = list(id = "syn20827193", version = 4),
-                 "metrics" = list(id = "syn21544637", version = 1),
-                 "counts" = list(id = "syn21544635", version = 1))
+  # expands counts list into separate items
+  synIDs <- config::get("step02_preprocess")$mayo |> unlist()
 
   if (metadata_only) {
     synIDs <- synIDs[1:4]
@@ -794,19 +787,9 @@ DownloadData_Mayo <- function(metadata_only = FALSE) {
 ## MSBB ------------------------------------------------------------------------
 # Bulk RNA seq data from the Mount Sinai Brain Bank Study:
 # https://adknowledgeportal.synapse.org/Explore/Studies/DetailsPage/StudyDetails?Study=syn3159438
-#
-# Metadata: https://www.synapse.org/#!Synapse:syn29855570
-# Individual metadata: https://www.synapse.org/#!Synapse:syn6101474
-# Filtered counts: https://www.synapse.org/#!Synapse:syn27068754
-# Biomart gene conversion: https://www.synapse.org/#!Synapse:syn27068755
-# TODO temporary: Use harmonized/corrected data from syn66639063
 
 DownloadData_MSBB <- function(metadata_only = FALSE) {
-  synIDs <- list("individual_metadata" = list(id = "syn66639063", version = 2),
-                 "biospecimen_metadata" = list(id = "syn21893059", version = 14),
-                 "assay_metadata" = list(id = "syn22447899", version = 6),
-                 "metrics" = list(id = "syn21544666", version = 1),
-                 "counts" = list(id = "syn21544664", version = 1))
+  synIDs <- config::get("step02_preprocess")$msbb
 
   if (metadata_only) {
     synIDs <- synIDs[1:4]
@@ -820,28 +803,13 @@ DownloadData_MSBB <- function(metadata_only = FALSE) {
 ## ROSMAP ----------------------------------------------------------------------
 # Bulk RNA seq data from the ROSMAP study:
 # https://adknowledgeportal.synapse.org/Explore/Studies/DetailsPage/StudyDetails?Study=syn3219045
-#
-# Metadata: https://www.synapse.org/#!Synapse:syn29855598
-# Individual metadata: https://www.synapse.org/#!Synapse:syn3191087
-# Filtered counts: https://www.synapse.org/#!Synapse:syn26967451
-# Biomart gene conversion: https://www.synapse.org/#!Synapse:syn26967452
-# TODO Temporary: use harmonized/corrected data from syn64759878
 
 DownloadData_ROSMAP <- function(metadata_only = FALSE) {
-  synIDs <- list("individual_metadata" = list(id = "syn64759878", version = 6),
-                 "biospecimen_metadata" = list(id = "syn21323366", version = 19),
-                 "assay_metadata" = list(id = "syn21088596", version = 5),
-                 "metrics1" = list(id = "syn22283384", version = 4),
-                 "metrics2" = list(id = "syn22301603", version = 4),
-                 "metrics3" = list(id = "syn22314232", version = 4),
-                 "metrics4" = list(id = "syn25817663", version = 4),
-                 "counts1" = list(id = "syn22283382", version = 4),
-                 "counts2" = list(id = "syn22301601", version = 4),
-                 "counts3" = list(id = "syn22314230", version = 4),
-                 "counts4" = list(id = "syn25817661", version = 4))
+  # expands counts list into separate items
+  synIDs <- config::get("step02_preprocess")$rosmap |> unlist()
 
   if (metadata_only) {
-    synIDs <- synIDs[1:7]
+    synIDs <- synIDs[1:4]
   }
 
   files <- DownloadFromSynapse(synIDs, dir_rosmap_raw)
@@ -859,7 +827,12 @@ ReadMetadata_BulkData <- function(dataset, files) {
     subset((is.na(exclude) | exclude == FALSE) & assay == "rnaSeq") |>
     select(individualID, specimenID, tissue)
   assay <- read.csv(files$assay_metadata$path) |>
-    select(specimenID, RIN, any_of(c("sequencingBatch", "flowcell")))
+    select(specimenID, RIN, platform, any_of(c("sequencingBatch", "flowcell")))
+
+  if (dataset == "MSBB") {
+    # Remove single cell-type samples
+    assay <- subset(assay, platform != "IlluminaNovaseq6000")
+  }
 
   if (dataset == "Mayo") {
     assay$batch <- assay$flowcell
@@ -869,22 +842,23 @@ ReadMetadata_BulkData <- function(dataset, files) {
 
   assay$batch <- ifelse(is.na(assay$batch), "unknown", assay$batch)
 
-  if (dataset == "ROSMAP") {
-    metrics <- lapply(paste0("metrics", 1:4), function(m_name) {
-      read.delim(files[[m_name]]$path) |>
-        select(sample, contains("_PCT_"))
-    })
+  # TODO
+  #if (dataset == "ROSMAP") {
+  #  metrics <- lapply(paste0("metrics", 1:4), function(m_name) {
+  #    read.delim(files[[m_name]]$path) |>
+  #      select(sample, contains("_PCT_"))
+  #  })
 
-    metrics <- do.call(rbind, metrics)
-  } else {
-    metrics <- read.delim(files$metrics$path) |>
-      select(sample, contains("_PCT_"))
-  }
+  #  metrics <- do.call(rbind, metrics)
+  #} else {
+  #  metrics <- read.delim(files$metrics$path) |>
+  #    select(sample, contains("_PCT_"))
+  #}
 
   metadata <- ind |>
     merge(bio) |>
     merge(assay) |>
-    merge(metrics, by.x = "specimenID", by.y = "sample") |>
+    #merge(metrics, by.x = "specimenID", by.y = "sample") |> # TODO new metrics
     mutate(
       tissue = case_match(
         tissue,
@@ -978,7 +952,7 @@ ReadMetadata_BulkData <- function(dataset, files) {
   metadata$RIN[is.na(metadata$RIN)] <- 0
 
   print(str_glue("{sum(metadata$RIN < 3)} sample(s) will be removed from ",
-                 "{dataset} due to low RIN."))
+                 "{dataset} due to low or NA RIN."))
   metadata <- subset(metadata, RIN >= 3)
 
   # Necessary because the column names of the counts matrix get converted this
@@ -999,36 +973,18 @@ ReadMetadata_BulkData <- function(dataset, files) {
   return(list("metadata" = metadata, "covariates" = covariates))
 }
 
-ReadCounts_BulkData <- function(files, metadata) {
-  counts <- read.table(files[["counts"]]$path, header = TRUE, row.names = 1)
-  rownames(counts) <- str_replace(rownames(counts), "\\.[0-9]+", "")
+ReadCounts_Bulk <- function(files) {
+  counts <- lapply(grep("counts", names(files), value = TRUE), function(c_name) {
+    read.table(files[[c_name]]$path, header = TRUE) |>
+      dplyr::select(-transcript_id.s.)
+  })
 
-  # Counts matrix has a few rows of statistics before genes start, remove them
-  counts <- counts[grepl("ENSG", rownames(counts)), ]
+  counts <- purrr::reduce(counts, dplyr::full_join, by = "gene_id")
+  rownames(counts) <- str_replace(counts$gene_id, "\\.[0-9]+", "")
+  counts <- dplyr::select(counts, -gene_id)
 
   return(counts)
 }
-
-ReadCounts_ROSMAP <- function(files, metadata) {
-  counts <- lapply(paste0("counts", 1:4), function(c_name) {
-    read.table(files[[c_name]]$path, header = TRUE, row.names = 1)
-  })
-
-  all_genes <- lapply(counts, rownames) |> unlist() |> unique()
-  counts <- lapply(counts, function(c_mat) {
-    c_mat[all_genes, ]
-  })
-
-  counts <- do.call(cbind, counts)
-
-  rownames(counts) <- str_replace(rownames(counts), "\\.[0-9]+", "")
-
-  # Counts matrix has a few rows of statistics before genes start, remove them
-  counts <- counts[grepl("ENSG", rownames(counts)), ]
-
-  return(counts)
-}
-
 
 # Per-batch outlier detection via PCA. Each batch in the data is unique to one
 # tissue, so data is actually split by tissue + sequencing batch.
@@ -1045,18 +1001,13 @@ ReadCounts_ROSMAP <- function(files, metadata) {
 #   a vector containing the sample names of outliers
 FindOutliers_BulkData <- function(dataset, covariates, counts, sd_threshold = 4,
                                   do_plot = FALSE) {
-  # Define how to split the data into batches for batch-specific outlier
-  # detection. On a PCA plot of all samples, Mayo is distinctly split by tissue
-  # but not sequencing batch, MSBB samples split by batch but certain batches
-  # group together, and ROSMAP is split by batch.
-  covariates$batch <- switch(dataset,
-                             "Mayo" = covariates$tissue,
-                             "MSBB" = covariates$batch,
-                             "ROSMAP" = covariates$batch)
 
-  # MSBB batches cluster by the second half of their batch name + tissue, rather
-  # than separating by batch completely
-  if (dataset == "MSBB") {
+  if (dataset == "Mayo") {
+    # Mayo samples cluster by tissue, not batch
+    covariates$batch <- covariates$tissue
+  } else if (dataset == "MSBB") {
+    # MSBB batches cluster by the second half of their batch name + tissue, rather
+    # than separating by batch completely
     covariates$batch <- str_replace(covariates$batch, "_[A-Z][0-9]+r?", "_")
   }
 
@@ -1080,8 +1031,7 @@ FindOutliers_BulkData <- function(dataset, covariates, counts, sd_threshold = 4,
   if (do_plot) {
     plts <- lapply(pca_results$group_results, function(res) {
       sageRNAUtils::plot_pca_outliers(res$pca_df,
-                                      res$pc1_threshold,
-                                      res$pc2_threshold,
+                                      res$thresholds,
                                       print_plot = FALSE)
     })
     print(Reduce("+", plts))

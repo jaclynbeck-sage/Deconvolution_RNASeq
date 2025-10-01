@@ -15,12 +15,12 @@
 #      the Cain data set,
 #   4. The genes used for the Lau, Leng, and Mathys data sets, which are
 #      provided by the studies in the raw data
-# Some symbols from previous versions of Ensembl are different and some Ensembl
-# IDs exist in those lists that are no longer in Biomart. We merge the multiple
-# lists by Ensembl ID and create a list of all possible gene symbols associated
-# with each ID. We then assign a "canonical" symbol that will be used in every
-# data set by finding the most common symbol for a given Ensembl ID in the list
-# of symbols.
+# Some symbols from previous versions of Ensembl are different from the symbols
+# in Gencode v43. We merge the multiple lists by Ensembl ID and create a list of
+# all possible gene symbols associated with each ID. We then assign a
+# "canonical" symbol that will be used in every data set by using the symbol
+# from Gencode v43 if it exists, otherwise by finding the most common symbol for
+# a given Ensembl ID in the list of symbols from the other data sets.
 #
 # For the cell type proportions, the data was determined from separate stains,
 # so the proportions do not add up to 1 and some cell types are missing from
@@ -41,14 +41,9 @@ library(GEOquery)
 library(rhdf5)
 source("Filenames.R")
 
+cfg <- config::get("step01_gene_metadata")
+
 synLogin()
-
-# URLs for GTF files -----------------------------------------------------------
-
-gtf_seaRef <- "https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/67/39/67390730-a684-47a5-b9f4-89c47cd4e3fc/genesgtf.gz"
-gtf_v98_cain <- "https://ftp.ensembl.org/pub/release-98/gtf/homo_sapiens/Homo_sapiens.GRCh38.98.gtf.gz"
-
-# Gene symbol / Ensembl ID conversions -----------------------------------------
 
 dir_gene_files <- file.path(dir_metadata, "gene_files")
 dir.create(dir_gene_files, showWarnings = FALSE)
@@ -56,25 +51,20 @@ dir.create(dir_gene_files, showWarnings = FALSE)
 ## Bulk RNA Seq genes ----------------------------------------------------------
 
 # Get exon lengths for each gene, for the purpose of calculating TPM on the
-# bulk datasets. The bulk datasets were aligned to Gencode release 31.
+# bulk datasets. The bulk datasets were aligned to Gencode release 43.
 
-gtf_url <- paste0("https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/",
-                  "release_31/gencode.v31.primary_assembly.annotation.gtf.gz")
-fasta_url <- paste0("https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/",
-                    "release_31/GRCh38.primary_assembly.genome.fa.gz")
-
-download.file(gtf_url,
-              destfile = file.path(dir_gene_files, basename(gtf_url)),
+download.file(cfg$gtf_bulk,
+              destfile = file.path(dir_gene_files, basename(cfg$gtf_bulk)),
               method = "curl")
-download.file(fasta_url,
-              destfile = file.path(dir_gene_files, basename(fasta_url)),
+download.file(cfg$fasta_bulk,
+              destfile = file.path(dir_gene_files, basename(cfg$fasta_bulk)),
               method = "curl")
 
 # We don't strictly need GC content but this function gets us gene length,
 # gene biotype, and symbols
 gene_info <- sageRNAUtils::get_gc_content_gtf(
-  gtf_file = file.path(dir_gene_files, basename(gtf_url)),
-  fasta_file = file.path(dir_gene_files, basename(fasta_url)),
+  gtf_file = file.path(dir_gene_files, basename(cfg$gtf_bulk)),
+  fasta_file = file.path(dir_gene_files, basename(cfg$fasta_bulk)),
   include_introns = FALSE
 )
 
@@ -82,7 +72,7 @@ gene_info <- sageRNAUtils::get_gc_content_gtf(
 gene_info$ensembl_gene_id <- str_replace(gene_info$ensembl_gene_id, "\\.[0-9]+", "")
 
 gene_info <- gene_info |>
-  dplyr::rename(symbol_RNASeq = external_gene_name) |>
+  dplyr::rename(symbol_bulkRNA = external_gene_name) |>
   # Remove IDs that end in "_PAR_Y"
   subset(!grepl("_PAR_Y", ensembl_gene_id))
 
@@ -91,7 +81,7 @@ gene_info <- gene_info |>
 
 # Download one of the features.tsv files from GEO to get the gene information
 
-res <- getGEOSuppFiles("GSM4775561", makeDirectory = FALSE,
+res <- getGEOSuppFiles(cfg$geo_lau, makeDirectory = FALSE,
                        baseDir = dir_gene_files,
                        filter_regex = "features")
 
@@ -103,7 +93,7 @@ lau_genes <- read.delim(gzfile(rownames(res)), header = FALSE) |>
 ## Leng genes ------------------------------------------------------------------
 
 # Download one h5 file from GEO to get the gene information
-res <- getGEOSuppFiles("GSM4432635", makeDirectory = FALSE,
+res <- getGEOSuppFiles(cfg$geo_leng, makeDirectory = FALSE,
                        baseDir = dir_gene_files)
 symbols <- h5read(rownames(res), "/GRCh38-1.2.0_premrna/gene_names")
 gene_ids <- h5read(rownames(res), "/GRCh38-1.2.0_premrna/genes")
@@ -115,7 +105,7 @@ leng_genes <- data.frame(ensembl_gene_id = gene_ids,
 ## Mathys genes ----------------------------------------------------------------
 
 # They provided their mapping file on Synapse
-filename <- synGet("syn18687959", version = 1,
+filename <- synGet(cfg$genes_mathys, version = 1,
                    downloadLocation = dir_gene_files)
 
 mathys_genes <- read.table(filename$path, header = FALSE) |>
@@ -126,9 +116,9 @@ mathys_genes <- read.table(filename$path, header = FALSE) |>
 
 # GRCh38 Ensembl release 98 (Cain) plus the seaRef GTF file
 files <- list("symbol_seaRef" = c(filename = file.path(dir_gene_files, "seaRef_genes.gtf.gz"),
-                                  url = gtf_seaRef),
+                                  url = cfg$gtf_sea_ad),
               "symbol_v98_cain" = c(filename = file.path(dir_gene_files, "Homo_sapiens.GRCh38.98.gtf.gz"),
-                               url = gtf_v98_cain))
+                                    url = cfg$gtf_cain))
 
 gtf_genes <- lapply(names(files), function(version) {
   file_info <- files[[version]]
@@ -155,12 +145,16 @@ gtf_genes <- purrr::reduce(gtf_genes, dplyr::full_join, by = "ensembl_gene_id")
 all_genes <- purrr::reduce(list(gene_info, gtf_genes, lau_genes,
                                 leng_genes, mathys_genes),
                            dplyr::full_join,
-                           by = "ensembl_gene_id")
+                           by = "ensembl_gene_id") |>
+  # Remove some symbols that got set to the Ensembl ID
+  mutate(symbol_bulkRNA = ifelse(grepl("ENSG00", symbol_bulkRNA), NA, symbol_bulkRNA))
 
-# For each row/gene, take the symbol that appears the most across all data sets.
-# In case of ties, which.max returns the first symbol in the tie, which would
-# be the first alphabetically.
+# For each row/gene that doesn't have a symbol in the bulk RNA seq data, take
+# the symbol that appears the most across all data sets. In case of ties,
+# which.max returns the first symbol in the tie, which would be the first
+# alphabetically.
 max_symbol <- all_genes |>
+  subset(is.na(symbol_bulkRNA)) |>
   tidyr::pivot_longer(cols = starts_with("symbol"),
                       names_to = "dataset",
                       values_to = "symbol",
@@ -169,7 +163,16 @@ max_symbol <- all_genes |>
   summarize(count = n(), .groups = "drop_last") |>
   summarize(canonical_symbol = symbol[which.max(count)])
 
-all_genes <- merge(all_genes, max_symbol, all = TRUE) |>
+# Use bulk RNA seq symbols where possible and concat the most-used symbols from
+# the other data sets when bulk RNA symbols are NA
+final_symbol <- all_genes |>
+  subset(!is.na(symbol_bulkRNA)) |>
+  mutate(canonical_symbol = symbol_bulkRNA) |>
+  dplyr::select(ensembl_gene_id, canonical_symbol) |>
+  rbind(max_symbol)
+
+# Merge back in to the main data frame
+all_genes <- merge(all_genes, final_symbol, all = TRUE) |>
   dplyr::arrange(ensembl_gene_id)
 
 all_genes <- subset(all_genes, !is.na(canonical_symbol))
@@ -179,8 +182,7 @@ write.csv(all_genes, file_gene_list, quote = FALSE, row.names = FALSE)
 # Ground-truth proportions for some ROSMAP samples, generated from IHC ---------
 
 dir_ihc_git <- file.path(dir_metadata, "CortexCellDeconv")
-system(paste("git clone https://github.com/ellispatrick/CortexCellDeconv.git",
-             dir_ihc_git))
+system(paste("git clone", cfg$git_ihc, dir_ihc_git))
 
 celltypes <- c("astro", "endo", "microglia", "neuro", "oligo")
 

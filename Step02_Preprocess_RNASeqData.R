@@ -70,15 +70,10 @@ for (dataset in datasets) {
     metadata <- metadata[colnames(counts),]
 
     # Sex mismatches
-    # A threshold of 2 works for both Mayo and ROSMAP but catches two female
-    # MSBB samples with higher Y expression that seem to belong to the female
-    # cluster. However, raising the threshold to 3.5 in order to not mark those
-    # samples as outliers puts the threshold inside the male cluster of ROSMAP,
-    # so we only raise the threshold for MSBB.
-    thresh <- ifelse(dataset == "MSBB", 3.5, 2)
+    # A threshold of 3 works for all data sets to separate male and female expression
     mismatches <- FindSexMismatches_BulkData(dataset, covariates, counts,
                                              do_plot = TRUE,
-                                             y_expr_threshold = thresh)
+                                             y_expr_threshold = 3)
     print(str_glue("{length(mismatches)} sex-mismatched samples will be removed from {dataset}."))
     counts <- counts[, setdiff(colnames(counts), mismatches)]
     metadata <- metadata[colnames(counts),]
@@ -155,13 +150,13 @@ for (dataset in datasets) {
     # low-quality. The 45% threshold was chosen by looking at the value of Q3 +
     # 1.5*IQR for each data set, both as a whole and by tissue.
     # Values:
-    #   Mayo: CBE = 0.25, TCX = 0.41, all = 0.36
+    #   Mayo: CBE = 0.25, TCX = 0.45, all = 0.40
     #   MSBB: <= 0.05 for all tissues and as a whole
-    #   ROSMAP: ACC and PCC <= 0.2, DLPFC = 0.76, all = 0.57
-    #   All 3 data sets together: 0.41
+    #   ROSMAP: ACC and PCC <= 0.2, DLPFC = 0.77, all = 0.58
+    #   All 3 data sets together: 0.44
     # Due to the large skew for DLPFC, I set the cutoff to 0.45, which is
     # slightly higher than the highest threshold for any tissue excluding DLPFC.
-    # This threshold excludes no MSBB samples, 4 Mayo samples, and 211 ROSMAP
+    # This threshold excludes no MSBB samples, 21 Mayo samples, and 230 ROSMAP
     # samples.
     mt_threshold <- 0.45
 
