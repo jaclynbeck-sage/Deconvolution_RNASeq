@@ -14,7 +14,7 @@ default:
     cain:
       cell_metadata: "syn23554294.5"
       biospecimen_metadata: "syn21323366.17"
-      clinical_metadata: "syn64759878.6" # non-corrected: syn3191087.11
+      clinical_metadata: "syn64759878.8" # non-corrected: syn3191087.11
       counts: "syn23554292.3"
       genes: "syn23554293.2"
 
@@ -26,7 +26,7 @@ default:
       geo_accession: "GSE147528"
 
     mathys:
-      clinical_metadata: "syn64759878.6" # non-corrected: syn3191087.11
+      clinical_metadata: "syn64759878.8" # non-corrected: syn3191087.11
       cell_metadata: "syn18686383.1"
       counts: "syn18687958.1"
       genes: "syn18687959.1"
@@ -37,22 +37,24 @@ default:
 
     # Bulk data sets
     mayo:
-      individual_metadata: "syn66639062.1"
+      individual_metadata: "syn66639062.2"
       biospecimen_metadata: "syn20827192.13"
       assay_metadata: "syn20827193.4"
-      #metrics: "TBD"
-      counts: ["syn69076198.1", "syn69369034.1", "syn69369067.1"]
+      multiqc: ["syn69077709.1", "syn69380874.1"] # CBE and TCX have separate QC files
+      counts: ["syn69076198.1", "syn69369067.1"] # CBE and TCX have separate matrices
 
     msbb:
-      individual_metadata: "syn66639063.2"
+      individual_metadata: "syn66639063.3"
       biospecimen_metadata: "syn21893059.14"
       assay_metadata: "syn22447899.6"
-      #metrics: "TBD"
+      multiqc: "syn69421904.1"
       counts: "syn69368998.1"
 
     rosmap:
-      individual_metadata: "syn64759878.6"
+      individual_metadata: "syn64759878.8" # non-corrected: syn3191087.11
       biospecimen_metadata: "syn21323366.19"
       assay_metadata: "syn21088596.5"
-      #metrics: "TBD"
-      counts: ["syn69369134.1", "syn69681787.1", "syn69369206.1", "syn69369249.1"]
+      multiqc: ["syn69421077.1", "syn69690469.1", "syn69401724.1"]
+      counts: ["syn69369134.1", "syn69681787.1", "syn69369206.1"] # 3 different groups of data
+      # We are not using the data from batch 4 (cognitive resilience) at
+      # syn69369249.1 because there are almost no "Control" or low Braak samples

@@ -145,20 +145,22 @@ for (dataset in datasets) {
                             dataset_name = dataset,
                             n_cores = n_cores)
   } else {
-    # Remove bulk samples with > 45% mito genes by count. The percentages in
+    # Remove bulk samples with > 40% mito genes by count. The percentages in
     # ROSMAP can get pretty high and these samples should be removed as
-    # low-quality. The 45% threshold was chosen by looking at the value of Q3 +
+    # low-quality. The 40% threshold was chosen by looking at the value of Q3 +
     # 1.5*IQR for each data set, both as a whole and by tissue.
     # Values:
-    #   Mayo: CBE = 0.25, TCX = 0.45, all = 0.40
+    #   Mayo: CBE = 0.25, TCX = 0.40, all = 0.35
     #   MSBB: <= 0.05 for all tissues and as a whole
-    #   ROSMAP: ACC and PCC <= 0.2, DLPFC = 0.77, all = 0.58
-    #   All 3 data sets together: 0.44
-    # Due to the large skew for DLPFC, I set the cutoff to 0.45, which is
-    # slightly higher than the highest threshold for any tissue excluding DLPFC.
-    # This threshold excludes no MSBB samples, 21 Mayo samples, and 230 ROSMAP
+    #   ROSMAP: polyA DLPFC samples = 0.64
+    #           rRNA samples <= 0.17 for each tissue, 0.16 as a whole,
+    #           whole dataset = 0.49
+    #   All 3 data sets together: 0.36
+    # Due to the large skew for polyA samples in ROSMAP, I set the cutoff to
+    # 0.40, which the highest threshold for any tissue excluding polyA samples.
+    # This threshold excludes no MSBB samples, 9 Mayo samples, and 169 ROSMAP
     # samples.
-    mt_threshold <- 0.45
+    mt_threshold <- 0.40
 
     if (any(pct_mt > mt_threshold)) {
       print(str_glue(paste("Removing {sum(pct_mt > mt_threshold)} samples from",
@@ -167,9 +169,9 @@ for (dataset in datasets) {
     counts <- counts[, pct_mt <= mt_threshold] # Exclude samples with high mitochondrial genes
   }
 
-  # Remove genes that are expressed in less than 3 cells (or samples) after
+  # Remove genes that are expressed in less than 10 cells (or samples) after
   # filtering for outliers and high mitochondrial percentages
-  ok <- rowSums(counts > 0) >= 3
+  ok <- rowSums(counts > 0) >= 10
   genes$exclude <- genes$exclude | !ok
 
 
