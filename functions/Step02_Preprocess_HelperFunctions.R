@@ -900,6 +900,14 @@ ReadMetadata_BulkData <- function(dataset, files) {
     # samples.
     metadata <- subset(metadata,
                        libraryPrep == "rRNAdepletion" | tissue == "DLPFC")
+
+    # Split "DLPFC" into "DLPFC_1" and "DLPFC_2" based on library prep method
+    metadata <- metadata |>
+      mutate(tissue = case_when(
+        tissue == "DLPFC" & libraryPrep == "polyAselection" ~ "DLPFC_1",
+        tissue == "DLPFC" & libraryPrep == "rRNAdepletion" ~ "DLPFC_2",
+        .default = tissue
+      ))
   }
 
   # Reclassify samples using the criteria from the Diverse Cohorts phenotype
