@@ -965,7 +965,8 @@ ReadMetadata_BulkData <- function(dataset, files) {
         !ad_cerad & high_braak ~ "PATH_HIGH_BRAAK",
         ad_cerad & !high_braak ~ "PATH_HIGH_CERAD"
       )
-    )
+    ) |>
+    subset(diagnosis != "PATH_AGE") # Remove any remaining PATH_AGE samples from Mayo
 
   metadata <- QC_BulkData(dataset, metadata)
 

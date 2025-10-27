@@ -29,21 +29,22 @@ library(sageRNAUtils)
 library(stringr)
 library(parallel)
 
-source(file.path("functions", "FileIO_HelperFunctions.R"))
 source(file.path("functions", "General_HelperFunctions.R"))
 source(file.path("functions", "Step03_Regression_HelperFunctions.R"))
 
 datasets <- c("Mayo", "MSBB", "ROSMAP")
+
+# TODO redo MSBB PHG and STG fixed effect models
+
+# Assumes a ratio of 8 GB RAM per core
+n_cores <- max(parallel::detectCores() / 2, 1)
 
 for (dataset in datasets) {
 
   # Load data and covariates ---------------------------------------------------
 
   bulk <- Load_PreprocessedData(dataset, remove_excluded = TRUE)
-  covariates <- Load_Covariates(dataset) |>
-    # Remove some very skewed PCT metrics which result in over-fitting
-    select(-starts_with("Alignment"), -RnaSeqMetrics__PCT_CORRECT_STRAND_READS,
-           -RnaSeqMetrics__PCT_RIBOSOMAL_BASES, -RnaSeqMetrics__PCT_INTERGENIC_BASES)
+  covariates <- Load_Covariates(dataset)
 
 
   # Per-tissue regression ------------------------------------------------------
@@ -88,17 +89,20 @@ for (dataset in datasets) {
     # Re-calculate norm factors
     bulk_tissue$tmm_factors <- edgeR::normLibSizes(winsor)
 
+    rm(pcts, winsor, expr)
+
 
     # Load or calculate formulas for fixed/mixed models ------------------------
 
-    formulas <- Load_ModelFormulas(str_glue("{dataset}_{tissue}"))
+    #formulas <- Load_ModelFormulas(str_glue("{dataset}_{tissue}"))
+    formulas <- NULL
 
     # Only run the stepwise regression if the formulas don't already exist. This
     # part takes a long time.
     if (is.null(formulas)) {
       message("Determining best models...")
       formulas <- Find_BestModel(dataset, tissue, bulk_tissue,
-                                 covar_tissue)
+                                 covar_tissue, plot_var_explained = TRUE)
     }
 
     formula_fixed <- as.formula(formulas$formula_fixed)
@@ -117,7 +121,7 @@ for (dataset in datasets) {
 
     # edgeR uses unshrunk coefficients to calculate fitted values, so we use them too
     coefs_edger <- fit_edger$unshrunk.coefficients
-    coefs_bio <- grepl("Intercept|diagnosis|sex|race|ethnicity|ageDeath",
+    coefs_bio <- grepl("Intercept|diagnosis|sex|race|ageDeath|apoeGenotype",
                        colnames(coefs_edger))
     coefs_tech <- !coefs_bio
 
@@ -137,19 +141,26 @@ for (dataset in datasets) {
     # on the linear or log scale is "better" and the two methods produce very
     # similar results, I use log scale, because it's more intuitive and makes it
     # similar to how I correct with Dream and lme4.
-    corrected_log <- log(expr$counts + 1e-8) - adjust # Use a very small pseudocount
-    corrected_edger <- exp(corrected_log) - 1e-8 # subtract the pseudo-count we just added
+    # [expr$counts / exp(adjust)] is functionally equivalent to
+    # exp(log(expr$counts) - adjust) but avoids using pseudocount
+    corrected_edger <- expr$counts / exp(adjust)
+
+    # There shouldn't be any negative numbers but just in case
     corrected_edger[corrected_edger < 0] <- 0
+
+    rm(expr, fit_edger, adjust)
 
 
     # Basic LM or LME fit ------------------------------------------------------
 
     message("Performing LME fit...")
-    expr_norm <- sageRNAUtils::simple_log2norm(as.matrix(assay(bulk_tissue, "counts")),
-                                               size_factors = bulk_tissue$tmm_factors,
-                                               pseudocount = 0.5)
+    expr_norm <- sageRNAUtils::simple_log2norm(
+      as.matrix(assay(bulk_tissue, "counts")),
+      size_factors = bulk_tissue$tmm_factors,
+      pseudocount = 0.5
+    )
 
-    # For Mayo: No mixed effects in model, run a linear fixed-effects model
+    # For Mayo TCX: No mixed effects in model, run a linear fixed-effects model
     if (formulas$formula_mixed == formulas$formula_fixed) {
       formula_lm <- paste("t(expr_norm)", formulas$formula_mixed)
       fits_lme <- lm(formula_lm, data = covar_tissue)
@@ -159,21 +170,8 @@ for (dataset in datasets) {
 
       resid_lme <- t(residuals(fits_lme))
     } else {
-      formula_lme <- paste("row", formulas$formula_mixed)
-
-      # LME4 can only do one gene at a time.
-      # Hack to get row names back after mclapply, since I'm not sure the rows
-      # are always returned in the same order
-      genes <- rownames(expr_norm)
-      names(genes) <- genes
-
-      n_cores <- max(parallel::detectCores()/2, 1)
-
-      fits_lme <- parallel::mclapply(genes, function(gene) {
-        row <- expr_norm[gene, ]
-        fit <- lme4::lmer(as.formula(formula_lme), data = covar_tissue)
-        return(fit)
-      }, mc.cores = n_cores)
+      fits_lme <- fitVarPartModel(expr_norm, formula_mixed, covar_tissue,
+                                  BPPARAM = MulticoreParam(n_cores))
 
       coefs_lme <- t(sapply(fits_lme, fixef))
       coefs_lme <- coefs_lme[rownames(expr_norm), ] # Ensure rows are in the original order
@@ -187,103 +185,78 @@ for (dataset in datasets) {
     }
 
     # Add biological covariates back to residuals
-    coefs_bio <- grepl("Intercept|diagnosis|sex|race|ethnicity|ageDeath",
+    coefs_bio <- grepl("Intercept|diagnosis|sex|race|ageDeath|apoeGenotype",
                        colnames(coefs_lme))
     adjust <- tcrossprod(coefs_lme[, coefs_bio], mod_lme[, coefs_bio])
 
     # Convert back to counts
     corrected_lme <- sageRNAUtils::log2_cpm_to_counts(
       data = resid_lme + adjust,
-      library_size = colSums(assay(bulk_tissue, "counts")) * bulk_tissue$tmm_factors,
+      library_size = colSums(assay(bulk_tissue, "counts")),
+      size_factors = bulk_tissue$tmm_factors,
       pseudocount = 0.5
     )
     corrected_lme[corrected_lme < 0] <- 0
 
-
-    # Dream fit ----------------------------------------------------------------
-
-    message("Performing dream fit...")
-    gc()
-    # This is what sageseqr uses to fit a mixed effect model. The function
-    # in sageseqr to calculate the fit + residuals requires CQN counts, which
-    # we don't use, and requires jumping through extra hoops to get other args and
-    # output into the right format, so I just call voomWithDreamWeights() and
-    # dream() myself here.
-    expr <- DGEList(assay(bulk_tissue, "counts"))
-    expr$samples$norm.factors <- bulk_tissue$tmm_factors
-
-    n_cores <- max(parallel::detectCores()/4, 1)
-    voom_counts <- voomWithDreamWeights(counts = expr,
-                                        formula = formula_mixed,
-                                        data = covar_tissue,
-                                        BPPARAM = BiocParallel::SnowParam(n_cores))
-
-    fit_dream <- dream(exprObj = voom_counts,
-                       formula = formula_mixed,
-                       data = covar_tissue,
-                       computeResiduals = TRUE,
-                       BPPARAM = BiocParallel::SnowParam(n_cores))
-
-    resid_dream <- fit_dream$residuals
-    coefs_dream <- coef(fit_dream)
-    mod_dream <- fit_dream$design
-
-    # Add biological covariates back to residuals
-    coefs_bio <- grepl("Intercept|diagnosis|sex|race|ethnicity|ageDeath",
-                       colnames(coefs_lme))
-    adjust <- tcrossprod(coefs_dream[, coefs_bio], mod_dream[, coefs_bio])
-
-    if (nrow(resid_dream) != nrow(bulk_tissue)) {
-      failed_genes <- setdiff(rownames(bulk_tissue), rownames(resid_dream))
-      print(paste0("WARNING: Dream failed on genes [",
-                   paste(failed_genes, collapse = ", "),
-                   "]. They will be removed from the final data set."))
-    }
-
-    # voomWithDreamWeights uses edgeR to normalize counts so we reverse the
-    # operation
-    corrected_dream <- sageRNAUtils::edger_log2_cpm_to_counts(
-      data = resid_dream + adjust,
-      library_size = expr$samples$lib.size * expr$samples$norm.factors,
-      prior_count = 0.5 # this is what voomWithDreamWeights uses
-    )
-    corrected_dream[corrected_dream < 0] <- 0
+    rm(adjust, resid_lme, expr_norm, fits_lme)
 
 
-    # Save results/fits for further examination --------------------------------
+    # ComBat batch adjustment --------------------------------------------------
 
-    message("Saving final results...")
-    #saveRDS(list(fit_edger = fit_edger,
-    #             corrected_edger = corrected_edger,
-    #             fits_lme = fits_lme,
-    #             corrected_lme = corrected_lme,
-    #             fit_dream = fit_dream,
-    #             corrected_dream = corrected_dream),
-    #        file.path(dir_tmp, str_glue("{dataset}_{tissue}_models.rds")))
+    message("Performing ComBat batch adjustment...")
+
+    # Biological covariates that might be in the formula. Diagnosis should
+    # always be there.
+    c_vars <- c("diagnosis",
+                intersect(all.vars(formula_mixed),
+                          c("sex", "ageDeath", "race", "apoeGenotype")))
+
+    c_form <- paste("~", paste(c_vars, collapse = " + "))
+    c_mod <- model.matrix(as.formula(c_form), data = covar_tissue)
+
+    corrected_combat <- sva::ComBat_seq(as.matrix(assay(bulk_tissue, "counts")),
+                                        batch = covar_tissue$batch,
+                                        group = NULL,
+                                        covar_mod = c_mod,
+                                        full_mod = TRUE)
 
 
     # Create final bulk data object --------------------------------------------
 
-    # Dream can fail on specific genes and not return them in the matrix, so we
-    # need to cut any failed genes out of the other matrices too
-    genes_keep <- rownames(corrected_dream)
-    corrected_edger <- corrected_edger[genes_keep, ]
-    corrected_lme <- corrected_lme[genes_keep, ]
-
-    bulk_tissue <- bulk_tissue[genes_keep, ] # Adjusts the counts array if necessary
+    message("Saving final results...")
 
     assay(bulk_tissue, "corrected_edger") <- round(corrected_edger)
     assay(bulk_tissue, "corrected_lme") <- round(corrected_lme)
-    assay(bulk_tissue, "corrected_dream") <- round(corrected_dream)
+    assay(bulk_tissue, "corrected_combat") <- round(corrected_combat)
 
     bulk_tissue$tmm_factors_edger <- normLibSizes(round(corrected_edger))
     bulk_tissue$tmm_factors_lme <- normLibSizes(round(corrected_lme))
-    bulk_tissue$tmm_factors_dream <- normLibSizes(round(corrected_dream))
+    bulk_tissue$tmm_factors_dream <- normLibSizes(round(corrected_combat))
 
     Save_BulkData(str_glue("{dataset}_{tissue}"), bulk_tissue)
 
-    rm(bulk_tissue, corrected_edger, corrected_lme, corrected_dream,
-       fit_edger, fits_lme, fit_dream)
+    # Plot the effects of the corrections
+    expr_norm <- simple_log2norm(assay(bulk_tissue, "counts"))
+    var_genes <- rowVars(as.matrix(expr_norm)) |> sort(decreasing = TRUE) |> names()
+    var_genes <- var_genes[1:5000]
+
+    plts <- lapply(
+      list("counts", "corrected_edger", "corrected_lme", "corrected_combat"),
+      function(data) {
+        expr_norm <- simple_log2norm(assay(bulk_tissue, data))
+        pc <- prcomp(t(expr_norm[var_genes, ]))$x[, 1:2] |>
+          merge(covar_tissue, by = "row.names")
+
+        ggplot(pc, aes(x = PC1, y = PC2, color = batch)) +
+          geom_point() +
+          theme_bw() +
+          ggtitle(data)
+      }
+    )
+
+    print(patchwork::wrap_plots(plts))
+
+    rm(bulk_tissue, corrected_edger, corrected_lme, corrected_combat)
     gc()
   }
 }

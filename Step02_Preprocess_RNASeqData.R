@@ -177,6 +177,24 @@ for (dataset in datasets) {
 
   ## Final modifications to metadata -------------------------------------------
 
+  # Bulk data only -- after removing all low-quality samples, remove any samples
+  # that are from single- or two-sample batches.
+  if (is_bulk(dataset)) {
+    covars <- subset(covariates, specimenID %in% colnames(counts))
+
+    samps <- table(covars$batch, covars$tissue)
+    singletons <- which(samps == 1 | samps == 2, arr.ind = TRUE) |> rownames()
+    remove <- covars$specimenID[covars$batch %in% singletons]
+
+    print(samps)
+    print(str_glue("Removing {length(singletons)} sample(s) from singleton ",
+                   "batches in {dataset}."))
+
+    metadata <- subset(metadata, sample %in% colnames(counts) &
+                         !(sample %in% remove))
+    counts <- counts[, metadata$sample]
+  }
+
   # Make sure metadata has the same samples and is in the same order as counts
   metadata <- metadata[colnames(counts), ]
 
@@ -214,6 +232,8 @@ for (dataset in datasets) {
   ## Bulk data -- create SummarizedExperiment and save -------------------------
 
   if (is_bulk(dataset)) {
+    print(table(metadata$diagnosis, metadata$tissue))
+
     se <- SummarizedExperiment(assays = list(counts = counts),
                                colData = metadata,
                                rowData = genes)

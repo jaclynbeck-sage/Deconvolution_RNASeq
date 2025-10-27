@@ -744,6 +744,17 @@ OrderMarkers_ByCorrelation <- function(marker_list, data) {
 Clean_BulkCovariates <- function(metadata, covariates, scale_numerical = TRUE) {
   covariates <- subset(covariates, specimenID %in% rownames(metadata))
 
+  # Only keep these variables of interest and drop all other categorical
+  # variables. "diagnosis" and "tissue" are excluded from this list because they
+  # already exist in `metadata` and don't need to be copied over from
+  # `covariates`
+  cat_cols_keep <- c("specimenID", "sex", "race", "ageDeath", "apoeGenotype",
+                     "batch")
+
+  num_cols_keep <- c("RIN", "PMI", "picard_PERCENT_DUPLICATION",
+                     "rsem_uniquely_aligned_percent")
+
+  # Bin ages in 5-year intervals
   covariates <- covariates |>
     mutate(
       ageDeath_num = suppressWarnings(as.numeric(ageDeath)),
@@ -759,22 +770,18 @@ Clean_BulkCovariates <- function(metadata, covariates, scale_numerical = TRUE) {
         .default = ageDeath # 90+ or NA
       )
     ) |>
-    select(-ageDeath_num)
+    select(any_of(cat_cols_keep), any_of(num_cols_keep))
 
+  # Re-order the age factors so "Under 65" is first
   covariates$ageDeath <- factor(covariates$ageDeath,
                                  levels = c("Under 65", "65 - 69", "70 - 74",
                                             "75 - 79", "80 - 84", "85 - 89", "90+"))
 
-  for (col in c("diagnosis", "sex", "race", "isHispanic", "individualID",
-                "apoeGenotype", "projid", "batch", "Braak",
-                "amyThal", "amyCerad", "cogdx", "dcfdx_lv", "CDR")) {
+  for (col in cat_cols_keep) {
     if (col %in% colnames(covariates)) {
-      covariates[, col] <- factor(covariates[, col])
+      covariates[, col] <- factor(as.character(covariates[, col]))
     }
   }
-
-  # Remove duplicate columns that already exist in colData
-  covariates <- covariates %>% select(-diagnosis, -tissue)
 
   # Merge covariates into the metadata
   sample_order <- rownames(metadata)
@@ -795,19 +802,7 @@ Clean_BulkCovariates <- function(metadata, covariates, scale_numerical = TRUE) {
     }
   }
 
-  # Remove columns that are all NA or all the same value
-  all_na <- sapply(colnames(metadata), function(col_name) {
-    all(is.na(metadata[, col_name]))
-  })
-
-  all_same <- sapply(colnames(metadata), function(col_name) {
-    all(metadata[, col_name] == metadata[1, col_name])
-  })
-  all_same[is.na(all_same)] <- FALSE
-
-  cols_keep <- !all_na & !all_same
-
-  return(metadata[, cols_keep])
+  return(metadata)
 }
 
 
