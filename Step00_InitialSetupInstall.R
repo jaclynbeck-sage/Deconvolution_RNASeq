@@ -22,6 +22,12 @@ install.packages("synapser",
                  dependencies = c("Depends", "Imports"),
                  clean = TRUE)
 
+# Dependencies that don't get installed automatically and need to be installed
+# before other BiocManager packages
+BiocManager::install(c("Rhtslib", "assorthead"),
+                     dependencies = c("Depends", "Imports"),
+                     clean = TRUE)
+
 BiocManager::install(
   c(
     "rtracklayer", "BSgenome", # gtf file ingest
@@ -30,8 +36,7 @@ BiocManager::install(
     "variancePartition", "sva",  # regression
     "TOAST",  # MuSiC dependency
     "MAST",  # omnideconv dependency
-    "DeconRNASeq",  # deconvolution
-    "Rhtslib", "assorthead" # Dependencies that don't get installed automatically
+    "DeconRNASeq"  # deconvolution
   ),
   dependencies = c("Depends", "Imports"),
   clean = TRUE
