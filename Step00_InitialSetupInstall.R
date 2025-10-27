@@ -22,12 +22,6 @@ install.packages("synapser",
                  dependencies = c("Depends", "Imports"),
                  clean = TRUE)
 
-# Dependencies that don't get installed automatically and need to be installed
-# before other BiocManager packages
-BiocManager::install(c("Rhtslib", "assorthead"),
-                     dependencies = c("Depends", "Imports"),
-                     clean = TRUE)
-
 BiocManager::install(
   c(
     "rtracklayer", "BSgenome", # gtf file ingest
@@ -38,7 +32,6 @@ BiocManager::install(
     "MAST",  # omnideconv dependency
     "DeconRNASeq"  # deconvolution
   ),
-  dependencies = c("Depends", "Imports"),
   clean = TRUE
 )
 
@@ -47,30 +40,24 @@ BiocManager::install(
 
 # install presto for faster marker finding in Seurat
 remotes::install_github("immunogenomics/presto",
-                        dependencies = c("Depends", "Imports"),
                         clean = TRUE)
 
 # install my utility package
 remotes::install_github("jaclynbeck-sage/sageRNAUtils",
-                        dependencies = c("Depends", "Imports"),
                         clean = TRUE)
 
 # install mvIC for regression
 remotes::install_github("GabrielHoffman/mvIC",
-                        dependencies = c("Depends", "Imports"),
                         clean = TRUE)
 
 # install the MuSiC package from my fork, which has a few fixes and speedups
 remotes::install_github("jaclynbeck-sage/MuSiC",
-                        dependencies = c("Depends", "Imports"),
                         clean = TRUE)
 
 # install Dtangle and HSPE from my forks, which have a few fixes
 remotes::install_github("jaclynbeck-sage/dtangle", subdir = "lib_dtangle",
-                        dependencies = c("Depends", "Imports"),
                         clean = TRUE)
 remotes::install_github("jaclynbeck-sage/hspe", subdir = "lib_hspe",
-                        dependencies = c("Depends", "Imports"),
                         clean = TRUE)
 
 # Extra package needed for pre-processing seaRef
@@ -78,10 +65,8 @@ reticulate::virtualenv_install("r-reticulate", packages = c("anndata"))
 
 # Install omnideconv and its DWLS add-on. Uses my fork of omnideconv
 remotes::install_github("jaclynbeck-sage/omnideconv", ref = "use_virtualenv",
-                        dependencies = c("Depends", "Imports"),
                         clean = TRUE)
 remotes::install_github("omnideconv/DWLS",
-                        dependencies = c("Depends", "Imports"),
                         clean = TRUE)
 omnideconv::install_all_python()
 
