@@ -30,7 +30,8 @@ BiocManager::install(
     "variancePartition", "sva",  # regression
     "TOAST",  # MuSiC dependency
     "MAST",  # omnideconv dependency
-    "DeconRNASeq"  # deconvolution
+    "DeconRNASeq",  # deconvolution
+    "Rhtslib", "assorthead" # Dependencies that don't get installed automatically
   ),
   dependencies = c("Depends", "Imports"),
   clean = TRUE
