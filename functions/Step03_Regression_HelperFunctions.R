@@ -45,10 +45,18 @@ Find_BestModel <- function(dataset, tissue, bulk_se, covariates, plot_var_explai
   # batch can't be in fixed effects, and diagnosis is already in the model
   fixed_vars <- setdiff(vars_keep, c(rand_vars, "diagnosis"))
 
+  base_form_fixed <- "~ diagnosis"
+
+  # Special case: MSBB IFG needs "batch" added to the fixed formula in order for
+  # edgeR output to have minimal batch effects, but mvIC doesn't add it.
+  if (tissue == "IFG") {
+    base_form_fixed <- "~ diagnosis + batch"
+  }
+
   # Fixed effect model: evaluate best model using "~ diagnosis" as the base
   # model and iteratively adding fixed effect variables.
   res_fixed <- mvIC::mvForwardStepwise(exprObj = expr_norm,
-                                       baseFormula = "~ diagnosis",
+                                       baseFormula = base_form_fixed,
                                        data = covariates_clean,
                                        variables = c(fixed_vars, rand_vars))
 

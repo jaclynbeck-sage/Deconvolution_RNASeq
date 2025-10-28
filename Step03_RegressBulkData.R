@@ -34,7 +34,7 @@ source(file.path("functions", "Step03_Regression_HelperFunctions.R"))
 
 datasets <- c("Mayo", "MSBB", "ROSMAP")
 
-# TODO redo MSBB PHG and STG fixed effect models
+# TODO Consider removing DLPFC_9
 
 # Assumes a ratio of 8 GB RAM per core
 n_cores <- max(parallel::detectCores() / 2, 1)
