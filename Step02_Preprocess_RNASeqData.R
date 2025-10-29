@@ -158,7 +158,7 @@ for (dataset in datasets) {
     #   All 3 data sets together: 0.36
     # Due to the large skew for polyA samples in ROSMAP, I set the cutoff to
     # 0.40, which the highest threshold for any tissue excluding polyA samples.
-    # This threshold excludes no MSBB samples, 9 Mayo samples, and 169 ROSMAP
+    # This threshold excludes no MSBB samples, 9 Mayo samples, and 161 ROSMAP
     # samples.
     mt_threshold <- 0.40
 
