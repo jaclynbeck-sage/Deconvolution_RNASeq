@@ -13,8 +13,15 @@ source(file.path("functions", "General_HelperFunctions.R"))
 
 # Setup ------------------------------------------------------------------------
 
-datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "seaRef", # Single cell
+# For now, discarding Leng EC/SFG data due to extremely low gene counts
+datasets <- c("cain", "lau", "mathys", "seaRef", # Single cell
               "Mayo", "MSBB", "ROSMAP") # Bulk -- not separated by tissue yet
+
+# Single cell only, how many cores to use while looking for doublets. Assumes a
+# ratio of 8 GB per 1 CPU. This formula should be safe for all data sets except
+# seaRef, which doesn't go through doublet detection and doesn't need this
+# parameter.
+n_cores <- max(parallel::detectCores() - 2, 1)
 
 
 # Download files and process data ----------------------------------------------
@@ -22,13 +29,6 @@ datasets <- c("cain", "lau", "lengEC", "lengSFG", "mathys", "seaRef", # Single c
 for (dataset in datasets) {
   message(str_glue("Creating data set for {dataset}..."))
   files <- DownloadData(dataset)
-
-  # Allow threading of operations on DelayedMatrix for seaRef. This formula
-  # assumes 8 GB of RAM per CPU.
-  if (dataset == "seaRef") {
-    n_cores <- max(parallel::detectCores() / 2, 1)
-    setAutoBPPARAM(BPPARAM = BiocParallel::MulticoreParam(n_cores))
-  }
 
   ## Read in metadata file -----------------------------------------------------
 
@@ -110,15 +110,16 @@ for (dataset in datasets) {
 
   ## Adjust for and remove mitochondrial/non-coding genes ----------------------
 
-  # Keep track of original library size before excluding mito/nc genes
+  # Keep track of original library size before excluding mito/nc genes.
   metadata$lib_size <- colSums(counts)
 
+  # Mitochondrial genes
   mt_genes <- grepl("^MT-", rownames(counts)) |
     (!is.na(genes$chromosome_name) & genes$chromosome_name == "chrM")
   pct_mt <- colSums(counts[mt_genes, ]) / metadata$lib_size
   metadata$percent_mito <- pct_mt
 
-  # Remove non-coding genes -- grep pattern from Green et al 2023.
+  # Non-coding genes -- grep pattern from Green et al 2023.
   nc_genes <- grepl("^(AC\\d+{3}|AL\\d+{3}|AP\\d+{3}|LINC\\d+{3})", rownames(counts))
   pct_nc <- colSums(counts[nc_genes, ]) / metadata$lib_size
   metadata$percent_noncoding <- pct_nc
@@ -130,18 +131,15 @@ for (dataset in datasets) {
 
   if (is_singlecell(dataset)) {
     # Since all of these are single nucleus datasets, we expect the percent of
-    # mitochondrial expression to be near-zero. We set the threshold to 0.05 to
+    # mitochondrial expression to be near-zero. We set the threshold to 0.06 to
     # allow for a small amount of noise or minor non-nuclear RNA contamination.
     # Ideally this threshold would be closer to 0.02 or 0.03, but some of the
     # datasets are too noisy for this to be realistic. The seaRef dataset is
-    # pre-capped at 0.05%, so this is the threshold we chose.
-
-    # TODO move to top of script as settable variable
-    # Assumes a ratio of 8 GB per 1 CPU. This formula should be safe for all
-    # data sets.
-    n_cores <- max(parallel::detectCores() - 2, 1)
+    # pre-capped at 0.05, but both the Mathys and Lau datasets have higher
+    # percentages in general and benefit from slightly raising the threshold to
+    # 0.06.
     counts <- QC_SingleCell(metadata, counts,
-                            mt_threshold = 0.05,
+                            mt_threshold = 0.06,
                             dataset_name = dataset,
                             n_cores = n_cores)
   } else {

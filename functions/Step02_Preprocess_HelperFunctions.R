@@ -10,6 +10,7 @@ library(readxl)
 library(SingleCellExperiment)
 library(sageRNAUtils)
 library(scDblFinder)
+library(ggplot2)
 
 source("Filenames.R")
 
@@ -343,8 +344,8 @@ ReadCounts_Lau <- function(files) {
 
 QC_Lau <- function(seurat) {
   # We need to threshold on total counts / detected genes after removal of doublets
-  seurat$high_expression <- seurat$nCount_RNA > 25000
-  seurat$low_expression <- seurat$nFeature_RNA < 400
+  seurat$high_expression <- seurat$nCount_RNA > 30000
+  seurat$low_expression <- seurat$nFeature_RNA < 300
 
   seurat$pass_QC <- seurat$pass_QC &
     !seurat$high_expression &
@@ -622,6 +623,10 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
     return(counts)
   }
 
+  sink(file.path(dir_tmp, str_glue("{dataset_name}_QC.log")))
+
+  metadata$sample <- factor(metadata$sample) # Fix for Mathys sample names
+
   # Seed for reproducible results with scDblFinder, based on the dataset name
   seed <- sageRNAUtils::string_to_seed(paste(dataset_name, "QC"))
   set.seed(seed)
@@ -631,36 +636,89 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
   sce <- SingleCellExperiment(list("counts" = counts), colData = metadata)
   sce <- scuttle::addPerCellQCMetrics(sce)
 
+  plt <- ggplot(as.data.frame(colData(sce)),
+                aes(x = sample, y = detected, fill = sample)) +
+    geom_violin(draw_quantiles = 0.5) +
+    geom_hline(yintercept = 200, color = "red") +
+    scale_y_log10() +
+    theme_bw() +
+    theme(legend.position = "none") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    ggtitle(paste0(dataset_name, ": # detected genes per cell"))
+
+  print(plt)
+
+  plt <- ggplot(as.data.frame(colData(sce)),
+                aes(x = sample, y = sum, fill = sample)) +
+    geom_violin(draw_quantiles = 0.5) +
+    geom_hline(yintercept = 300, color = "red") +
+    scale_y_log10() +
+    theme_bw() +
+    theme(legend.position = "none") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    ggtitle(paste0(dataset_name, ": # counts per cell"))
+
+  print(plt)
+
   # Small amount of initial thresholding to remove empty droplets
-  sce <- sce[, sce$detected > 200 & sce$sum > 200]
+  sce <- sce[, sce$detected >= 200 & sce$sum >= 300]
 
   stats$low_expression <- ncol(counts) - ncol(sce)
 
-  # If any samples have > 30% of their cells with percent_mito > 0.05, remove
-  # them as potentially poor quality samples. The 30% threshold was determined
-  # by visually inspecting the distribution of percent_mito for each sample in
-  # each dataset and choosing a threshold that removed the most obviously skewed
-  # samples in all datasets.
-  # TODO: For Lau, this removes 4 AD and 2 NC samples. Lowering to 0.2 removes 2 more AD samples
-  # TODO: For Leng, this removes 1 EC sample. Lowering to 0.2 removes 2 SFG samples
-  # TODO: For Mathys, this removes 18 samples. Lowering to 0.2 removes 2 more samples.
-  mito_stats <- table(sce$sample, sce$percent_mito > mt_threshold)
-  mito_stats <- sweep(mito_stats, 1, rowSums(mito_stats), "/")
+  # If any samples a median percent_mito > `mt_threshold`, remove them as
+  # potentially poor quality samples. This method assumes that a sample losing
+  # over 50% of its cells to this threshold is an indicator of overall poor
+  # sample quality. Examination of the violin plots of percent mitochondrial
+  # expression confirms that this removes the most obviously-skewed samples.
+  stats$mito_stats <- colData(sce) |>
+    as.data.frame() |>
+    group_by(sample) |>
+    summarize(med_mt = median(percent_mito),
+              remove = med_mt > mt_threshold) |>
+    as.data.frame()
 
-  #if (ncol(mito_stats) == 2) {
-    stats$removed_samples <- names(which(mito_stats[, "TRUE"] > 0.3))
-    stats$removed_sample_cells <- sum(sce$sample %in% stats$removed_samples)
-  #} else {
-    # This happens with cain, no samples need to be removed
-    #stats$removed_samples <- c()
-    #stats$removed_sample_cells <- 0
-  #}
+  stats$removed_samples <- subset(stats$mito_stats, remove == TRUE) |>
+    pull(sample) |> as.character()
+  stats$removed_sample_cells <- sum(sce$sample %in% stats$removed_samples)
 
   if (length(stats$removed_samples) > 0) {
     cat(str_glue("Removing {length(stats$removed_samples)} sample(s) due to ",
                  "sample-wide high mitochondrial gene expression:"),
         paste(stats$removed_samples, collapse = ", "), "\n")
   }
+
+  plt <- ggplot(as.data.frame(colData(sce)),
+                aes(x = sample, y = percent_mito,
+                    color = sample %in% stats$removed_samples)) +
+    geom_violin(draw_quantiles = 0.5) +
+    geom_hline(yintercept = mt_threshold, color = "red") +
+    theme_bw() +
+    theme(legend.position = "none") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    scale_color_manual(values = c("TRUE" = "firebrick", "FALSE" = "dodgerblue3")) +
+    ggtitle(paste0(dataset_name, ": percent mitochondrial genes by sample"))
+
+  print(plt)
+
+  plt <- ggplot(as.data.frame(colData(sce)),
+                aes(x = sum, y = percent_mito)) +
+    geom_point(size = 0.1) +
+    scale_x_log10() +
+    geom_hline(yintercept = mt_threshold, color = "red") +
+    theme_bw() +
+    ggtitle(paste0(dataset_name, ": percent mitochondrial genes"))
+
+  print(plt)
+
+  plt <- ggplot(as.data.frame(colData(sce)[sce$percent_mito < 0.2, ]),
+                aes(x = sum, y = percent_mito)) +
+    geom_point(size = 0.1) +
+    scale_x_log10() +
+    geom_hline(yintercept = mt_threshold, color = "red") +
+    theme_bw() +
+    ggtitle(paste0(dataset_name, ": percent mitochondrial genes (zoomed)"))
+
+  print(plt)
 
   sce <- sce[, !(sce$sample %in% stats$removed_samples)]
 
@@ -693,6 +751,7 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
     FindNeighbors(dims = 1:20) |> # 20 seems good for all data sets
     FindClusters(resolution = 5)
 
+  # Remove clusters that are more than 50% doublets
   seurat$seurat_clusters <- paste0("C", seurat$seurat_clusters)
   dbl_stats <- table(seurat$seurat_clusters, seurat$scDblFinder.class)
   dbl_stats <- sweep(dbl_stats, 1, rowSums(dbl_stats), "/")
@@ -700,9 +759,30 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
 
   cat(str_glue("Removed {length(dbl_clusts)} doublet clusters."), "\n")
 
+  # Run UMAP and plot doublet locations for all data sets except cain. We skip
+  # the cain dataset because RunUMAP takes an extremely long time on that data
+  # and there are very few doublets, and no doublet clusters that get removed.
+  if (dataset_name != "cain") {
+    seurat <- RunUMAP(seurat, dims = 1:20)
+    plt <- UMAPPlot(seurat, group.by = "scDblFinder.class",
+                    cols = c(singlet = "lightgray", doublet = "red"),
+                    order = c("doublet")) +
+      ggtitle(paste0(dataset_name, ": doublet status"))
+
+    print(plt)
+  }
+
   seurat$singlet <- seurat$scDblFinder.class == "singlet"
   seurat$doublet_cluster <- seurat$seurat_clusters %in% dbl_clusts
-  seurat$low_mito <- seurat$percent_mito < mt_threshold
+  seurat$low_mito <- seurat$percent_mito <= mt_threshold
+
+  if (any(seurat$doublet_cluster) & dataset_name != "cain") {
+    plt <- UMAPPlot(seurat, group.by = "doublet_cluster",
+                    cols = c("FALSE" = "lightgray", "TRUE" = "red"),
+                    order = c("TRUE")) +
+      ggtitle(paste0(dataset_name, ": doublet cluster removal"))
+    print(plt)
+  }
 
   seurat$pass_QC <- seurat$singlet &
     !seurat$doublet_cluster &
@@ -720,9 +800,26 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
                    "lengSFG" = QC_LengSFG(seurat),
                    "mathys" = QC_Mathys(seurat))
 
-  # TODO consider removing bad samples by % that don't pass QC, instead of
-  # % that have high mito genes. In LengEC, threshold of 30% passing removes
-  # EC3, threshold up to 55% removes EC1 too
+  stats$pct_pass_by_sample <- select(metadata, sample, cell_id) |>
+    merge(select(seurat@meta.data, sample, cell_id, pass_QC), all = TRUE) |>
+    mutate(pass_QC = ifelse(is.na(pass_QC), FALSE, pass_QC)) |>
+    group_by(sample) |>
+    summarize(pct_pass = sum(pass_QC) / n() * 100,
+              keep = pct_pass >= 50) |>
+    subset(pct_pass != 0) |> # Remove already-removed samples
+    as.data.frame()
+
+  if (any(!stats$pct_pass_by_sample$keep)) {
+    remove <- subset(stats$pct_pass_by_sample, !keep) |>
+      pull(sample) |> as.character()
+    cat(str_glue("Removing {length(remove)} sample(s) where less than 50% of ",
+                 "samples passed QC:"),
+        paste(remove, collapse = ", "), "\n")
+
+    stats$removed_samples <- c(stats$removed_samples, remove)
+    stats$removed_sample_cells <- stats$removed_sample_cells + sum(seurat$sample %in% remove)
+    seurat <- seurat[, !(seurat$sample %in% remove)]
+  }
 
   # Collect some final stats for printout
 
@@ -754,6 +851,8 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
     ".. {stats$high_expression} cells with high expression\n",
     ".. {stats$mito_cells} cells with high mitochondrial expression"
   ), "\n")
+
+  sink()
 
   # Save stats for examination
   saveRDS(stats, file.path(dir_tmp, str_glue("{dataset_name}_qc.rds")))
