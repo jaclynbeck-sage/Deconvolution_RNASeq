@@ -90,18 +90,6 @@ lau_genes <- read.delim(gzfile(rownames(res)), header = FALSE) |>
   dplyr::rename(ensembl_gene_id = V1, symbol_Lau = V2)
 
 
-## Leng genes ------------------------------------------------------------------
-
-# Download one h5 file from GEO to get the gene information
-res <- getGEOSuppFiles(cfg$geo_leng, makeDirectory = FALSE,
-                       baseDir = dir_gene_files)
-symbols <- h5read(rownames(res), "/GRCh38-1.2.0_premrna/gene_names")
-gene_ids <- h5read(rownames(res), "/GRCh38-1.2.0_premrna/genes")
-
-leng_genes <- data.frame(ensembl_gene_id = gene_ids,
-                         symbol_Leng = symbols)
-
-
 ## Mathys genes ----------------------------------------------------------------
 
 # They provided their mapping file on Synapse
@@ -142,8 +130,7 @@ gtf_genes <- purrr::reduce(gtf_genes, dplyr::full_join, by = "ensembl_gene_id")
 
 # Merge all gene sets together -------------------------------------------------
 
-all_genes <- purrr::reduce(list(gene_info, gtf_genes, lau_genes,
-                                leng_genes, mathys_genes),
+all_genes <- purrr::reduce(list(gene_info, gtf_genes, lau_genes, mathys_genes),
                            dplyr::full_join,
                            by = "ensembl_gene_id") |>
   # Remove some symbols that got set to the Ensembl ID

@@ -157,8 +157,7 @@ CreateParams_MarkerTypes <- function(n_markers = NULL, marker_types = NULL,
                                      marker_order = c("distance", "correlation")) {
   # Default values for n_markers and marker_types if they are not defined
   if (is.null(n_markers)) {
-    n_markers <- c(0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
-                   3, 5, 10, 20, 50, 100, 200, 500)
+    n_markers <- c(3, 5, 10, 20, 50, 100, 200, 500)
   }
   if (is.null(marker_types)) {
     marker_types <- list("dtangle" = c("ratio", "diff", "p.value", "regression"),
@@ -748,8 +747,7 @@ Clean_BulkCovariates <- function(metadata, covariates, scale_numerical = TRUE) {
   # variables. "diagnosis" and "tissue" are excluded from this list because they
   # already exist in `metadata` and don't need to be copied over from
   # `covariates`
-  cat_cols_keep <- c("specimenID", "sex", "race", "ageDeath", "apoeGenotype",
-                     "batch")
+  cat_cols_keep <- c("specimenID", "sex", "ageDeath", "batch")
 
   num_cols_keep <- c("RIN", "PMI", "picard_PERCENT_DUPLICATION",
                      "rsem_uniquely_aligned_percent")

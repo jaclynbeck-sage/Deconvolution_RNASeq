@@ -4,30 +4,41 @@ source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
 # Deconvolution WG Synapse space
 
-meta_folder <- Folder("01_metadata", parent = "syn68238853")
+meta_folder <- Folder("01_metadata", parent = config::get("upload_synid"))
 meta_folder <- synStore(meta_folder, forceVersion = FALSE)
 
-bulk_folder <- Folder("03_bulk", parent = "syn68238853")
+bulk_folder <- Folder("03_bulk", parent = config::get("upload_synid"))
 bulk_folder <- synStore(bulk_folder, forceVersion = FALSE)
 
+cfg <- config::get("step02_preprocess")
+
 provenance <- list(
-  "Mayo" = c("syn68239093.1", "syn66639062.1", "syn21544637.1"),
-  "MSBB" = c("syn68239156.1", "syn66639063.2", "syn21544666.1"),
-  "ROSMAP" = c("syn68239095.1", "syn66639064.2", "syn22283384.4",
-               "syn22301603.4", "syn22314232.4", "syn25817663.4")
+  "Mayo" = unlist(cfg$mayo),
+  "MSBB" = unlist(cfg$msbb),
+  "ROSMAP" = unlist(cfg$rosmap)
 )
 
 github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step03_RegressBulkData.R"
 
 # Processed bulk datasets
 for (dataset in names(provenance)) {
-  filename <- file.path(dir_input, str_glue("{dataset}_se.rds"))
-  UploadFile(filename, bulk_folder,
-             list("used" = provenance[[dataset]],
-                  "executed" = github))
+  # Each dataset has multiple RDS files, one per tissue
+  all_rds <- list.files(dir_input,
+                        pattern = str_glue("{dataset}_.*_se.rds"),
+                        full.names = TRUE)
 
-  filename <- file.path(dir_metadata, str_glue("model_formulas_{dataset}.rds"))
-  UploadFile(filename, meta_folder,
-             list("used" = provenance[[dataset]],
-                  "executed" = github))
+  lapply(all_rds, UploadFile,
+         parent_folder = bulk_folder,
+         provenance = list("used" = provenance[[dataset]],
+                           "executed" = github))
+
+  # Each dataset has multiple formula files, one per tissue
+  all_forms <- list.files(dir_metadata,
+                          pattern = str_glue("model_formulas_{dataset}"),
+                          full.names = TRUE)
+
+  lapply(all_forms, UploadFile,
+         parent_folder = meta_folder,
+         provenance = list("used" = provenance[[dataset]],
+                           "executed" = github))
 }

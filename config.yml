@@ -1,4 +1,7 @@
 default:
+  upload_synid: "syn70819544"
+  gene_metadata_synid: "syn70819916.1" # Populated after first upload of step 01
+
   step01_gene_metadata:
     gtf_bulk: "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_43/gencode.v43.primary_assembly.annotation.gtf.gz"
     fasta_bulk: "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_43/GRCh38.primary_assembly.genome.fa.gz"
@@ -22,8 +25,8 @@ default:
       geo_accession: "GSE157827"
       clinical_metadata: "syn52308080.1"
 
-    leng:
-      geo_accession: "GSE147528"
+    #leng:
+    #  geo_accession: "GSE147528"
 
     mathys:
       clinical_metadata: "syn64759878.8" # non-corrected: syn3191087.11

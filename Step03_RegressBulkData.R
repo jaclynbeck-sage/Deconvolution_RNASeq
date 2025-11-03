@@ -1,21 +1,21 @@
 # This script corrects bulk data counts for batch effects while leaving
 # effects due to biological confounds in. Three different methods are used to
 # correct the counts:
-#   edgeR's glmQLFit fits a negative binomial model with fixed effects only
-#   lme4's lmer fits a linear mixed model to log2-cpm counts, using batch as a
-#     random variable. In the case of Mayo where batch was not included in the
-#     model, a simple linear model is run instead.
-#   Dream fits a linear mixed model to voom-normalized counts, using batch as a
-#     random variable. It fits a fixed linear model for Mayo.
+#   edgeR's glmQLFit fits a negative binomial model with fixed effects only.
+#   variancePartition's fitVarPartModel fits a linear mixed model to log2-cpm
+#     counts, using batch as a random variable. In the case of Mayo TCX where
+#     batch was not included in the model, a simple linear model is run instead.
+#   Combat fits a negative binomial model and subtracts the effects due to
+#     batch, while leaving the effects of biological variables intact.
 #
 # In each case, the model is fit using the set of covariates that were
 # determined to be significantly correlated with expression, and which were
 # found to improve the model by Bayesian Inclusion Criteria. The set of
 # covariates includes both biological confounds and technical confounds. After
 # the model is fit, the estimated effects from technical confounds are
-# subtracted from the log2(counts) (edgeR), or effects from biological
-# confounds are added back to the residuals (lme4, Dream), leaving data which
-# has only the technical confounds regressed out.
+# subtracted from the log2(counts) (edgeR), or effects from biological confounds
+# are added back to the residuals (variancePartition), leaving data which has
+# only the technical confounds regressed out.
 
 # All data is converted back to linear scale and rounded to produce integer
 # counts.
@@ -119,8 +119,7 @@ for (dataset in datasets) {
 
     # edgeR uses unshrunk coefficients to calculate fitted values, so we use them too
     coefs_edger <- fit_edger$unshrunk.coefficients
-    coefs_bio <- grepl("Intercept|diagnosis|sex|race|ageDeath|apoeGenotype",
-                       colnames(coefs_edger))
+    coefs_bio <- grepl("Intercept|diagnosis|sex|ageDeath", colnames(coefs_edger))
     coefs_tech <- !coefs_bio
 
     # Since we don't have residuals from edgeR, we are subtracting technical
@@ -138,7 +137,7 @@ for (dataset in datasets) {
     # is (mu + dispersion * mu^2) for edgeR. Since I'm not sure whether correcting
     # on the linear or log scale is "better" and the two methods produce very
     # similar results, I use log scale, because it's more intuitive and makes it
-    # similar to how I correct with Dream and lme4.
+    # similar to how I correct with variancePartition output.
     # [expr$counts / exp(adjust)] is functionally equivalent to
     # exp(log(expr$counts) - adjust) but avoids using pseudocount
     corrected_edger <- expr$counts / exp(adjust)
@@ -183,8 +182,7 @@ for (dataset in datasets) {
     }
 
     # Add biological covariates back to residuals
-    coefs_bio <- grepl("Intercept|diagnosis|sex|race|ageDeath|apoeGenotype",
-                       colnames(coefs_lme))
+    coefs_bio <- grepl("Intercept|diagnosis|sex|ageDeath", colnames(coefs_lme))
     adjust <- tcrossprod(coefs_lme[, coefs_bio], mod_lme[, coefs_bio])
 
     # Convert back to counts
@@ -205,9 +203,7 @@ for (dataset in datasets) {
 
     # Biological covariates that might be in the formula. Diagnosis should
     # always be there.
-    c_vars <- c("diagnosis",
-                intersect(all.vars(formula_mixed),
-                          c("sex", "ageDeath", "race", "apoeGenotype")))
+    c_vars <- intersect(c("diagnosis", "sex", "ageDeath"), all.vars(formula_mixed))
 
     c_form <- paste("~", paste(c_vars, collapse = " + "))
     c_mod <- model.matrix(as.formula(c_form), data = covar_tissue)
@@ -229,7 +225,7 @@ for (dataset in datasets) {
 
     bulk_tissue$tmm_factors_edger <- normLibSizes(round(corrected_edger))
     bulk_tissue$tmm_factors_lme <- normLibSizes(round(corrected_lme))
-    bulk_tissue$tmm_factors_dream <- normLibSizes(round(corrected_combat))
+    bulk_tissue$tmm_factors_combat <- normLibSizes(round(corrected_combat))
 
     Save_BulkData(str_glue("{dataset}_{tissue}"), bulk_tissue)
 
