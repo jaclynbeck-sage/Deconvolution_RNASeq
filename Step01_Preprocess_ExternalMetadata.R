@@ -158,11 +158,12 @@ final_symbol <- all_genes |>
   dplyr::select(ensembl_gene_id, canonical_symbol) |>
   rbind(max_symbol)
 
-# Merge back in to the main data frame
+# Merge back in to the main data frame and set any NA symbols to the Ensembl ID
 all_genes <- merge(all_genes, final_symbol, all = TRUE) |>
-  dplyr::arrange(ensembl_gene_id)
+  dplyr::arrange(ensembl_gene_id) |>
+  dplyr::mutate(canonical_symbol = ifelse(is.na(canonical_symbol),
+                                          ensembl_gene_id, canonical_symbol))
 
-all_genes <- subset(all_genes, !is.na(canonical_symbol))
 write.csv(all_genes, file_gene_list, quote = FALSE, row.names = FALSE)
 
 

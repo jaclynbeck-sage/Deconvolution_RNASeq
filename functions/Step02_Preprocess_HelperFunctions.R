@@ -51,17 +51,14 @@ RemapCelltypeNames <- function(celltypes) {
 # Use the gene conversion list from Step01 to get the mapping between Ensembl ID
 # and gene symbol
 EnsemblIdToGeneSymbol <- function(gene_list) {
-  gene_conversions <- read.csv(file_gene_list)
+  genes <- read.csv(file_gene_list) |>
+    dplyr::arrange(ensembl_gene_id) |>
+    dplyr::mutate(hgnc_symbol = make.unique(canonical_symbol)) |>
+    dplyr::select(ensembl_gene_id, hgnc_symbol, gene_length, chromosome_name) |>
+    subset(ensembl_gene_id %in% gene_list)
 
-  rownames(gene_conversions) <- gene_conversions$ensembl_gene_id
-  overlap <- intersect(gene_list, gene_conversions$ensembl_gene_id)
+  rownames(genes) <- genes$ensembl_gene_id
 
-  gene_conversions <- gene_conversions[overlap, ]
-
-  genes <- gene_conversions |>
-    dplyr::select(ensembl_gene_id, canonical_symbol, gene_length, chromosome_name) |>
-    dplyr::rename(hgnc_symbol = canonical_symbol) |>
-    dplyr::arrange(ensembl_gene_id)
   return(genes)
 }
 
@@ -73,16 +70,14 @@ UpdateGeneSymbols <- function(dataset, gene_list) {
                     "cain" = "symbol_v98_cain",
                     "seaRef" = "symbol_seaRef")
 
-  gene_conversions <- read.csv(file_gene_list)
-  gene_conversions$original_symbol <- gene_conversions[, version]
+  genes <- read.csv(file_gene_list) |>
+    dplyr::arrange(ensembl_gene_id) |>
+    dplyr::mutate(original_symbol = make.unique(.data[[version]]),
+                  hgnc_symbol = make.unique(canonical_symbol)) |>
+    dplyr::select(ensembl_gene_id, hgnc_symbol, original_symbol, chromosome_name) |>
+    subset(original_symbol %in% gene_list)
 
-  genes <- subset(gene_conversions, original_symbol %in% gene_list)
-  rownames(genes) <- make.unique(genes$original_symbol, sep = "/")
-
-  genes <- genes[rownames(genes) %in% gene_list, ] |>
-    dplyr::select(ensembl_gene_id, canonical_symbol, original_symbol, chromosome_name) |>
-    dplyr::rename(hgnc_symbol = canonical_symbol) |>
-    dplyr::arrange(ensembl_gene_id)
+  rownames(genes) <- genes$original_symbol
 
   return(genes)
 }
@@ -613,6 +608,53 @@ ReadCounts_SEARef <- function(files) {
 }
 
 
+# Plotting helpers for single cell QC ------------------------------------------
+
+# Plots a UMAP colored by a binary variable, typically cells are gray if FALSE
+# and red if TRUE, but the variable can also be strings like "singlet" and
+# "doublet".
+plot_pass_fail_umap <- function(seurat, group, title, gray = "FALSE", red = "TRUE") {
+  colors <- c("lightgray", "red")
+  names(colors) <- c(gray, red)
+
+  plt <- UMAPPlot(seurat, group.by = group,
+                  cols = colors,
+                  order = c(red)) +
+    ggtitle(title)
+
+  print(plt)
+}
+
+plot_n_genes_violin <- function(sce, y_var, cutoff, title) {
+  plt <- ggplot(as.data.frame(colData(sce)),
+                aes(x = sample, y = !!sym(y_var), fill = sample)) +
+    geom_violin(draw_quantiles = 0.5) +
+    geom_hline(yintercept = cutoff, color = "red") +
+    scale_y_log10() +
+    theme_bw() +
+    theme(legend.position = "none") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    ggtitle(title)
+
+  print(plt)
+}
+
+# Scatter plot of lib size vs another variable on the y axis, colored by a
+# binary variable (TRUE cells are orange, FALSE cells are black). The x-axis
+# is automatically log-scaled.
+plot_pass_fail_scatter <- function(sce, y_var, group, cutoff, title) {
+  plt <- ggplot(as.data.frame(colData(sce)),
+                aes(x = lib_size, y = !!sym(y_var), color = !!sym(group))) +
+    geom_point(size = 0.1) +
+    scale_x_log10() +
+    theme_bw() +
+    scale_color_manual(values = c("TRUE" = "darkorange1", "FALSE" = "black")) +
+    geom_hline(yintercept = cutoff, color = "red") +
+    ggtitle(title)
+
+  print(plt)
+}
+
 # Generic single cell QC function ----------------------------------------------
 
 QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n_cores = 2) {
@@ -624,6 +666,8 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
   }
 
   sink(file.path(dir_tmp, str_glue("{dataset_name}_QC.log")))
+  pdf(file.path(dir_figures, str_glue("{dataset_name}_QC.pdf")),
+      width = 8, height = 6)
 
   metadata$sample <- factor(metadata$sample) # Fix for Mathys sample names
 
@@ -634,34 +678,16 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
   stats <- list(total_cells = ncol(counts))
 
   sce <- SingleCellExperiment(list("counts" = counts), colData = metadata)
-  sce <- scuttle::addPerCellQCMetrics(sce)
+  sce$n_detected <- colSums(counts > 0)
 
-  plt <- ggplot(as.data.frame(colData(sce)),
-                aes(x = sample, y = detected, fill = sample)) +
-    geom_violin(draw_quantiles = 0.5) +
-    geom_hline(yintercept = 200, color = "red") +
-    scale_y_log10() +
-    theme_bw() +
-    theme(legend.position = "none") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    ggtitle(paste0(dataset_name, ": # detected genes per cell"))
+  plot_n_genes_violin(sce, y_var = "n_detected", cutoff = 200,
+                      title = str_glue("{dataset_name}: # detected genes per cell"))
 
-  print(plt)
-
-  plt <- ggplot(as.data.frame(colData(sce)),
-                aes(x = sample, y = sum, fill = sample)) +
-    geom_violin(draw_quantiles = 0.5) +
-    geom_hline(yintercept = 300, color = "red") +
-    scale_y_log10() +
-    theme_bw() +
-    theme(legend.position = "none") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    ggtitle(paste0(dataset_name, ": # counts per cell"))
-
-  print(plt)
+  plot_n_genes_violin(sce, y_var = "lib_size", cutoff = 300,
+                      title = str_glue("{dataset_name}: # counts per cell"))
 
   # Small amount of initial thresholding to remove empty droplets
-  sce <- sce[, sce$detected >= 200 & sce$sum >= 300]
+  sce <- sce[, sce$n_detected >= 200 & sce$lib_size >= 300]
 
   stats$low_expression <- ncol(counts) - ncol(sce)
 
@@ -681,15 +707,15 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
     pull(sample) |> as.character()
   stats$removed_sample_cells <- sum(sce$sample %in% stats$removed_samples)
 
-  if (length(stats$removed_samples) > 0) {
-    cat(str_glue("Removing {length(stats$removed_samples)} sample(s) due to ",
+  cat(str_glue("Removing {length(stats$removed_samples)} sample(s) due to ",
                  "sample-wide high mitochondrial gene expression:"),
         paste(stats$removed_samples, collapse = ", "), "\n")
-  }
+
+  sce$removed_sample <- sce$sample %in% stats$removed_samples
 
   plt <- ggplot(as.data.frame(colData(sce)),
                 aes(x = sample, y = percent_mito,
-                    color = sample %in% stats$removed_samples)) +
+                    color = removed_sample)) +
     geom_violin(draw_quantiles = 0.5) +
     geom_hline(yintercept = mt_threshold, color = "red") +
     theme_bw() +
@@ -700,27 +726,44 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
 
   print(plt)
 
-  plt <- ggplot(as.data.frame(colData(sce)),
-                aes(x = sum, y = percent_mito)) +
-    geom_point(size = 0.1) +
-    scale_x_log10() +
-    geom_hline(yintercept = mt_threshold, color = "red") +
-    theme_bw() +
-    ggtitle(paste0(dataset_name, ": percent mitochondrial genes"))
+  plot_pass_fail_scatter(
+    sce,
+    y_var = "percent_mito",
+    group = "removed_sample",
+    cutoff = mt_threshold,
+    title = str_glue("{dataset_name}: percent mitochondrial genes")
+  )
 
-  print(plt)
-
-  plt <- ggplot(as.data.frame(colData(sce)[sce$percent_mito < 0.2, ]),
-                aes(x = sum, y = percent_mito)) +
-    geom_point(size = 0.1) +
-    scale_x_log10() +
-    geom_hline(yintercept = mt_threshold, color = "red") +
-    theme_bw() +
-    ggtitle(paste0(dataset_name, ": percent mitochondrial genes (zoomed)"))
-
-  print(plt)
+  plot_pass_fail_scatter(
+    sce[, sce$percent_mito < 0.20],
+    y_var = "percent_mito",
+    group = "removed_sample",
+    cutoff = mt_threshold,
+    title = str_glue("{dataset_name}: percent mitochondrial genes (zoomed)")
+  )
 
   sce <- sce[, !(sce$sample %in% stats$removed_samples)]
+  sce$high_mito <- sce$percent_mito > mt_threshold
+
+  # Flag cells with no MALAT1 expression. Threshold is < 2 size-normalized counts,
+  # where counts are adjusted by lib_size and scaled to mean lib_size. Mathys
+  # is excluded because MALAT1 is not present in the data set.
+  if (dataset_name != "mathys") {
+    sce$MALAT1 <- counts(sce)["MALAT1", ] / sce$lib_size * mean(sce$lib_size)
+    sce$low_malat1 <- sce$MALAT1 < 2
+
+    sce$lognorm_MALAT1 <- log2(sce$MALAT1 + 1) # Display only
+
+    plot_pass_fail_scatter(
+      sce[, sce$percent_mito <= mt_threshold],
+      y_var = "lognorm_MALAT1",
+      group = "low_malat1",
+      cutoff = log2(2 + 1),
+      title = str_glue("{dataset_name}: MALAT1 expression (for percent_mito <= {mt_threshold})")
+    )
+  } else {
+    sce$low_malat1 <- FALSE # mathys: set everything to FALSE
+  }
 
   cat("Finding doublets...\n")
 
@@ -737,7 +780,7 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
   cat(str_glue("Found {stats$doublets} doublets ({stats$doublet_pct}% of total)."),
       "\n")
 
-  cat("Removing doublet clusters...\n")
+  cat("Removing low quality clusters...\n")
   seurat <- as.Seurat(sce, data = "counts")
   rm(sce)
   gc()
@@ -749,44 +792,78 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
     ScaleData() |>
     RunPCA() |>
     FindNeighbors(dims = 1:20) |> # 20 seems good for all data sets
-    FindClusters(resolution = 5)
+    FindClusters(resolution = 10)
 
-  # Remove clusters that are more than 50% doublets
+  # Remove clusters that are more than 50% doublets -- 50% threshold determined
+  # by looking at the distribution of doublet percentages over all clusters in
+  # each data set. 50% is a clear cutoff in lau and mathys. Could also lower to 30%.
   seurat$seurat_clusters <- paste0("C", seurat$seurat_clusters)
   dbl_stats <- table(seurat$seurat_clusters, seurat$scDblFinder.class)
   dbl_stats <- sweep(dbl_stats, 1, rowSums(dbl_stats), "/")
   dbl_clusts <- names(which(dbl_stats[, "doublet"] > 0.5))
 
-  cat(str_glue("Removed {length(dbl_clusts)} doublet clusters."), "\n")
+  cat(str_glue("Found {length(dbl_clusts)} doublet clusters."), "\n")
 
-  # Run UMAP and plot doublet locations for all data sets except cain. We skip
-  # the cain dataset because RunUMAP takes an extremely long time on that data
-  # and there are very few doublets, and no doublet clusters that get removed.
-  if (dataset_name != "cain") {
-    seurat <- RunUMAP(seurat, dims = 1:20)
-    plt <- UMAPPlot(seurat, group.by = "scDblFinder.class",
-                    cols = c(singlet = "lightgray", doublet = "red"),
-                    order = c("doublet")) +
-      ggtitle(paste0(dataset_name, ": doublet status"))
-
-    print(plt)
+  # Similarly, remove any cells that cluster with low MALAT1 cells. 0.2 threshold
+  # set to catch the cluster of bad cells in lau data.
+  if (dataset_name != "mathys") {
+    malat_stats <- table(seurat$seurat_clusters, seurat$low_malat1)
+    malat_stats <- sweep(malat_stats, 1, rowSums(malat_stats), "/")
+    malat_clusts <- names(which(malat_stats[, "TRUE"] > 0.2))
+  } else {
+    malat_clusts <- c() # Mathys won't have any low malat clusters
   }
+
+  cat(str_glue("Found {length(malat_clusts)} low MALAT1 expressing clusters."), "\n")
+
+  # And remove any cells that cluster with high mitochondrial cells. 50% is a
+  # clear cutoff in lau and mathys.
+  mito_stats <- table(seurat$seurat_clusters, seurat$high_mito)
+  mito_stats <- sweep(mito_stats, 1, rowSums(mito_stats), "/")
+  mito_clusts <- names(which(mito_stats[, "TRUE"] > 0.5))
+  # Could also use 0.2 or 0.3. Mathys: 0.5 removes 1567 extra cells, 0.3 = 3407, 0.2 = 4495
+
+  cat(str_glue("Found {length(mito_clusts)} high percent mito clusters."), "\n")
 
   seurat$singlet <- seurat$scDblFinder.class == "singlet"
   seurat$doublet_cluster <- seurat$seurat_clusters %in% dbl_clusts
-  seurat$low_mito <- seurat$percent_mito <= mt_threshold
+  seurat$low_malat1_cluster <- seurat$seurat_clusters %in% malat_clusts
+  seurat$high_mito_cluster <- seurat$seurat_clusters %in% mito_clusts
 
-  if (any(seurat$doublet_cluster) & dataset_name != "cain") {
-    plt <- UMAPPlot(seurat, group.by = "doublet_cluster",
-                    cols = c("FALSE" = "lightgray", "TRUE" = "red"),
-                    order = c("TRUE")) +
-      ggtitle(paste0(dataset_name, ": doublet cluster removal"))
-    print(plt)
+  # Run UMAP and plot low-quality cell locations
+
+  seurat <- RunUMAP(seurat, dims = 1:10)
+  plot_pass_fail_umap(seurat, group = "scDblFinder.class",
+                      title = str_glue("{dataset_name}: doublet status"),
+                      gray = "singlet", red = "doublet")
+
+  plot_pass_fail_umap(seurat, group = "low_malat1",
+                      title = str_glue("{dataset_name}: Low MALAT1 expression"))
+
+  plot_pass_fail_umap(seurat, group = "high_mito",
+                      title = str_glue("{dataset_name}: high mitochondrial expression"))
+
+  if (any(seurat$doublet_cluster)) {
+    plot_pass_fail_umap(seurat, group = "doublet_cluster",
+                        title = str_glue("{dataset_name}: doublet clusters"))
+  }
+
+  if (any(seurat$low_malat1_cluster)) {
+    plot_pass_fail_umap(seurat, group = "low_malat1_cluster",
+                        title = str_glue("{dataset_name}: low MALAT1 expressing clusters"))
+  }
+
+  if (any(seurat$high_mito_cluster)) {
+    plot_pass_fail_umap(seurat, group = "high_mito_cluster",
+                        title = str_glue("{dataset_name}: high mitochondrial expressing clusters"))
   }
 
   seurat$pass_QC <- seurat$singlet &
+    !seurat$low_malat1 &
     !seurat$doublet_cluster &
-    seurat$low_mito
+    !seurat$low_malat1_cluster &
+    !seurat$high_mito &
+    !seurat$high_mito_cluster
 
   seurat$high_expression <- FALSE
   seurat$low_expression <- FALSE
@@ -799,6 +876,10 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
                    "lengEC" = QC_LengEC(seurat),
                    "lengSFG" = QC_LengSFG(seurat),
                    "mathys" = QC_Mathys(seurat))
+
+  plot_pass_fail_umap(seurat, group = "pass_QC",
+                      title = str_glue("{dataset_name}: pass QC results"),
+                      gray = "TRUE", red = "FALSE")
 
   stats$pct_pass_by_sample <- select(metadata, sample, cell_id) |>
     merge(select(seurat@meta.data, sample, cell_id, pass_QC), all = TRUE) |>
@@ -826,17 +907,20 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
   # Cells that weren't marked as doublets but are in doublet clusters
   stats$doublet_cluster_cells <- sum(seurat$doublet_cluster & seurat$singlet)
 
-  # Cells remaining with high mitochondrial expression
-  stats$mito_cells <- sum(!seurat$low_mito & !seurat$doublet_cluster & seurat$singlet)
+  # Cells that expressed MALAT1 but clustered with cells that didn't
+  stats$low_malat1 <- sum(seurat$low_malat1)
+  stats$malat_cluster_cells <- sum(seurat$low_malat1_cluster &
+                                     !seurat$low_malat1)
 
-  # Cells remaining with low expression
-  stats$low_expression <- stats$low_expression +
-    sum(seurat$low_mito & !seurat$doublet_cluster &
-          seurat$singlet & seurat$low_expression)
+  # Cells with high mitochondrial expression
+  stats$mito_cells <- sum(seurat$high_mito)
+  stats$mito_cluster_cells <- sum(seurat$high_mito_cluster & !seurat$high_mito)
 
-  # Cells remaining with high expression
-  stats$high_expression <- sum(seurat$low_mito & !seurat$doublet_cluster &
-                                 seurat$singlet & seurat$high_expression)
+  # Cells with low expression
+  stats$low_expression <- stats$low_expression + sum(seurat$low_expression)
+
+  # Cells with high expression
+  stats$high_expression <- sum(seurat$high_expression)
 
   stats$pct_pass <- round(sum(seurat$pass_QC) / ncol(counts) * 100, digits = 2)
 
@@ -847,12 +931,16 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
     "low-quality sample(s)\n",
     ".. {stats$doublets} doublets\n",
     ".. {stats$doublet_cluster_cells} additional cells in doublet clusters\n",
+    "...{stats$low_malat1} cells with no/low MALAT1 expression\n",
+    "...{stats$malat_cluster_cells} additional cells that clustered with low MALAT1 cells\n",
+    ".. {stats$mito_cells} cells with high mitochondrial expression\n",
+    ".. {stats$mito_cluster_cells} additional cells that clustered with high mitochondrial cells\n",
     ".. {stats$low_expression} cells with low expression\n",
     ".. {stats$high_expression} cells with high expression\n",
-    ".. {stats$mito_cells} cells with high mitochondrial expression"
   ), "\n")
 
   sink()
+  dev.off()
 
   # Save stats for examination
   saveRDS(stats, file.path(dir_tmp, str_glue("{dataset_name}_qc.rds")))

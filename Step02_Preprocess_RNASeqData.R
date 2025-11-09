@@ -21,7 +21,7 @@ datasets <- c("cain", "lau", "mathys", "seaRef", # Single cell
 # ratio of 8 GB per 1 CPU. This formula should be safe for all data sets except
 # seaRef, which doesn't go through doublet detection and doesn't need this
 # parameter.
-n_cores <- max(parallel::detectCores() - 2, 1)
+n_cores <- max(parallel::detectCores() - 4, 1)
 
 
 # Download files and process data ----------------------------------------------
@@ -91,19 +91,39 @@ for (dataset in datasets) {
     genes <- UpdateGeneSymbols(dataset, rownames(counts))
   }
 
-  # Some symbols are not unique so we use the first entry in the list for
-  # duplicate symbols, which is what Seurat does and is probably consistent with
-  # most of the single cell data sets.
-  dupes <- duplicated(genes$hgnc_symbol)
-  genes <- genes[!dupes, ]
-
-  # Puts 'genes' in the same gene order as counts so the counts matrix doesn't
-  # get rearranged unnecessarily
+  # Puts 'genes' in the same gene order as counts
   genes <- genes[intersect(rownames(counts), rownames(genes)), ]
+
+  # We shouldn't be removing more than a few genes, and genes are only getting
+  # removed from bulk data due to filtering out "_PAR_Y" genes.. If `genes` is
+  # significantly smaller than `counts`, something went wrong.
+  stopifnot(nrow(genes) >= 0.95 * nrow(counts))
+
+  # Adjust counts with the gene set we have left
+  counts <- counts[rownames(genes), ]
+
+  # Save a metadata-free copy as an h5ad file for mapping, before any filtering.
+  # seaRef is already mapped and doesn't need this step
+  if (is_singlecell(dataset) && dataset != "seaRef") {
+    ad <- import("anndata")
+
+    ens <- genes[, "ensembl_gene_id"]
+
+    obs <- data.frame(cell_id = metadata$cell_id,
+                      row.names = metadata$cell_id)
+    var <- data.frame(ensembl_gene_id = ens,
+                      row.names = ens)
+
+    adata <- ad$AnnData(X = t(counts),
+                        obs = obs,
+                        var = var)
+    adata$write_h5ad(filename = file.path(dir_preprocessed,
+                                          str_glue("{dataset}_preprocessed.h5ad")),
+                     compression = "gzip")
+  }
 
   # Assign rownames to be the canonical hgnc symbol, applies to both bulk and
   # single cell
-  counts <- counts[rownames(genes), ]
   rownames(counts) <- genes$hgnc_symbol
   rownames(genes) <- genes$hgnc_symbol
 
@@ -250,23 +270,5 @@ for (dataset in datasets) {
     # sce file will contain a pointer to the original data file rather than
     # writing the full data to disk again
     Save_PreprocessedData(dataset, sce)
-
-    # Save a metadata-free copy as an h5ad file for mapping. seaRef is already
-    # mapped and doesn't need this step
-    if (dataset != "seaRef") {
-      ad <- import("anndata")
-
-      obs <- data.frame(cell_id = metadata$cell_id,
-                        row.names = metadata$cell_id)
-      var <- data.frame(ensembl_gene_id = genes$ensembl_gene_id,
-                        row.names = genes$ensembl_gene_id)
-
-      adata <- ad$AnnData(X = t(counts),
-                          obs = obs,
-                          var = var)
-      adata$write_h5ad(filename = file.path(dir_preprocessed,
-                                            str_glue("{dataset}_preprocessed.h5ad")),
-                       compression = "gzip")
-    }
   }
 }

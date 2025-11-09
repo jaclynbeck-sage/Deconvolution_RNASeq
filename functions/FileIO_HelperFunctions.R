@@ -33,7 +33,7 @@ source("Filenames.R")
 #                   transformed as usual according to "output_type". Valid values:
 #                     "edger" - regression via edgeR::glmQLFit (bulk only)
 #                     "lme" - regression via lme4::lmer or lm (bulk only)
-#                     "dream" - regression via voom/dream (bulk only)
+#                     "combat" - regression via ComBat (bulk only)
 #                     "none" - use raw counts
 #
 # Returns:
@@ -64,8 +64,8 @@ Load_CountsFile <- function(filename, output_type, regression_method = "none") {
     stop(paste0("Error! 'output_type' should be one of ", output_opts, "."))
   }
 
-  if (!(regression_method %in% c("none", "edger", "lme", "dream"))) {
-    stop("Error! 'regression_method' should be one of 'none', 'edger', 'lme', or 'dream'.")
+  if (!(regression_method %in% c("none", "edger", "lme", "combat"))) {
+    stop("Error! 'regression_method' should be one of 'none', 'edger', 'lme', or 'combat'.")
   }
 
   se_obj <- readRDS(filename)
@@ -270,7 +270,7 @@ Save_Pseudobulk <- function(se, dataset, data_type, granularity) {
 #   output_type = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm", or
 #                 "log_tpm". See Load_CountsFile for description.
 #   regression_method = "none", if raw uncorrected counts should be used for
-#                       bulk data, or one of "edger", "lme", or "dream", to
+#                       bulk data, or one of "edger", "lme", or "combat", to
 #                       use batch-corrected counts from one of those methods.
 #
 # Returns:
@@ -286,7 +286,7 @@ Load_BulkData <- function(dataset, output_type = "counts", regression_method = "
 
 # Save_BulkData: Save a SummarizedExperiment object to the input folder. This
 # object should be finalized data that has passed QC and has slots for normalized
-# data from edgeR, lme4, and dream.
+# data from edgeR, lme4, and combat
 #
 # Arguments:
 #   dataset = the name of the dataset ("ROSMAP", "Mayo", or "MSBB")

@@ -16,13 +16,13 @@ source(file.path("functions", "FileIO_HelperFunctions.R"))
 
 # Shortcut functions for listing out all single cell and bulk data sets
 all_singlecell_datasets <- function() {
-  c("cain", "lau", "lengEC", "lengSFG", "mathys", "seaRef")
+  c("cain", "lau", "mathys", "seaRef")
 }
 
 all_bulk_datasets <- function() {
   c("Mayo_CBE", "Mayo_TCX",
     "MSBB_FP", "MSBB_IFG", "MSBB_PHG", "MSBB_STG",
-    "ROSMAP_ACC", "ROSMAP_DLPFC", "ROSMAP_PCC")
+    "ROSMAP_ACC", "ROSMAP_DLPFC_1", "ROSMAP_DLPFC_2", "ROSMAP_PCC")
 }
 
 is_bulk <- function(dataset) {
@@ -55,7 +55,7 @@ is_singlecell <- function(dataset) {
 #   output_type = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm", or
 #                 "log_tpm". See Load_CountsFile for description.
 #   regression_method = "none", if raw uncorrected counts should be used for
-#                       bulk data, or one of "edger", "deseq2", or "dream", to
+#                       bulk data, or one of "edger", "deseq2", or "combat", to
 #                       use batch-corrected counts from one of those methods.
 #                       Applies to bulk data only.
 #
