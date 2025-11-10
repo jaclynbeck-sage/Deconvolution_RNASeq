@@ -159,7 +159,7 @@ DownloadData_Cain <- function(metadata_only = FALSE) {
     synIDs <- synIDs[1:3]
   }
 
-  files <- DownloadFromSynapse(synIDs, dir_cain_raw)
+  files <- DownloadFromSynapse(synIDs, file.path(dir_raw_data, "cain_raw"))
   return(files)
 }
 
@@ -482,7 +482,7 @@ DownloadData_Mathys <- function(metadata_only = FALSE) {
     synIDs <- synIDs[1:2]
   }
 
-  files <- DownloadFromSynapse(synIDs, dir_mathys_raw)
+  files <- DownloadFromSynapse(synIDs, file.path(dir_raw_data, "mathys_raw"))
   return(files)
 }
 
@@ -962,7 +962,7 @@ DownloadData_Mayo <- function(metadata_only = FALSE) {
     synIDs <- synIDs[1:5]
   }
 
-  files <- DownloadFromSynapse(synIDs, dir_mayo_raw)
+  files <- DownloadFromSynapse(synIDs, file.path(dir_raw_data, "Mayo_raw"))
   return(files)
 }
 
@@ -978,7 +978,7 @@ DownloadData_MSBB <- function(metadata_only = FALSE) {
     synIDs <- synIDs[1:4]
   }
 
-  files <- DownloadFromSynapse(synIDs, dir_msbb_raw)
+  files <- DownloadFromSynapse(synIDs, file.path(dir_raw_data, "MSBB_raw"))
   return(files)
 }
 
@@ -995,7 +995,7 @@ DownloadData_ROSMAP <- function(metadata_only = FALSE) {
     synIDs <- synIDs[1:6]
   }
 
-  files <- DownloadFromSynapse(synIDs, dir_rosmap_raw)
+  files <- DownloadFromSynapse(synIDs, file.path(dir_raw_data, "ROSMAP_raw"))
   return(files)
 }
 

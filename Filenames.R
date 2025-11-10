@@ -31,27 +31,16 @@ dir_raw_data <- file.path(dir_input, "raw_data")
 dir_preprocessed <- file.path(dir_input, "preprocessed")
 dir_covariates <- file.path(dir_metadata, "covariates")
 
-dir_cain_raw <- file.path(dir_raw_data, "cain_raw")
 dir_lau_raw <- file.path(dir_raw_data, "lau_raw")
 dir_leng_raw <- file.path(dir_raw_data, "leng_raw")
-dir_mathys_raw <- file.path(dir_raw_data, "mathys_raw")
-dir_morabito_raw <- file.path(dir_raw_data, "morabito_raw")
 dir_seaad_raw <- file.path(dir_raw_data, "sea-ad_raw")
-
-dir_mayo_raw <- file.path(dir_raw_data, "mayo_raw")
-dir_msbb_raw <- file.path(dir_raw_data, "msbb_raw")
-dir_rosmap_raw <- file.path(dir_raw_data, "rosmap_raw")
 
 file_searef_h5 <- file.path(dir_seaad_raw, "ref_counts.h5ad")
 file_seaad_h5 <- file.path(dir_seaad_raw, "seaad_counts.h5ad")
 
-url_seaad_h5 <- "https://sea-ad-single-cell-profiling.s3.amazonaws.com/MTG/RNAseq/SEAAD_MTG_RNAseq_final-nuclei.2024-02-13.h5ad"
-url_seaad_merfish <- "https://sea-ad-spatial-transcriptomics.s3.amazonaws.com/middle-temporal-gyrus/all_donors-h5ad/SEAAD_MTG_MERFISH.2024-02-13.h5ad"
-url_seaad_donor_metadata <- "https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/b4/c7/b4c727e1-ede1-4c61-b2ee-bf1ae4a3ef68/sea-ad_cohort_donor_metadata_072524.xlsx"
-
-dir_mayo_output <- file.path(dir_estimates, "Mayo")
-dir_msbb_output <- file.path(dir_estimates, "MSBB")
-dir_rosmap_output <- file.path(dir_estimates, "ROSMAP")
+#url_seaad_h5 <- "https://sea-ad-single-cell-profiling.s3.amazonaws.com/MTG/RNAseq/SEAAD_MTG_RNAseq_final-nuclei.2024-02-13.h5ad"
+#url_seaad_merfish <- "https://sea-ad-spatial-transcriptomics.s3.amazonaws.com/middle-temporal-gyrus/all_donors-h5ad/SEAAD_MTG_MERFISH.2024-02-13.h5ad"
+#url_seaad_donor_metadata <- "https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/b4/c7/b4c727e1-ede1-4c61-b2ee-bf1ae4a3ef68/sea-ad_cohort_donor_metadata_072524.xlsx"
 
 file_gene_list <- file.path(dir_metadata, "ensembl_gene_list.csv")
 file_rosmap_ihc_proportions <- file.path(dir_metadata, "ihc_proportions_normalized.csv")
