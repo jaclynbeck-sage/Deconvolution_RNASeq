@@ -312,7 +312,7 @@ exc_inh_ratio <- List_to_DF(qstats_all, "exc_inh_ratio") %>%
 # Non-algorithm-specific parameters we are interested in
 cols_keep <- c("algorithm", "reference_data_name", "granularity",
                "normalization", "regression_method", "marker_subtype",
-               "marker_type", "marker_input_type", "marker_order", "param_id")
+               "marker_type", "marker_order", "param_id")
 
 # Concat all algorithm params into one data frame. Requires two steps because
 # some algorithms don't have data for a specific dataset and the NULLs need
@@ -333,7 +333,7 @@ params_top3 <- top_errors$top3_by_tissue %>%
   merge(best_params) %>%
   # These three marker specifications are not independent of each other so we
   # combine them into one variable
-  mutate(marker_algorithm = paste(marker_type, marker_subtype, marker_input_type),
+  mutate(marker_algorithm = paste(marker_type, marker_subtype),
          marker_algorithm = str_replace_all(marker_algorithm, " None", ""))
 
 # Columns to count

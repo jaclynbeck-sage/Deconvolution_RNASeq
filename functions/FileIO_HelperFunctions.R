@@ -429,47 +429,6 @@ Load_ModelFormulas <- function(dataset_name) {
 }
 
 
-# Save_MapReference: saves a reference data set for cell type mapping to a
-# file with a specific filename format.
-#
-# Arguments:
-#   dataset_name = the name of the single cell dataset
-#   seurat_object = Either a single Seurat object (broad_class) or a list of
-#                   Seurat objects (sub_class). Seurat object(s) should be
-#                   SCTransform-ed, and have PCA and UMAP dimension reductions.
-#                   Run_UMAP needs to be run with 'return.model = TRUE' in order
-#                   for this object to work as a reference.
-#   granularity = either 'broad_class' or 'sub_class', for whether the
-#                 Seurat object(s) have been prepared for broad class mapping or
-#                 sub class mapping.
-#
-# Returns:
-#   Nothing
-Save_MapReference <- function(dataset_name, seurat_object, granularity) {
-  saveRDS(seurat_object,
-          file.path(dir_map_reference,
-                    str_glue("reference_{dataset_name}_{granularity}.rds")))
-}
-
-
-# Load_MapReference: loads a reference data set for cell type mapping from a
-# file with a specific filename format.
-#
-# Arguments:
-#   dataset_name = the name of the single cell dataset
-#   granularity = either 'broad_class' or 'sub_class', for whether the
-#                 Seurat object(s) have been prepared for broad class mapping or
-#                 sub class mapping.
-#
-# Returns:
-#   a single Seurat object (if granularity = "broad_class") or a list of
-#   Seurat objects (if granularity = "sub_class")
-Load_MapReference <- function(dataset_name, granularity) {
-  readRDS(file.path(dir_map_reference,
-                    str_glue("reference_{dataset_name}_{granularity}.rds")))
-}
-
-
 # Save_PreprocessedData: Saves single cell or bulk RNA seq data that has been
 # pre-processed (run through Step02) but has not had cell types mapped or
 # normalization applied.
@@ -819,7 +778,7 @@ Load_TopParams <- function(params) {
 #   marker_file_format = a string formatted so that can be used with str_glue()
 #                        to insert the proper variable values into the file name
 Get_MarkerFileFormat <- function(dataset, granularity, marker_type,
-                                 marker_subtype = NULL, input_type = NULL) {
+                                 marker_subtype = NULL) {
   if (!(marker_type %in% c("dtangle", "autogenes", "seurat", "deseq2"))) {
     message("marker_type must be one of 'dtangle', 'autogenes', 'seurat', or 'deseq2'")
     return(NULL)
@@ -858,16 +817,13 @@ Get_MarkerFileFormat <- function(dataset, granularity, marker_type,
 #                    pick markers.
 #                    Seurat and DESeq2 don't have a subtype so this can be left
 #                    as NULL.
-#   input_type = for marker_type == "dtangle" only, either "singlecell" or
-#                "pseudobulk", for which type of input was used to generate the
-#                markers. For other marker_types, leave as NULL.
 #
 # Returns:
 #   nothing
 Save_Markers <- function(markers, dataset, granularity, marker_type,
-                         marker_subtype = NULL, input_type = NULL) {
+                         marker_subtype = NULL) {
   marker_file_format <- Get_MarkerFileFormat(dataset, granularity, marker_type,
-                                             marker_subtype, input_type)
+                                             marker_subtype)
   if (is.null(marker_file_format)) {
     stop("marker_type must be one of 'autogenes', 'deseq2', 'dtangle', or 'seurat'")
   }
@@ -886,9 +842,9 @@ Save_Markers <- function(markers, dataset, granularity, marker_type,
 #   a named list where each entry is a list of marker gene names for a given
 #   cell type
 Load_Markers <- function(dataset, granularity, marker_type,
-                         marker_subtype = NULL, input_type = NULL) {
+                         marker_subtype = NULL) {
   marker_file_format <- Get_MarkerFileFormat(dataset, granularity, marker_type,
-                                             marker_subtype, input_type)
+                                             marker_subtype)
 
   if (is.null(marker_file_format)) { # This indicates a typo in the input somewhere
     stop("marker_type must be one of 'autogenes', 'deseq2', 'dtangle', or 'seurat'")

@@ -587,7 +587,7 @@ marker_summary <- lapply(err_files, function(EF) {
   errs_all <- err_list$means %>%
     subset(tissue != "All") %>%
     merge(err_list$params, by.x = "param_id", by.y = "row.names") %>%
-    mutate(marker_combo = paste(marker_type, marker_subtype, marker_input_type),
+    mutate(marker_combo = paste(marker_type, marker_subtype),
            marker_combo = str_replace_all(marker_combo, " None", ""),
            algorithm = algorithm) %>%
     Paper_Renames() %>%

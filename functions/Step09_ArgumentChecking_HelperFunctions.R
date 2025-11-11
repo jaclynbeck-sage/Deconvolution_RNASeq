@@ -54,8 +54,7 @@ Check_TooFewMarkers <- function(markers_obj, params, low_threshold = 3) {
   if (Is_SignatureMatrix(markers_obj)) { # Signature matrix
     if (params$marker_type != "None") { # signature was filtered using markers
       markers <- Load_Markers(params$reference_data_name, params$granularity,
-                              params$marker_type, params$marker_subtype,
-                              input_type = params$marker_input_type)
+                              params$marker_type, params$marker_subtype)
 
       totals <- sapply(markers$filtered, function(X) {
         sum(X %in% rownames(markers_obj))
@@ -141,8 +140,7 @@ Check_NotEnoughNewMarkers <- function(markers_obj, params) {
   if (Is_SignatureMatrix(markers_obj)) {
     if (params$marker_type != "None") { # signature was filtered using markers
       markers <- Load_Markers(params$reference_data_name, params$granularity,
-                              params$marker_type, params$marker_subtype,
-                              input_type = params$marker_input_type)
+                              params$marker_type, params$marker_subtype)
 
       totals <- sapply(markers$filtered, function(X) {
         sum(X %in% rownames(markers_obj))

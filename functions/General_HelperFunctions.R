@@ -126,9 +126,9 @@ Load_AlgorithmInputData_FromParams <- function(params) {
 
 # CreateParams_MarkerTypes - Creates a parameter matrix using tidyr::expand_grid
 # (which can take data frames in the input) that has all variables required for
-# loading different combinations of markers: n_markers, marker_type,
-# marker_subtype, and marker_input_type. Invalid combinations of these variables
-# are removed from the parameter set before returning.
+# loading different combinations of markers: n_markers, marker_type, and
+# marker_subtype. Invalid combinations of these variables are removed from the
+# parameter set before returning.
 #
 # Arguments:
 #   n_markers = a vector containing one or more percentages (range 0-1.0) and/or
@@ -142,10 +142,6 @@ Load_AlgorithmInputData_FromParams <- function(params) {
 #                  FilterSignature for more detail. Must be a list and not a
 #                  vector. If NULL, all 4 marker types with all possible
 #                  subtypes will be used.
-#   marker_input_types = dtangle-specific: a vector of one or all of
-#                        c("singlecell", "pseudobulk") designating whether to
-#                        test dtangle marker sets from singlecell input,
-#                        pseudobulk input, or both
 #   marker_order = "distance" or "correlation", whether markers should be
 #                  ordered by largest expression difference between cell types
 #                  or by correlation with other markers for the same cell type
@@ -153,7 +149,6 @@ Load_AlgorithmInputData_FromParams <- function(params) {
 # Returns:
 #   a tibble containing all possible valid combinations of the arguments
 CreateParams_MarkerTypes <- function(n_markers = NULL, marker_types = NULL,
-                                     marker_input_types = c("singlecell", "pseudobulk"),
                                      marker_order = c("distance", "correlation")) {
   # Default values for n_markers and marker_types if they are not defined
   if (is.null(n_markers)) {
@@ -170,17 +165,8 @@ CreateParams_MarkerTypes <- function(n_markers = NULL, marker_types = NULL,
     dplyr::rename(marker_type = "L1", marker_subtype = "value")
 
   params <- tidyr::expand_grid(n_markers = n_markers,
-                               marker_types, # this is data frame
-                               marker_input_type = marker_input_types,
+                               marker_types, # this is a data frame
                                marker_order = marker_order)
-
-  # marker_input_type only applies to dtangle markers
-  params$marker_input_type[params$marker_type != "dtangle"] <- "None"
-
-  # We don't use dtangle 'p.value' and 'regression' markers for 'singlecell'
-  # input because the compute time for these is too high
-  params <- subset(params, !(marker_input_type == "singlecell" &
-    marker_subtype %in% c("regression", "p.value")))
 
   # We don't need to re-order markers when we're using the whole marker set
   params$marker_order[params$n_markers == 1] <- "distance"
@@ -193,8 +179,8 @@ CreateParams_MarkerTypes <- function(n_markers = NULL, marker_types = NULL,
 # CreateParams_FilterableSignature - Creates a parameter matrix using
 # tidyr::expand_grid (which can take data frames in the input) that has all
 # variables required for filtering a signature matrix: filter_level, n_markers,
-# marker_type, marker_subtype, and marker_input_type. Invalid combinations of
-# these variables are removed from the parameter set before returning.
+# marker_type, and marker_subtype. Invalid combinations of these variables are
+# removed from the parameter set before returning.
 #
 # Arguments:
 #   filter_levels = a vector containing one or more filter levels, as used in
@@ -207,10 +193,8 @@ CreateParams_MarkerTypes <- function(n_markers = NULL, marker_types = NULL,
 CreateParams_FilterableSignature <- function(filter_levels = c(1, 2, 3),
                                              n_markers = NULL,
                                              marker_types = NULL,
-                                             marker_input_types = c("singlecell", "pseudobulk"),
                                              marker_order = c("distance", "correlation")) {
-  params_tmp <- CreateParams_MarkerTypes(n_markers, marker_types,
-                                         marker_input_types, marker_order)
+  params_tmp <- CreateParams_MarkerTypes(n_markers, marker_types, marker_order)
 
   params <- tidyr::expand_grid(filter_level = filter_levels,
                                params_tmp)
@@ -219,7 +203,6 @@ CreateParams_FilterableSignature <- function(filter_levels = c(1, 2, 3),
   # (filter levels 1 & 2 don't use n_markers or marker_type arguments)
   low_filt <- params$filter_level < 3
   params$marker_type[low_filt] <- "None"
-  params$marker_input_type[low_filt] <- "None"
   params$marker_subtype[low_filt] <- "None"
   params$n_markers[low_filt] <- -1
   params$marker_order[low_filt] <- "distance"
@@ -409,10 +392,6 @@ CalculateSignature <- function(dataset, granularity, output_type, geom_mean = FA
 #                    "combined", specifying which weighting scheme was used to
 #                    pick markers.
 #                    Seurat doesn't have a subtype so this can be left as NULL.
-#   marker_input_type = for marker_type == "dtangle" only, either "singlecell"
-#                       or "pseudobulk", for which type of input was used to
-#                       generate the markers. For other marker_types, this
-#                       argument is ignored.
 #   marker_order = "distance" or "correlation". Whether the markers should be
 #                  ordered by distance (prioritize markers with the highest
 #                  expression difference between the cell type and all other
@@ -431,7 +410,6 @@ CalculateSignature <- function(dataset, granularity, output_type, geom_mean = FA
 FilterSignature <- function(signature, filter_level = 1, reference_data_name = NULL,
                             granularity = NULL, n_markers = 1.0,
                             marker_type = "dtangle", marker_subtype = "diff",
-                            marker_input_type = "pseudobulk",
                             marker_order = "distance", test_data_name = NULL,
                             normalization = NULL, regression_method = NULL) {
   # Filter for genes where at least one cell type expresses at > 1 cpm
@@ -449,8 +427,7 @@ FilterSignature <- function(signature, filter_level = 1, reference_data_name = N
   # Filter for genes specific to cell-type marker sets
   else if (filter_level == 3 & !is.null(reference_data_name) & !is.null(granularity)) {
     markers <- FilterMarkers(reference_data_name, granularity, n_markers,
-                             marker_type, marker_subtype, marker_input_type,
-                             marker_order,
+                             marker_type, marker_subtype, marker_order,
                              available_genes = rownames(signature),
                              test_data_name = test_data_name,
                              normalization = normalization,
@@ -487,7 +464,6 @@ FilterSignature_FromParams <- function(signature, params) {
                          n_markers = params$n_markers,
                          marker_type = params$marker_type,
                          marker_subtype = params$marker_subtype,
-                         marker_input_type = params$marker_input_type,
                          marker_order = params$marker_order,
                          test_data_name = params$test_data_name,
                          normalization = params$normalization,
@@ -508,12 +484,11 @@ FilterSignature_FromParams <- function(signature, params) {
 # Returns:
 #   a list where each item is a vector of marker genes for a given cell type
 FilterMarkers <- function(reference_data_name, granularity, n_markers,
-                          marker_type, marker_subtype, marker_input_type,
-                          marker_order, available_genes, test_data_name = NULL,
+                          marker_type, marker_subtype, marker_order,
+                          available_genes, test_data_name = NULL,
                           normalization = NULL, regression_method = NULL) {
   markers <- Load_Markers(reference_data_name, granularity, marker_type,
-                          marker_subtype,
-                          input_type = marker_input_type)
+                          marker_subtype)
 
   if (is.null(markers)) {
     return(NULL)
@@ -587,7 +562,6 @@ FilterMarkers_FromParams <- function(available_genes, params) {
                        n_markers = params$n_markers,
                        marker_type = params$marker_type,
                        marker_subtype = params$marker_subtype,
-                       marker_input_type = params$marker_input_type,
                        marker_order = params$marker_order,
                        available_genes = available_genes,
                        test_data_name = params$test_data_name,

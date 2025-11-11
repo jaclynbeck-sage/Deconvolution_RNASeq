@@ -12,8 +12,8 @@
 #   params = a single-row data frame or a named vector/list of parameters
 #            containing the following variables: algorithm, reference_data_name,
 #            test_data_name, granularity, filter_level, n_markers, marker_type,
-#            marker_subtype, marker_input_type, and algorithm-specific
-#            variables ct_cov, centered, normalize
+#            marker_subtype, and algorithm-specific variables ct_cov, centered,
+#            normalize
 #   verbose = whether Music should have verbose output
 #
 # Returns:
