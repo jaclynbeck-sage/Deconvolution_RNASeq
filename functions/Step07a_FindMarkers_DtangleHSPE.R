@@ -33,7 +33,7 @@ FindMarkers_DtangleHSPE <- function(datasets, granularities, cl = NULL) {
     })
 
     names(pure_samples) <- celltypes
-    marker_methods <- c("ratio", "diff", "p.value", "regression")
+    marker_methods <- c("ratio", "diff")
 
     # Create marker lists and save them.
     for (method in marker_methods) {
@@ -47,18 +47,14 @@ FindMarkers_DtangleHSPE <- function(datasets, granularities, cl = NULL) {
       # Filter the marker list to genes that meet certain criteria:
       #   ratio: all Vs higher than the mean (there isn't an intuitive criteria for this one)
       #   diff: all Vs with >= 1 log-fold change
-      #   p.value: all Vs >= 0.95 (signifying p <= 0.05)
-      #   regression: all Vs with >= 1 log-fold change
 
       # LFC needs a smaller threshold for sub class
-      lfc_thresh <- ifelse(granularity == "broad_class", 1, 0.5)
+      lfc_thresh <- config::get("step07_find_markers")$lfc_threshold[[granularity]]
 
       markers[["filtered"]] <- lapply(markers$V, function(vals) {
         new_vals <- switch(method,
                            "ratio" = vals[vals >= mean(vals)],
-                           "diff" = vals[vals >= lfc_thresh],
-                           "p.value" = vals[vals >= 0.95],
-                           "regression" = vals[vals >= lfc_thresh])
+                           "diff" = vals[vals >= lfc_thresh])
         return(names(new_vals))
       })
 

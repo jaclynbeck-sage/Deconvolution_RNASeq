@@ -360,7 +360,7 @@ CalculateSignature <- function(dataset, granularity, output_type, geom_mean = FA
   # Get the mean over all samples, for each gene and cell type
   sig <- sapply(levels(pb$celltype), function(ct) {
     cols <- which(pb$celltype == ct)
-    if (geom_mean) {
+    if (geom_mean) { # Doesn't give CPM-like values
       log_means <- rowMeans(log(pb_cpm[, cols] + 1), na.rm = TRUE)
       cpm_means <- exp(log_means) - 1
       cpm_means[cpm_means < 0] <- 0
@@ -872,39 +872,60 @@ List_to_DF <- function(input_list, sublist_name = NULL) {
 # with the same marker gene to have similar expression as long as the rest of
 # the cell types have lower expression.
 Get_QualityMarkers <- function(expr_df, markers, granularity) {
-  # For broad class, markers need to be unique to one cell type. For sub
-  # class, markers can be for up to 2 cell types
-  cell_thresh <- ifelse(granularity == "broad_class", 1, 2)
-  unique_genes <- table(markers$gene)
-  unique_genes <- names(unique_genes)[unique_genes <= cell_thresh]
-  markers_mod <- subset(markers, gene %in% unique_genes)
+  # For broad class, get the top-expressing cell type. For sub
+  # class, get the top two expressing cell types.
+  #cell_thresh <- 1 #ifelse(granularity == "broad_class", 1, 2)
+  celltypes <- colnames(expr_df) |> sort()
 
   # Turn expression df into long format
-  expr_df <- expr_df[unique(markers_mod$gene), ] |>
+  expr_df <- expr_df[unique(markers), ] |>
     as.data.frame() |>
     tibble::rownames_to_column("gene") |>
     tidyr::pivot_longer(cols = -gene,
                         names_to = "celltype",
-                        values_to = "expr") |>
+                        values_to = "expr")
+
+  # Find the top expressor of each marker gene
+  expr_mod <- expr_df |>
+    group_by(gene) |>
+    slice_max(order_by = expr, n = 1) # cell_thresh)
+
+  # Assign marker status to top expressors only
+  expr_df <- expr_df |>
     group_by(celltype) |>
     mutate(
-      is_marker = gene %in% markers_mod$gene[markers_mod$celltype == unique(celltype)]
+      is_marker = gene %in% expr_mod$gene[expr_mod$celltype == unique(celltype)]
     ) |>
     ungroup()
 
   # Helper function
-  getLog2FC <- function(celltype, expr) {
+  getLog2FC <- function(celltype, expr) { #, is_marker) {
     sapply(celltype, function(ct) {
-      expr[celltype == ct] - max(expr[celltype != ct])
+      expr[celltype == ct] - max(expr[celltype != ct]) # & !is_marker])
     })
   }
 
   # Filtered marker list sorted by log2FC
   sorted_logfc <- expr_df |>
     group_by(gene) |>
-    mutate(log2FC = getLog2FC(celltype, expr)) |>
+    mutate(log2FC = getLog2FC(celltype, expr)) |> #, is_marker)) |>
     subset(is_marker == TRUE) |>
     dplyr::arrange(desc(log2FC))
 
-  return(sorted_logfc)
+  # Create one full list containing all genes that were identified as
+  # markers, and one list filtered to (log2FC between highest and
+  # second-highest expression) > 1 (or 0.25 for sub_class)
+  markers_all <- sapply(celltypes, function(ct) {
+    return(sorted_logfc$gene[sorted_logfc$celltype == ct])
+  })
+
+  thresh <- config::get("step07_find_markers")$lfc_threshold[[granularity]]
+  markers_filt <- sapply(celltypes, function(ct) {
+    return(sorted_logfc$gene[sorted_logfc$celltype == ct &
+                               sorted_logfc$log2FC >= thresh])
+  })
+
+  return(list("all" = markers_all,
+              "filtered" = markers_filt,
+              "sorted_logfc" = sorted_logfc))
 }

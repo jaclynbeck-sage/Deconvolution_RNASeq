@@ -68,3 +68,10 @@ default:
     cain_annotations: "syn70820737.2"
     lau_annotations: "syn70820999.2"
     mathys_annotations: "syn70984452.2"
+
+  # Steps 05 and 06 don't require any configs
+
+  step07_find_markers:
+    lfc_threshold:
+      broad_class: 1.0
+      sub_class: 0.25

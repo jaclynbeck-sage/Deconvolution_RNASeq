@@ -22,10 +22,10 @@ for (dataset in datasets) {
   signatures <- lapply(c("cpm", "tmm"), function(output_type) {
     sig_broad <- CalculateSignature(dataset, "broad_class",
                                     output_type,
-                                    geom_mean = TRUE)
+                                    geom_mean = FALSE)
     sig_sub <- CalculateSignature(dataset, "sub_class",
                                   output_type,
-                                  geom_mean = TRUE)
+                                  geom_mean = FALSE)
     return(list("broad_class" = sig_broad, "sub_class" = sig_sub))
   })
 

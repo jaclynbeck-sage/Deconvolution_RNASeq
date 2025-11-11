@@ -33,9 +33,9 @@ FindMarkers_AutogeneS <- function(datasets, granularities) {
       adata <- AnnData(X = t(counts(sce)),
                        obs = data.frame(colData(sce)),
                        var = data.frame(rowData(sce)))
+
       rm(sce)
 
-      sc$pp$filter_cells(adata, min_genes = 200)
       sc$pp$filter_genes(adata, min_cells = 10)
       sc$pp$highly_variable_genes(adata, flavor = "seurat_v3", n_top_genes = 6000)
       sc$pp$normalize_total(adata, target_sum = 1e6) # cpm
@@ -56,43 +56,17 @@ FindMarkers_AutogeneS <- function(datasets, granularities) {
       # order in a named list, separated by cell type.
       for (key in names(wts)) {
         wt <- wts[[key]]
-        inds <- ag$select(weights = wt)
-        sc_means <- ag$adata()$transpose()
-        sc_means <- sc_means[inds]$copy()
+        inds <- ag$select(weights = wts[[key]])
+        markers <- ag$adata()$var_names[inds]
 
-        X <- sc_means$X
-        markers <- sc_means$obs_names
-
-        # Which cell type has the highest expression for each gene
-        maxs <- apply(X, 1, which.max)
-
-        # Compare LFC between highest and 2nd highest expressor
-        log2FC <- apply(log2(X + 1), 1, function(row) {
-          sorted <- sort(row, decreasing = TRUE)
-          return(sorted[1] - sorted[2]) # Log space is subtraction
-        })
-
-        sorted_logfc <- data.frame(celltype = sc_means$var_names[maxs],
-                                   log2FC = log2FC,
-                                   gene = markers) %>%
-          dplyr::arrange(desc(log2FC))
+        avgs <- Load_SignatureMatrix(dataset, granularity, "log_cpm")
+        marker_results <- Get_QualityMarkers(avgs, markers, granularity)
 
         print(str_glue("Markers for {dataset} / {granularity} cell types ({key}):"))
-        print(table(sorted_logfc$celltype))
+        print(lengths(marker_results$filtered))
 
-        markers_list <- sapply(sort(unique(sorted_logfc$celltype)), function(ct) {
-          return(sorted_logfc$gene[sorted_logfc$celltype == ct])
-        })
-
-        # No filtering
-        markers_filt_list <- markers_list
-
-        # Save all the markers just for reference, but we also want a filtered
-        # list with genes where the log2FC between the highest and
-        # second-highest expressing cell type is >= 1 (broad_class) or >= 0.25
-        # (sub_class)
-        list_final <- list("all" = markers_list,
-                           "filtered" = markers_filt_list)
+        list_final <- list("all" = marker_results$all,
+                           "filtered" = marker_results$filtered)
 
         Save_Markers(list_final, dataset, granularity,
                      marker_type = "autogenes",

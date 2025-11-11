@@ -1,5 +1,5 @@
 # Finds genes which are significantly affected by diagnosis, making them bad
-# candidates for cell marker genes. This script is very similar to Step06b,
+# candidates for cell marker genes. This script is very similar to Step07b,
 # except that it compares differential expression between diagnoses within
 # each celltype. A gene is marked as significantly affected if for any cell
 # type, for AD vs control:
@@ -16,11 +16,10 @@ source(file.path("functions", "FileIO_HelperFunctions.R"))
 FindMarkerExclusions <- function(datasets, granularities) {
   options(future.globals.maxSize = 5 * 1024^3) # 5 GB
 
-  for (dataset in datasets) {
-    if (dataset == "seaRef") { # seaRef only has control samples
-      next
-    }
+  # seaRef only has control samples and is skipped
+  datasets_run <- setdiff(datasets, "seaRef")
 
+  for (dataset in datasets_run) {
     gene_list <- lapply(granularities, function(granularity) {
       message(str_glue("Finding markers affected by diagnosis for {dataset} / {granularity}..."))
 

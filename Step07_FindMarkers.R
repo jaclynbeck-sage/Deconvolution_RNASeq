@@ -1,5 +1,5 @@
 # Finds cell type markers in single cell data using 4 different algorithms:
-# Dtangle, Seurat/MAST, AutogeneS, and DESeq2
+# Dtangle, Seurat, AutogeneS, and DESeq2
 
 library(dplyr)
 library(stringr)
@@ -36,7 +36,7 @@ if ("dtangle" %in% marker_types_run) {
     cl <- NULL
   }
 
-  source(file.path("functions", "Step06a_FindMarkers_DtangleHSPE.R"))
+  source(file.path("functions", "Step07a_FindMarkers_DtangleHSPE.R"))
   FindMarkers_DtangleHSPE(datasets, granularities, cl)
 
   if (do_parallel) {
@@ -50,7 +50,7 @@ if ("dtangle" %in% marker_types_run) {
 # This is pretty fast already and needs a lot of memory, so this isn't run in parallel.
 
 if ("seurat" %in% marker_types_run) {
-  source(file.path("functions", "Step06b_FindMarkers_Seurat.R"))
+  source(file.path("functions", "Step07b_FindMarkers_Seurat.R"))
   FindMarkers_Seurat(datasets, granularities)
 }
 
@@ -61,7 +61,7 @@ if ("seurat" %in% marker_types_run) {
 # issues with python environments.
 
 if ("autogenes" %in% marker_types_run) {
-  source(file.path("functions", "Step06c_FindMarkers_AutogeneS.R"))
+  source(file.path("functions", "Step07c_FindMarkers_AutogeneS.R"))
   FindMarkers_AutogeneS(datasets, granularities)
 }
 
@@ -69,7 +69,7 @@ if ("autogenes" %in% marker_types_run) {
 # DESeq2 markers from pseudobulk -----------------------------------------------
 
 if ("deseq2" %in% marker_types_run) {
-  source(file.path("functions", "Step06d_FindMarkers_DESeq2.R"))
+  source(file.path("functions", "Step07d_FindMarkers_DESeq2.R"))
   if (!do_parallel) {
     deseq2_n_cores <- 1
   }
@@ -80,7 +80,7 @@ if ("deseq2" %in% marker_types_run) {
 # Find marker genes that change with diagnosis ---------------------------------
 
 if ("excluded_genes" %in% marker_types_run) {
-  source(file.path("functions", "Step06e_FindMarkerExclusions.R"))
+  source(file.path("functions", "Step07e_FindMarkerExclusions.R"))
   FindMarkerExclusions(datasets, granularities)
 }
 
@@ -119,7 +119,7 @@ for (dataset in datasets) {
 
 params_loop <- expand_grid(test_data_name = all_bulk_datasets(),
                            normalization = c("cpm", "tmm", "tpm"),
-                           regression_method = c("none", "edger", "lme", "dream"))
+                           regression_method = c("none", "edger", "lme", "combat"))
 
 for (granularity in granularities) {
   for (dataset in datasets) {

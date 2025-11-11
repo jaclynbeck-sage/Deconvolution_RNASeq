@@ -4,7 +4,7 @@ source("Filenames.R")
 source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
 # Deconvolution WG Synapse space
-markers_folder <- Folder("06_markers", parent = "syn68238853")
+markers_folder <- Folder("07_markers", parent = "syn68238853")
 markers_folder <- synStore(markers_folder, forceVersion = FALSE)
 
 meta_folder <- Folder("01_metadata", parent = "syn68238853")
@@ -23,7 +23,7 @@ provenance_df <- merge(sce_df, pseudo_df, by = "dataset")
 
 datasets <- unique(provenance_df$dataset)
 
-github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step06_FindMarkers.R"
+github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step07_FindMarkers.R"
 
 # Markers
 for (dset in datasets) {

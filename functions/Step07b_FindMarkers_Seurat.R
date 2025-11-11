@@ -40,32 +40,18 @@ FindMarkers_Seurat <- function(datasets, granularities) {
       markers <- subset(markers, p_val_adj <= 0.05) |>
         dplyr::rename(celltype = cluster)
 
-      avgs <- AggregateExpression(seurat,
-                                  features = unique(markers$gene),
-                                  return.seurat = TRUE) |>
-        GetAssayData(layer = "data")
+      avgs <- Load_SignatureMatrix(dataset, granularity, "log_cpm")
 
       # Filter to markers that have a large enough gap between the target cell
       # type and non-target cell types
-      sorted_logfc <- Get_QualityMarkers(avgs, markers, granularity)
-
-      # Create one full list containing all genes that were identified as
-      # markers, and one list filtered to (log2FC between highest and
-      # second-highest expression) > 1
-      markers_all <- sapply(levels(markers$celltype), function(ct) {
-        return(subset(markers, celltype == ct)$gene)
-      })
-
-      markers_filt <- sapply(levels(markers$celltype), function(ct) {
-        return(sorted_logfc$gene[sorted_logfc$celltype == ct])
-      })
+      marker_results <- Get_QualityMarkers(avgs, markers$gene, granularity)
 
       print(str_glue("Markers for {dataset} / {granularity} cell types:"))
-      print(lengths(markers_filt))
+      print(lengths(marker_results$filtered))
 
       markers_list <- list("seurat_results" = markers,
-                           "all" = markers_all,
-                           "filtered" = markers_filt)
+                           "all" = marker_results$all,
+                           "filtered" = marker_results$filtered)
 
       Save_Markers(markers_list, dataset, granularity, marker_type = "seurat")
 
