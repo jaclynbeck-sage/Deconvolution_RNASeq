@@ -96,6 +96,83 @@ Find_BestModel <- function(dataset, tissue, bulk_se, covariates, plot_var_explai
 }
 
 
+# Clean_BulkCovariates - takes a covariates dataframe for one of the bulk
+# datasets, makes sure that categorical variables are factors, scales numerical
+# variables, and merges the cleaned covariates dataframe with the metadata
+# dataframe.
+#
+# Arguments:
+#   metadata - the metadata dataframe (colData()) from a SummarizedExperiment
+#   covariates - a dataframe of covariates, where rows are samples and columns
+#                are the covariates
+#   scale_numerical - TRUE or FALSE, whether to scale numeric columns
+#
+# Returns:
+#   a dataframe with merged metadata and cleaned covariates
+Clean_BulkCovariates <- function(metadata, covariates, scale_numerical = TRUE) {
+  covariates <- subset(covariates, specimenID %in% rownames(metadata))
+
+  # Only keep these variables of interest and drop all other categorical
+  # variables. "diagnosis" and "tissue" are excluded from this list because they
+  # already exist in `metadata` and don't need to be copied over from
+  # `covariates`
+  cat_cols_keep <- c("specimenID", "sex", "ageDeath", "batch")
+
+  num_cols_keep <- c("RIN", "PMI", "picard_PERCENT_DUPLICATION",
+                     "rsem_uniquely_aligned_percent")
+
+  # Bin ages in 5-year intervals
+  covariates <- covariates |>
+    mutate(
+      ageDeath_num = suppressWarnings(as.numeric(ageDeath)),
+      ageDeath = case_when(
+        !is.na(ageDeath_num) ~ cut(
+          ageDeath_num,
+          breaks = c(0, 65, 70, 75, 80, 85, 90),
+          labels = c("Under 65", "65 - 69", "70 - 74", "75 - 79", "80 - 84", "85 - 89"),
+          right = FALSE,
+          include.lowest = TRUE
+        ),
+        ageDeath == "90_or_over" ~ "90+", # Fix for Mayo
+        .default = ageDeath # 90+ or NA
+      )
+    ) |>
+    select(any_of(cat_cols_keep), any_of(num_cols_keep))
+
+  # Re-order the age factors so "Under 65" is first
+  covariates$ageDeath <- factor(covariates$ageDeath,
+                                levels = c("Under 65", "65 - 69", "70 - 74",
+                                           "75 - 79", "80 - 84", "85 - 89", "90+"))
+
+  for (col in cat_cols_keep) {
+    if (col %in% colnames(covariates)) {
+      covariates[, col] <- factor(as.character(covariates[, col]))
+    }
+  }
+
+  # Merge covariates into the metadata
+  sample_order <- rownames(metadata)
+  metadata <- merge(metadata, covariates,
+                    by.x = "sample", by.y = "specimenID",
+                    sort = FALSE)
+  rownames(metadata) <- metadata$sample
+
+  # Put the data frame back in the original order, as merge might change it
+  metadata <- data.frame(metadata[sample_order, ])
+
+  # Scale numerical covariates if scale == TRUE
+  if (scale_numerical) {
+    for (colname in colnames(metadata)) {
+      if (is.numeric(metadata[, colname])) {
+        metadata[, colname] <- as.numeric(scale(metadata[, colname]))
+      }
+    }
+  }
+
+  return(metadata)
+}
+
+
 vp_summary <- function(var_part) {
   var_part |>
     as.data.frame() |>

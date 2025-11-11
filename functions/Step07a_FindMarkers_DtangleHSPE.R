@@ -23,7 +23,7 @@ FindMarkers_DtangleHSPE <- function(datasets, granularities, cl = NULL) {
     granularity <- params["granularity"]
 
     pb <- Load_PseudobulkPureSamples(dataset, granularity,
-                                     output_type = "log_cpm")
+                                     normalization = "log_cpm")
     metadata <- colData(pb)
     input_mat <- assay(pb, "counts")
 

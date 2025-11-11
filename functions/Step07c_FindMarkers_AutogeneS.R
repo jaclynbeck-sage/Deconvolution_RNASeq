@@ -25,7 +25,7 @@ FindMarkers_AutogeneS <- function(datasets, granularities) {
     for (granularity in granularities) {
       message(str_glue("Finding markers for {dataset} / {granularity}..."))
 
-      sce <- Load_SingleCell(dataset, granularity, output_type = "counts")
+      sce <- Load_SingleCell(dataset, granularity, normalization = "counts")
 
       sc <- import("scanpy")
       ag <- import("autogenes")

@@ -15,9 +15,9 @@ datasets <- all_singlecell_datasets()
 
 ct_ad_only <- TRUE
 
-# Force these three algorithms to use all data all the time. For the paper, I
+# Force these two algorithms to use all data all the time. For the paper, I
 # also ran DeconRNASeq and Dtangle with ct_ad_only = FALSE.
-if ((algorithm %in% c("CibersortX", "HSPE", "Scaden"))) {
+if ((algorithm %in% c("CibersortX", "Scaden"))) {
   ct_ad_only <- FALSE
 }
 
@@ -31,7 +31,7 @@ params_loop1 <- tidyr::expand_grid(
   granularity = c("broad_class", "sub_class"),
   reference_input_type = alg_config$reference_input_types,
   normalization = alg_config$normalizations,
-  regression_method = c("none", "edger", "lme", "dream")
+  regression_method = c("none", "edger", "lme", "combat")
 ) %>%
   arrange(normalization)
 

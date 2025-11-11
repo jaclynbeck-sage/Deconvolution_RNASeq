@@ -1,19 +1,18 @@
 library(dplyr)
 library(stringr)
 library(reshape2)
-library(foreach)
-library(doParallel)
+library(parallel)
 
 source(file.path("functions", "Step15_Analysis_HelperFunctions.R"))
 
 options(scipen = 999)
 
 cores <- 12
-cl <- makeCluster(cores, type = "FORK", outfile = "top_params_output.txt")
-registerDoParallel(cl)
+cluster_type <- "FORK"
+cluster_outfile <- "top_params_output.txt"
 
 granularities <- c("broad_class", "sub_class")
-bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
+bulk_datasets <- all_bulk_datasets()
 algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "Music",
                 "Scaden", "Baseline")
 
@@ -31,7 +30,9 @@ for (granularity in granularities) {
         next
       }
 
-      foreach(EF = err_files) %dopar%  {
+      cl <- makeCluster(cores, type = cluster_type, outfile = cluster_outfile)
+
+      parLapply(cl, err_files, function(EF) {
         err_list <- readRDS(EF)
         errs_all <- err_list$means
 
@@ -56,10 +57,11 @@ for (granularity in granularities) {
         saveRDS(best_errors,
                 file.path(dir_top_params_alg,
                           str_glue("top_parameters_{file_id}.rds")))
-      }
+      })
+
+      stopCluster(cl)
     }
   }
 }
 
-stopCluster(cl)
 print("Finished")

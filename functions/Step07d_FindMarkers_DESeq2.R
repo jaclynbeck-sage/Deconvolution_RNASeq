@@ -19,7 +19,7 @@ FindMarkers_DESeq2 <- function(datasets, granularities, n_cores) {
       message(str_glue("Finding markers for {dataset} / {granularity}..."))
 
       pb <- Load_PseudobulkPureSamples(dataset, granularity,
-                                       output_type = "counts")
+                                       normalization = "counts")
 
       # Use only genes that express > 10 counts in at least 3 samples
       over_10 <- rowSums(assay(pb, "counts") > 10)

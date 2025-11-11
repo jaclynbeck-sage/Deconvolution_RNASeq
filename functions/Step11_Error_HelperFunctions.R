@@ -21,7 +21,7 @@ Get_Signatures <- function(singlecell_datasets, granularity) {
 
 Get_CommonGenes <- function(bulk_datasets, signatures) {
   common_genes <- lapply(bulk_datasets, function(X) {
-    bulk_se <- Load_BulkData(X, output_type = "log_cpm", regression_method = "none")
+    bulk_se <- Load_BulkData(X, normalization = "log_cpm", regression_method = "none")
     rownames(bulk_se)
   })
   common_genes <- append(common_genes, lapply(signatures$all_signatures_cpm, rownames))

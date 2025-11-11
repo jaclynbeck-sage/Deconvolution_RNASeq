@@ -41,7 +41,7 @@ source(file.path("functions", "Step05b_CreatePseudobulk_PureSamples.R"))
 datasets <- all_singlecell_datasets()
 
 for (dataset in datasets) {
-  sce <- Load_SingleCell(dataset, "broad_class", output_type = "counts")
+  sce <- Load_SingleCell(dataset, "broad_class", normalization = "counts")
   metadata <- colData(sce)
 
   message(str_glue("{dataset}: creating pseudobulk by sample..."))

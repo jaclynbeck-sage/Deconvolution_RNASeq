@@ -52,8 +52,8 @@ is_singlecell <- function(dataset) {
 #                                         CibersortX PLUS the full single cell
 #                                         data set as a SingleCellExperiment
 #                                         object
-#   output_type = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm", or
-#                 "log_tpm". See Load_CountsFile for description.
+#   normalization = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm",
+#                   or "log_tpm". See Load_CountsFile for description.
 #   regression_method = "none", if raw uncorrected counts should be used for
 #                       bulk data, or one of "edger", "deseq2", or "combat", to
 #                       use batch-corrected counts from one of those methods.
@@ -71,21 +71,21 @@ is_singlecell <- function(dataset) {
 Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
                                     granularity = "broad_class",
                                     reference_input_type = "singlecell",
-                                    output_type = "counts",
+                                    normalization = "counts",
                                     regression_method = "none") {
   # Reference input
   if (reference_input_type == "singlecell") {
     reference_obj <- Load_SingleCell(reference_data_name, granularity,
-                                     output_type)
+                                     normalization)
   } else if (reference_input_type == "pseudobulk") {
     reference_obj <- Load_PseudobulkPureSamples(reference_data_name,
-                                                granularity, output_type)
+                                                granularity, normalization)
   } else if (reference_input_type == "signature") {
     reference_obj <- Load_SignatureMatrix(reference_data_name, granularity,
-                                          output_type)
+                                          normalization)
   } else if (reference_input_type == "cibersortx") {
     reference_obj <- Load_SignatureMatrix(reference_data_name, granularity,
-                                          output_type = "cibersortx")
+                                          normalization = "cibersortx")
   } else {
     stop("Invalid reference_input_type specified!")
   }
@@ -93,11 +93,11 @@ Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
   # Test data
   if (test_data_name == "sc_samples" || test_data_name == "training") {
     test_obj <- Load_Pseudobulk(reference_data_name, test_data_name,
-                                granularity, output_type)
+                                granularity, normalization)
   }
   # ROSMAP, Mayo, or MSBB
   else {
-    test_obj <- Load_BulkData(test_data_name, output_type, regression_method)
+    test_obj <- Load_BulkData(test_data_name, normalization, regression_method)
   }
 
   # CibersortX signature doesn't need gene filtering, everything else does
@@ -119,7 +119,7 @@ Load_AlgorithmInputData_FromParams <- function(params) {
                                  params$test_data_name,
                                  params$granularity,
                                  params$reference_input_type,
-                                 params$normalization, # 'output_type' arg in function
+                                 params$normalization,
                                  params$regression_method))
 }
 
@@ -131,11 +131,10 @@ Load_AlgorithmInputData_FromParams <- function(params) {
 # parameter set before returning.
 #
 # Arguments:
-#   n_markers = a vector containing one or more percentages (range 0-1.0) and/or
-#               one or more integers (range 2-Inf) specifying how many markers
-#               per cell type to use. If NULL, default values of c(0.01, 0.02,
-#               0.05, 0.1, 0.2, 0.5, 0.75, 1.0, 3, 5, 10, 20, 50, 100, 200, 500)
-#               will be used.
+#   n_markers = a vector containing one or more integers (range 3-Inf)
+#               specifying how many markers per cell type to use. If NULL,
+#               default values of c(3, 5, 10, 20, 50, 100, 200, 500) will be
+#               used.
 #   marker_types = a list where the names of the entries are one of "autogenes",
 #                  "dtangle", "seurat", or "deseq2" and the items in each entry
 #                  are a list of marker subtypes to use for that algorithm. See
@@ -155,7 +154,7 @@ CreateParams_MarkerTypes <- function(n_markers = NULL, marker_types = NULL,
     n_markers <- c(3, 5, 10, 20, 50, 100, 200, 500)
   }
   if (is.null(marker_types)) {
-    marker_types <- list("dtangle" = c("ratio", "diff", "p.value", "regression"),
+    marker_types <- list("dtangle" = c("ratio", "diff"),
                          "autogenes" = c("correlation", "distance", "combined"),
                          "seurat" = c("None"),
                          "deseq2" = c("None"))
@@ -167,9 +166,6 @@ CreateParams_MarkerTypes <- function(n_markers = NULL, marker_types = NULL,
   params <- tidyr::expand_grid(n_markers = n_markers,
                                marker_types, # this is a data frame
                                marker_order = marker_order)
-
-  # We don't need to re-order markers when we're using the whole marker set
-  params$marker_order[params$n_markers == 1] <- "distance"
 
   params <- params %>% distinct()
   return(params)
@@ -233,6 +229,7 @@ CreateParams_FilterableSignature <- function(filter_levels = c(1, 2, 3),
 # Returns:
 #   matrix of percentages (rows = samples, cols = cell types), whose rows sum
 #   to 1.
+# TODO use scuttle aggregation instead
 CalculatePercentRNA <- function(singlecell_counts, samples, celltypes) {
   # Sum all counts per gene for each sample/celltype combination
   y <- model.matrix(~ 0 + samples:celltypes)
@@ -282,7 +279,7 @@ CalculatePercentRNA <- function(singlecell_counts, samples, celltypes) {
 # Returns:
 #   vector of average library size of each cell type, normalized to sum to 1.
 CalculateA <- function(dataset, granularity) {
-  pb <- Load_PseudobulkPureSamples(dataset, granularity, output_type = "counts")
+  pb <- Load_PseudobulkPureSamples(dataset, granularity, normalization = "counts")
 
   pb_counts <- assay(pb, "counts")
   count_sums <- colSums(pb_counts)
@@ -328,15 +325,15 @@ CalculateA <- function(dataset, granularity) {
 # Arguments:
 #   dataset = the name of the dataset to load
 #   granularity = either "broad_class" or "sub_class"
-#   output_type = either "cpm" or "tmm", for whether to use pure CPM or normalize
-#                 using tmm factors
+#   normalization = either "cpm" or "tmm", for whether to use pure CPM or
+#                   normalize using tmm factors
 #   geom_mean = whether to take the geometric mean instead of the arithmetic mean
 #
 # Returns:
 #   matrix of average CPMs for each gene, for each cell type (rows = genes,
 #   columns = cell types)
-CalculateSignature <- function(dataset, granularity, output_type, geom_mean = FALSE) {
-  pb <- Load_PseudobulkPureSamples(dataset, granularity, output_type)
+CalculateSignature <- function(dataset, granularity, normalization, geom_mean = FALSE) {
+  pb <- Load_PseudobulkPureSamples(dataset, granularity, normalization)
 
   pb_cpm <- assay(pb, "counts")
 
@@ -515,13 +512,8 @@ FilterMarkers <- function(reference_data_name, granularity, n_markers,
     return(NULL)
   }
 
-  # Percentage of each cell type's markers
-  if (n_markers <= 1) {
-    n_markers <- ceiling(lengths(markers) * n_markers)
-  } else {
-    # Fixed number of markers for each cell type
-    n_markers <- sapply(lengths(markers), min, n_markers)
-  }
+  # Get the minimum of n_markers and the actual number of markers for each cell type
+  n_markers <- sapply(lengths(markers), min, n_markers)
 
   # Regardless of method, make sure there are at least 3 markers per cell type
   # if possible
@@ -698,83 +690,6 @@ OrderMarkers_ByCorrelation <- function(marker_list, data) {
   })
 
   return(new_list)
-}
-
-
-# Clean_BulkCovariates - takes a covariates dataframe for one of the bulk
-# datasets, makes sure that categorical variables are factors, scales numerical
-# variables, and merges the cleaned covariates dataframe with the metadata
-# dataframe.
-#
-# Arguments:
-#   metadata - the metadata dataframe (colData()) from a SummarizedExperiment
-#   covariates - a dataframe of covariates, where rows are samples and columns
-#                are the covariates
-#   scale_numerical - TRUE or FALSE, whether to scale numeric columns
-#
-# Returns:
-#   a dataframe with merged metadata and cleaned covariates
-Clean_BulkCovariates <- function(metadata, covariates, scale_numerical = TRUE) {
-  covariates <- subset(covariates, specimenID %in% rownames(metadata))
-
-  # Only keep these variables of interest and drop all other categorical
-  # variables. "diagnosis" and "tissue" are excluded from this list because they
-  # already exist in `metadata` and don't need to be copied over from
-  # `covariates`
-  cat_cols_keep <- c("specimenID", "sex", "ageDeath", "batch")
-
-  num_cols_keep <- c("RIN", "PMI", "picard_PERCENT_DUPLICATION",
-                     "rsem_uniquely_aligned_percent")
-
-  # Bin ages in 5-year intervals
-  covariates <- covariates |>
-    mutate(
-      ageDeath_num = suppressWarnings(as.numeric(ageDeath)),
-      ageDeath = case_when(
-        !is.na(ageDeath_num) ~ cut(
-          ageDeath_num,
-          breaks = c(0, 65, 70, 75, 80, 85, 90),
-          labels = c("Under 65", "65 - 69", "70 - 74", "75 - 79", "80 - 84", "85 - 89"),
-          right = FALSE,
-          include.lowest = TRUE
-        ),
-        ageDeath == "90_or_over" ~ "90+", # Fix for Mayo
-        .default = ageDeath # 90+ or NA
-      )
-    ) |>
-    select(any_of(cat_cols_keep), any_of(num_cols_keep))
-
-  # Re-order the age factors so "Under 65" is first
-  covariates$ageDeath <- factor(covariates$ageDeath,
-                                 levels = c("Under 65", "65 - 69", "70 - 74",
-                                            "75 - 79", "80 - 84", "85 - 89", "90+"))
-
-  for (col in cat_cols_keep) {
-    if (col %in% colnames(covariates)) {
-      covariates[, col] <- factor(as.character(covariates[, col]))
-    }
-  }
-
-  # Merge covariates into the metadata
-  sample_order <- rownames(metadata)
-  metadata <- merge(metadata, covariates,
-                    by.x = "sample", by.y = "specimenID",
-                    sort = FALSE)
-  rownames(metadata) <- metadata$sample
-
-  # Put the data frame back in the original order, as merge might change it
-  metadata <- data.frame(metadata[sample_order, ])
-
-  # Scale numerical covariates if scale == TRUE
-  if (scale_numerical) {
-    for (colname in colnames(metadata)) {
-      if (is.numeric(metadata[, colname])) {
-        metadata[, colname] <- as.numeric(scale(metadata[, colname]))
-      }
-    }
-  }
-
-  return(metadata)
 }
 
 

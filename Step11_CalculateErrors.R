@@ -83,7 +83,7 @@ for (bulk_dataset in bulk_datasets) {
 
       # The data that was used to generate the estimates
       data <- Load_BulkData(params_mod$test_data_name,
-                            output_type = params_mod$normalization,
+                            normalization = params_mod$normalization,
                             regression_method = params_mod$regression_method)
 
       bulk_metadata <- as.data.frame(colData(data))

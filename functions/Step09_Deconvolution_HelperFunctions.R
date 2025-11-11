@@ -8,7 +8,7 @@ Modify_Music_Input <- function(data, params) {
     # data, not just the ones that exist in both bulk and sc data sets
     sce_unfiltered <- Load_SingleCell(dataset = params$reference_data_name,
                                       granularity = params$granularity,
-                                      output_type = params$normalization)
+                                      normalization = params$normalization)
 
     sc_basis <- MuSiC::music_basis(sce_unfiltered,
                                    non.zero = TRUE,
@@ -87,7 +87,7 @@ Modify_CibersortX_Input <- function(data, params) {
     message("Copying single cell data to CibersortX directory...")
     sce <- Load_SingleCell(dataset = params$reference_data_name,
                            granularity = params$granularity,
-                           output_type = params$normalization)
+                           normalization = params$normalization)
     sce$celltype <- str_replace(as.character(sce$celltype), "\\.", "_")
     sce$celltype <- str_to_lower(sce$celltype)
 

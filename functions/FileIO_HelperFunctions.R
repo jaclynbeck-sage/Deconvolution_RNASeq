@@ -13,24 +13,24 @@ source("Filenames.R")
 # Generic read functions -------------------------------------------------------
 
 # Load_CountsFile: reads a SummarizedExperiment or SingleCellExperiment from
-# a file and transforms the counts according to output_type.
+# a file and transforms the counts according to 'normalization'.
 #
 # Arguments:
 #   filename = the name of of the file to read in, including file path
-#   output_type = one of "counts", "cpm", "tpm", "tmm",
-#                 "log_cpm", "log_tpm", or "log_tmm":
-#                   "counts" will return raw, unaltered counts
-#                   "cpm" will normalize the counts to counts per million
-#                   "tpm" will normalize the counts to transcripts per million
+#   normalization = one of "counts", "cpm", "tpm", "tmm",
+#                   "log_cpm", "log_tpm", or "log_tmm":
+#                     "counts" will return raw, unaltered counts
+#                     "cpm" will normalize the counts to counts per million
+#                     "tpm" will normalize the counts to transcripts per million
 #                         for bulk data only. Single cell data will default to
 #                         cpm since UMI data is similar to tpm already.
-#                   "tmm" will normalize using TMM factors from edgeR
-#                   "log_cpm" will take the log2(cpm+1)
-#                   "log_tpm" will take the log2(tpm+1)
-#                   "log_tmm" will take the log2(tmm+1)
+#                     "tmm" will normalize using TMM factors from edgeR
+#                     "log_cpm" will take the log2(cpm+1)
+#                     "log_tpm" will take the log2(tpm+1)
+#                     "log_tmm" will take the log2(tmm+1)
 #   regression_method = which type of regressed/corrected counts to use, or "none".
 #                   The corrected counts (or raw counts if "none") will then be
-#                   transformed as usual according to "output_type". Valid values:
+#                   transformed as usual according to "normalization". Valid values:
 #                     "edger" - regression via edgeR::glmQLFit (bulk only)
 #                     "lme" - regression via lme4::lmer or lm (bulk only)
 #                     "combat" - regression via ComBat (bulk only)
@@ -49,19 +49,19 @@ source("Filenames.R")
 #       *and* the transformed values held in memory at the same time. Instead
 #       we overwrite the counts slot. To be consistent with single cell data and
 #       allow for inter-operability, bulk data is treated the same way.
-Load_CountsFile <- function(filename, output_type, regression_method = "none") {
+Load_CountsFile <- function(filename, normalization, regression_method = "none") {
   if (!file.exists(filename)) {
     message(str_glue("Error: {filename} doesn't exist!"))
     return(NULL)
   }
 
-  output_opts <- expand.grid(norm = c("cpm", "tpm", "tmm"),
+  norm_opts <- expand.grid(norm = c("cpm", "tpm", "tmm"),
                              log = c("", "log_"))
-  output_opts <- c("counts",
-                   paste0(output_opts$log, output_opts$norm))
+  norm_opts <- c("counts",
+                 paste0(norm_opts$log, norm_opts$norm))
 
-  if (!(output_type %in% output_opts)) {
-    stop(paste0("Error! 'output_type' should be one of ", output_opts, "."))
+  if (!(normalization %in% norm_opts)) {
+    stop(paste0("Error! 'normalization' should be one of ", norm_opts, "."))
   }
 
   if (!(regression_method %in% c("none", "edger", "lme", "combat"))) {
@@ -78,14 +78,14 @@ Load_CountsFile <- function(filename, output_type, regression_method = "none") {
     se_obj$tmm_factors <- colData(se_obj)[, paste0("tmm_factors_", regression_method)]
   }
 
-  if (output_type == "counts") {
+  if (normalization == "counts") {
     return(se_obj)
   }
 
-  # The remaining output_types all need CPM, TPM, or TMM
+  # The remaining normalizations all need CPM, TPM, or TMM
 
   # TPM for bulk data only
-  if (grepl("tpm", output_type) & "exon_length" %in% colnames(rowData(se_obj))) {
+  if (grepl("tpm", normalization) & "exon_length" %in% colnames(rowData(se_obj))) {
     norm_counts <- scuttle::calculateTPM(se_obj,
                                          lengths = rowData(se_obj)$exon_length)
   }
@@ -94,7 +94,7 @@ Load_CountsFile <- function(filename, output_type, regression_method = "none") {
     norm_counts <- scuttle::calculateCPM(se_obj)
   }
 
-  if (grepl("tmm", output_type)) {
+  if (grepl("tmm", normalization)) {
     # This is equivalent to counts * 1e6 / (libSize * tmm).
     # Since norm_counts is already (counts * 1e6 / libSize), calling this
     # function just divides by tmm, while preserving sparse matrices.
@@ -104,7 +104,7 @@ Load_CountsFile <- function(filename, output_type, regression_method = "none") {
   }
 
   # log2(x+1)
-  if (grepl("log", output_type)) {
+  if (grepl("log", normalization)) {
     if (is(norm_counts, "matrix")) {
       norm_counts <- log2(norm_counts + 1)
     }
@@ -122,15 +122,15 @@ Load_CountsFile <- function(filename, output_type, regression_method = "none") {
 # Single cell / Pseudobulk wrapper functions -----------------------------------
 
 # Load_SingleCell: reads a SingleCellExperiment data set from a file and
-# transforms the counts according to output_type. Single-cell-specific wrapper
-# function for Load_CountsFile.
+# transforms the counts according to 'normalization'. Single-cell-specific
+# wrapper function for Load_CountsFile.
 #
 # Arguments:
 #   dataset = the name of the data set to load in
 #   granularity = either "broad_class" or "sub_class", for which level of cell
 #                 types to use in the metadata
-#   output_type = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm", or
-#                 "log_tpm". See Load_CountsFile for description.
+#   normalization = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm",
+#                   or "log_tpm". See Load_CountsFile for description.
 #
 # Returns:
 #   a SingleCellExperiment object that is the exact same as what was read from
@@ -138,10 +138,10 @@ Load_CountsFile <- function(filename, output_type, regression_method = "none") {
 #   if applicable. The colData DataFrame also has a column added called
 #   "celltype", which is populated with either the broad or subclass cell type
 #   assignments based on granularity.
-Load_SingleCell <- function(dataset, granularity, output_type = "counts") {
+Load_SingleCell <- function(dataset, granularity, normalization = "counts") {
   sc_file <- file.path(dir_singlecell, str_glue("{dataset}_sce.rds"))
 
-  singlecell <- Load_CountsFile(sc_file, output_type, regression_method = "none")
+  singlecell <- Load_CountsFile(sc_file, normalization, regression_method = "none")
   metadata <- colData(singlecell)
 
   if (!(granularity %in% c("broad_class", "sub_class"))) {
@@ -173,25 +173,25 @@ Save_SingleCell <- function(dataset, sce) {
 
 
 # Load_PseudobulkPureSamples: reads a SummarizedExperiment data set from a file
-# and transforms the counts according to output_type. Pure sample pseudobulk-
-# specific wrapper function for Load_CountsFile.
+# and transforms the counts according to 'normalization'. Pure sample
+# pseudobulk-specific wrapper function for Load_CountsFile.
 #
 # Arguments:
 #   dataset = the name of the data set to load in
 #   granularity = either "broad_class" or "sub_class", for which level of cell
 #                 types to load in.
-#   output_type = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm", or
-#                 "log_tpm". See Load_CountsFile for description.
+#   normalization = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm",
+#                   or "log_tpm". See Load_CountsFile for description.
 #
 # Returns:
 #   a SummarizedExperiment object that is the exact same as what was read from
 #   the file, except that the "counts" slot is set with the transformed values
 #   if applicable.
-Load_PseudobulkPureSamples <- function(dataset, granularity, output_type = "counts") {
+Load_PseudobulkPureSamples <- function(dataset, granularity, normalization = "counts") {
   pb_file <- str_glue("pseudobulk_{dataset}_puresamples_{granularity}.rds")
   pb_file <- file.path(dir_pseudobulk, pb_file)
 
-  pseudobulk <- Load_CountsFile(pb_file, output_type, regression_method = "none")
+  pseudobulk <- Load_CountsFile(pb_file, normalization, regression_method = "none")
   return(pseudobulk)
 }
 
@@ -215,8 +215,8 @@ Save_PseudobulkPureSamples <- function(se, dataset, granularity) {
 
 
 # Load_Pseudobulk: reads a SummarizedExperiment data set from a file and
-# transforms the counts according to output_type. Sample or training pseudobulk-
-# specific wrapper function for Load_CountsFile.
+# transforms the counts according to 'normalization'. Sample or training
+# pseudobulk-specific wrapper function for Load_CountsFile.
 #
 # Arguments:
 #   dataset = the name of the data set to load in
@@ -224,18 +224,18 @@ Save_PseudobulkPureSamples <- function(se, dataset, granularity) {
 #               to load in.
 #   granularity = either "broad_class" or "sub_class", for which level of cell
 #                 types to load in.
-#   output_type = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm", or
-#                 "log_tpm". See Load_CountsFile for description.
+#   normalization = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm",
+#                   or "log_tpm". See Load_CountsFile for description.
 #
 # Returns:
 #   a SummarizedExperiment object that is the exact same as what was read from
 #   the file, except that the "counts" slot is set with the transformed values
 #   if applicable.
-Load_Pseudobulk <- function(dataset, data_type, granularity, output_type = "counts") {
+Load_Pseudobulk <- function(dataset, data_type, granularity, normalization = "counts") {
   pb_file <- str_glue("pseudobulk_{dataset}_{data_type}_{granularity}.rds")
   pb_file <- file.path(dir_pseudobulk, pb_file)
 
-  pseudobulk <- Load_CountsFile(pb_file, output_type, regression_method = "none")
+  pseudobulk <- Load_CountsFile(pb_file, normalization, regression_method = "none")
   return(pseudobulk)
 }
 
@@ -267,8 +267,8 @@ Save_Pseudobulk <- function(se, dataset, data_type, granularity) {
 #
 # Arguments:
 #   dataset = the name of the dataset ("ROSMAP", "Mayo", or "MSBB")
-#   output_type = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm", or
-#                 "log_tpm". See Load_CountsFile for description.
+#   normalization = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm",
+#                   or "log_tpm". See Load_CountsFile for description.
 #   regression_method = "none", if raw uncorrected counts should be used for
 #                       bulk data, or one of "edger", "lme", or "combat", to
 #                       use batch-corrected counts from one of those methods.
@@ -276,11 +276,11 @@ Save_Pseudobulk <- function(se, dataset, data_type, granularity) {
 # Returns:
 #   a SummarizedExperiment object with (possibly normalized) data in the
 #   "counts" slot
-Load_BulkData <- function(dataset, output_type = "counts", regression_method = "none") {
+Load_BulkData <- function(dataset, normalization = "counts", regression_method = "none") {
   bulk_file <- str_glue(paste0("{dataset}_se.rds"))
   bulk_file <- file.path(dir_bulk, bulk_file)
 
-  bulk <- Load_CountsFile(bulk_file, output_type, regression_method)
+  bulk <- Load_CountsFile(bulk_file, normalization, regression_method)
   return(bulk)
 }
 
@@ -329,33 +329,33 @@ Load_AvgLibSize <- function(dataset, granularity) {
 #   dataset = the name of the data set to load
 #   granularity = either "broad_class" or "sub_class", for which level of cell
 #                 types to load the signature matrix for.
-#   output_type = any output type from the 'output_type' argument of
-#                 Load_CountsFile, or "cibersortx". If output_type contains
+#   normalization = any value from the 'normalization' argument of
+#                 Load_CountsFile, or "cibersortx". If 'normalization' contains
 #                 'tmm', the signature matrix will be normalized with TMM
-#                 factors. Otherwise it is in CPM. If output_type contains
+#                 factors. Otherwise it is in CPM. If 'normalization' contains
 #                 'log', the signature matrix will be transformed as log2(x+1).
-#                 If output_type is "cibersortx", the signature matrix generated
-#                 by CibersortX will be loaded instead of the signature
-#                 generated by this pipeline.
+#                 If 'normalization' is "cibersortx", the signature matrix
+#                 generated by CibersortX will be loaded instead of the
+#                 signature generated by this pipeline.
 #
 # Returns:
 #   a matrix with rows = genes and columns = cell types, where the values are
 #   in counts per million (or TMM-normalized), describing the expected value of
 #   each gene for eachcell type.
-Load_SignatureMatrix <- function(dataset, granularity, output_type) {
+Load_SignatureMatrix <- function(dataset, granularity, normalization) {
   sig_matrix <- readRDS(file.path(dir_signatures, str_glue("{dataset}_signature.rds")))
 
-  if (grepl("tmm", output_type)) {
+  if (grepl("tmm", normalization)) {
     sig <- sig_matrix$tmm[[granularity]]
   }
-  else if (output_type == "cibersortx") {
+  else if (normalization == "cibersortx") {
     sig <- sig_matrix$cibersortx[[granularity]]
   }
   else {
     sig <- sig_matrix$cpm[[granularity]]
   }
 
-  if (grepl("log", output_type)) {
+  if (grepl("log", normalization)) {
     sig <- log2(sig + 1)
   }
   return(sig)
@@ -573,7 +573,7 @@ Save_AlgorithmOutputList <- function(output_list, algorithm, test_dataset,
 #                  bulk data sets ("Mayo", "MSBB", "ROSMAP")
 #   granularity = either "broad_class" or "sub_class", for which level of cell
 #                 types was used for markers and pseudobulk creation.
-#   normalization = the normalization strategy used. Same as the 'output_type'
+#   normalization = the normalization strategy used. Same as the 'normalization'
 #                   argument to Load_CountsFile.
 #   regression_method = the type of regression used for bulk counts. Same as
 #                       the 'regression_method' argument to Load_CountsFile.
