@@ -37,6 +37,9 @@ datasets <- c("Mayo", "MSBB", "ROSMAP")
 # Assumes a ratio of 8 GB RAM per core
 n_cores <- max(parallel::detectCores() / 2, 1)
 
+dir_plots <- file.path(dir_figures, "bulk_regression")
+dir.create(dir_plots, showWarnings = FALSE)
+
 for (dataset in datasets) {
 
   # Load data and covariates ---------------------------------------------------
@@ -48,6 +51,9 @@ for (dataset in datasets) {
   # Per-tissue regression ------------------------------------------------------
 
   for (tissue in levels(bulk$tissue)) {
+    pdf(file.path(dir_plots, str_glue("{dataset}_{tissue}_regression.pdf")),
+        width = 10, height = 8.5)
+
     message(str_glue("Regressing {dataset} / {tissue}"))
     bulk_tissue <- bulk[, bulk$tissue == tissue]
 
@@ -92,8 +98,7 @@ for (dataset in datasets) {
 
     # Load or calculate formulas for fixed/mixed models ------------------------
 
-    #formulas <- Load_ModelFormulas(str_glue("{dataset}_{tissue}"))
-    formulas <- NULL
+    formulas <- Load_ModelFormulas(str_glue("{dataset}_{tissue}"))
 
     # Only run the stepwise regression if the formulas don't already exist. This
     # part takes a long time.
@@ -249,6 +254,7 @@ for (dataset in datasets) {
     )
 
     print(patchwork::wrap_plots(plts))
+    dev.off()
 
     rm(bulk_tissue, corrected_edger, corrected_lme, corrected_combat)
     gc()

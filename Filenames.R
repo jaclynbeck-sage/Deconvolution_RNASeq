@@ -1,34 +1,37 @@
-# Filenames that are used in multiple files
+# Filenames that are used in multiple files. This isn't in the config.yaml file
+# because R code in the yaml file can't reference another yaml variable that is
+# also defined by R code, so none of the file.path() functions would work.
 
 dir_data <- "data"
 dir_figures <- "figures"
+dir_downloads <- file.path("data", "downloads")
 
-dir_input <- file.path(dir_data, "input")
-dir_pseudobulk <- file.path(dir_data, "pseudobulk")
-dir_output <- file.path(dir_data, "output")
-dir_metadata <- file.path(dir_data, "metadata")
+dir_metadata <- file.path(dir_data, "01_metadata")
+dir_preprocessed <- file.path(dir_data, "02_preprocessed")
+dir_bulk <- file.path(dir_data, "03_bulk_input")
+dir_singlecell <- file.path(dir_data, "04_singlecell_input")
+dir_pseudobulk <- file.path(dir_data, "05_pseudobulk")
+dir_signatures <- file.path(dir_data, "06_signatures")
+dir_markers <- file.path(dir_data, "07_markers")
+dir_estimates <- file.path(dir_data, "09_estimates")
+dir_algorithm_models <- file.path(dir_data, "09_algorithm_models")
+dir_errors <- file.path(dir_data, "11_errors")
+dir_top_parameters <- file.path(dir_data, "12_top_parameters")
+dir_top_estimates <- file.path(dir_data, "13_top_estimates")
+dir_best_errors <- file.path(dir_data, "14_best_error_calculations")
+
 dir_tmp <- file.path(dir_data, "tmp")
-dir_markers <- file.path(dir_data, "markers")
-dir_signatures <- file.path(dir_data, "signatures")
-dir_analysis <- file.path(dir_data, "analysis")
-dir_cibersort_corrected_signatures <- file.path(dir_signatures, "cibersortx_batch_corrected")
-dir_cibersort <- "/data" # outside this working directory, gets shared with cibersort docker
-
-dir_estimates <- file.path(dir_output, "estimates")
-dir_top_estimates <- file.path(dir_output, "top_estimates")
-dir_errors <- file.path(dir_output, "errors")
-dir_top_parameters <- file.path(dir_output, "top_parameters")
-dir_best_errors <- file.path(dir_output, "best_errors")
-
 dir_estimates_tmp <- file.path(dir_estimates, "tmp")
 dir_errors_tmp <- file.path(dir_errors, "tmp")
 
-dir_scaden_models <- file.path(dir_output, "scaden_models")
-dir_music_basis <- file.path(dir_output, "music_basis")
-dir_hspe_params <- file.path(dir_output, "hspe_params")
+dir_cibersort_corrected_signatures <- file.path(dir_signatures, "cibersortx_batch_corrected")
+dir_cibersort <- "/data" # outside this working directory, gets shared with cibersort docker
 
-dir_raw_data <- file.path(dir_input, "raw_data")
-dir_preprocessed <- file.path(dir_input, "preprocessed")
+dir_scaden_models <- file.path(dir_algorithm_models, "scaden_models")
+dir_music_basis <- file.path(dir_algorithm_models, "music_basis")
+dir_hspe_params <- file.path(dir_algorithm_models, "hspe_params")
+
+dir_raw_data <- file.path(dir_downloads, "raw_data")
 dir_covariates <- file.path(dir_metadata, "covariates")
 
 dir_lau_raw <- file.path(dir_raw_data, "lau_raw")

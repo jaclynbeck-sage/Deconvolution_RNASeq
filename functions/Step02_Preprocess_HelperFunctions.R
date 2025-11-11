@@ -665,8 +665,11 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
     return(counts)
   }
 
+  dir_plots <- file.path(dir_figures, "singlecell_QC")
+  dir.create(dir_plots, showWarnings = FALSE)
+
   sink(file.path(dir_tmp, str_glue("{dataset_name}_QC.log")))
-  pdf(file.path(dir_figures, str_glue("{dataset_name}_QC.pdf")),
+  pdf(file.path(dir_plots, str_glue("{dataset_name}_QC.pdf")),
       width = 8, height = 6)
 
   metadata$sample <- factor(metadata$sample) # Fix for Mathys sample names

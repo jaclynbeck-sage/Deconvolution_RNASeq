@@ -15,7 +15,7 @@ github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Ste
 
 # Processed single cell datasets
 for (dataset in names(provenance)) {
-  files <- list.files(dir_input, pattern = dataset, full.names = TRUE)
+  files <- list.files(dir_singlecell, pattern = dataset, full.names = TRUE)
   for (filename in files) {
     UploadFile(filename, input_folder,
                list("used" = c(provenance[[dataset]]),

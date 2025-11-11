@@ -290,7 +290,7 @@ Paper_Renames <- function(df) {
                        "random_uniform" = "Random (uniform)",
                        "zeros" = "All zeros")
   regression_renames <- c("none" = "No regression", "edger" = "edgeR",
-                          "lme" = "LME", "dream" = "dream")
+                          "lme" = "LME", "combat" = "ComBat")
 
   if (all(c("normalization", "regression_method") %in% colnames(df))) {
     df <- df %>%

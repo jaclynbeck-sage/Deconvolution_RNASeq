@@ -139,7 +139,7 @@ Load_CountsFile <- function(filename, output_type, regression_method = "none") {
 #   "celltype", which is populated with either the broad or subclass cell type
 #   assignments based on granularity.
 Load_SingleCell <- function(dataset, granularity, output_type = "counts") {
-  sc_file <- file.path(dir_input, str_glue("{dataset}_sce.rds"))
+  sc_file <- file.path(dir_singlecell, str_glue("{dataset}_sce.rds"))
 
   singlecell <- Load_CountsFile(sc_file, output_type, regression_method = "none")
   metadata <- colData(singlecell)
@@ -167,7 +167,7 @@ Load_SingleCell <- function(dataset, granularity, output_type = "counts") {
 # Returns:
 #   nothing
 Save_SingleCell <- function(dataset, sce) {
-  sc_file <- file.path(dir_input, str_glue("{dataset}_sce.rds"))
+  sc_file <- file.path(dir_singlecell, str_glue("{dataset}_sce.rds"))
   saveRDS(sce, sc_file)
 }
 
@@ -278,7 +278,7 @@ Save_Pseudobulk <- function(se, dataset, data_type, granularity) {
 #   "counts" slot
 Load_BulkData <- function(dataset, output_type = "counts", regression_method = "none") {
   bulk_file <- str_glue(paste0("{dataset}_se.rds"))
-  bulk_file <- file.path(dir_input, bulk_file)
+  bulk_file <- file.path(dir_bulk, bulk_file)
 
   bulk <- Load_CountsFile(bulk_file, output_type, regression_method)
   return(bulk)
@@ -296,7 +296,7 @@ Load_BulkData <- function(dataset, output_type = "counts", regression_method = "
 #   nothing
 Save_BulkData <- function(dataset, se) {
   bulk_file <- str_glue(paste0("{dataset}_se.rds"))
-  bulk_file <- file.path(dir_input, bulk_file)
+  bulk_file <- file.path(dir_bulk, bulk_file)
 
   saveRDS(se, file = bulk_file)
 }
@@ -317,7 +317,7 @@ Save_BulkData <- function(dataset, se) {
 #   normalized average library size of each cell type. Sums to 1.
 Load_AvgLibSize <- function(dataset, granularity) {
   # This is a list with entries for "A_broad_class" and "A_sub_class"
-  A <- readRDS(file.path(dir_input, str_glue("{dataset}_A_matrix.rds")))
+  A <- readRDS(file.path(dir_singlecell, str_glue("{dataset}_A_matrix.rds")))
   return(A[[str_glue("A_{granularity}")]])
 }
 

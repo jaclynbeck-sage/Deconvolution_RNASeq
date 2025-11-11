@@ -27,7 +27,7 @@ params_loop1 <- tidyr::expand_grid(
   granularity = c("broad_class", "sub_class"),
   reference_input_type = alg_config$reference_input_types,
   normalization = alg_config$normalizations,
-  regression_method = c("none", "edger", "lme", "dream"),
+  regression_method = c("none", "edger", "lme", "combat"),
   mode = "best_estimates"
 ) %>%
   arrange(normalization)

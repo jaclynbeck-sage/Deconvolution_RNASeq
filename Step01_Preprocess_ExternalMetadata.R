@@ -45,7 +45,7 @@ cfg <- config::get("step01_gene_metadata")
 
 synLogin()
 
-dir_gene_files <- file.path(dir_metadata, "gene_files")
+dir_gene_files <- file.path(dir_downloads, "gene_files")
 dir.create(dir_gene_files, showWarnings = FALSE)
 
 ## Bulk RNA Seq genes ----------------------------------------------------------
@@ -169,7 +169,7 @@ write.csv(all_genes, file_gene_list, quote = FALSE, row.names = FALSE)
 
 # Ground-truth proportions for some ROSMAP samples, generated from IHC ---------
 
-dir_ihc_git <- file.path(dir_metadata, "CortexCellDeconv")
+dir_ihc_git <- file.path(dir_downloads, "CortexCellDeconv")
 system(paste("git clone", cfg$git_ihc, dir_ihc_git))
 
 celltypes <- c("astro", "endo", "microglia", "neuro", "oligo")

@@ -18,7 +18,7 @@ source(file.path("functions", "General_HelperFunctions.R"))
 source(file.path("functions", "Step15_Analysis_HelperFunctions.R"))
 
 granularities <- c("broad_class", "sub_class")
-bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
+bulk_datasets <- all_bulk_datasets()
 
 n_cores <- 12
 

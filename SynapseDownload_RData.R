@@ -9,9 +9,9 @@ source("Filenames.R")
 synLogin()
 
 folders <- list("metadata" = list("synID" = "syn58803307", "downloadLocation" = dir_metadata),
-                "singlecell" = list("synID" = "syn58807549", "downloadLocation" = dir_input),
+                "singlecell" = list("synID" = "syn58807549", "downloadLocation" = dir_singlecell),
                 "pseudobulk" = list("synID" = "syn58808874", "downloadLocation" = dir_pseudobulk),
-                "bulk" = list("synID" = "syn58841972", "downloadLocation" = dir_input),
+                "bulk" = list("synID" = "syn58841972", "downloadLocation" = dir_bulk),
                 "markers" = list("synID" = "syn58842534", "downloadLocation" = dir_markers),
                 "signatures" = list("synID" = "syn59480278", "downloadLocation" = dir_signatures),
                 "estimates" = list("synID" = "syn59489760", "downloadLocation" = dir_estimates),

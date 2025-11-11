@@ -935,7 +935,7 @@ sig_toplevel$normalization <- sapply(sig_toplevel$avg_id, function(A) {
 })
 
 sig_toplevel$regression_method <- sapply(sig_toplevel$avg_id, function(A) {
-  for (reg in c("none", "edger", "lme", "dream")) {
+  for (reg in c("none", "edger", "lme", "combat")) {
     if (grepl(reg, A)) {
       if (reg == "edger") { return("edgeR") }
       if (reg == "lme") { return("LME") }

@@ -23,9 +23,7 @@ github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Ste
 # Processed bulk datasets
 for (dataset in names(provenance)) {
   # Each dataset has multiple RDS files, one per tissue
-  all_rds <- list.files(dir_input,
-                        pattern = str_glue("{dataset}_.*_se.rds"),
-                        full.names = TRUE)
+  all_rds <- list.files(dir_bulk, pattern = dataset, full.names = TRUE)
 
   lapply(all_rds, UploadFile,
          parent_folder = bulk_folder,

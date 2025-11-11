@@ -34,7 +34,7 @@ bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
 # combination, even though the files are all the same.
 params_permute <- expand.grid(algorithm = "Baseline",
                               normalization = c("cpm", "tmm", "tpm"),
-                              regression_method = c("none", "edger", "lme", "dream"),
+                              regression_method = c("none", "edger", "lme", "combat"),
                               reference_input_type = c("signature"),
                               stringsAsFactors = FALSE)
 
