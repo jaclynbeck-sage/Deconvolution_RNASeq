@@ -8,7 +8,7 @@ library(reshape2)
 library(patchwork)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
-source(file.path("functions", "Step15_Analysis_HelperFunctions.R"))
+source(file.path("functions", "Analysis_HelperFunctions.R"))
 source(file.path("functions", "Step15_Plotting_HelperFunctions.R"))
 
 options(scipen = 999)

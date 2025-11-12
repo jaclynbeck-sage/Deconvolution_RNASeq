@@ -4,10 +4,10 @@ source("Filenames.R")
 source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
 # Deconvolution WG Synapse space
-errors_folder <- Folder("14_best_error_calculations", parent = "syn68238853")
+errors_folder <- Folder("13_best_error_calculations", parent = "syn68238853")
 errors_folder <- synStore(errors_folder, forceVersion = FALSE)
 
-github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step14_CalculateBestErrors.R"
+github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step13_CalculateBestErrors.R"
 
 # Loop over each data set and algorithm
 for (test_dataset in c("Mayo", "MSBB", "ROSMAP")) {

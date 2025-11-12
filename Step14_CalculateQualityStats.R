@@ -15,7 +15,7 @@ library(stringr)
 library(parallel)
 
 source(file.path("functions", "General_HelperFunctions.R"))
-source(file.path("functions", "Step15_Analysis_HelperFunctions.R"))
+source(file.path("functions", "Analysis_HelperFunctions.R"))
 
 granularities <- c("broad_class", "sub_class")
 bulk_datasets <- all_bulk_datasets()
@@ -28,21 +28,21 @@ algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "Music",
 
 # Find the top errors along each error metric ----------------------------------
 
-# Get the full set of all errors from Step 14. Subset to errors where the
+# Get the full set of all errors from Step 13. Subset to errors where the
 # signature used to calculate the error matches the reference data used to
 # generate the estimate, except for Baseline data which doesn't use reference
 # data. Keep only errors for individual tissues.
-best_errors_step14 <- Get_AllBestErrorsAsDf(bulk_datasets, granularities, n_cores) %>%
+best_errors_step13 <- Get_AllBestErrorsAsDf(bulk_datasets, granularities, n_cores) %>%
   subset(signature == reference_data_name | algorithm == "Baseline") %>%
   subset(tissue != "All")
 
-top3_by_tissue <- best_errors_step14 %>%
+top3_by_tissue <- best_errors_step13 %>%
   subset(algorithm != "Baseline") %>%
   Get_TopRanked(group_cols = c("tissue", "granularity"),
                 n_top = 3,
                 with_mean_rank = TRUE)
 
-top3_by_algorithm <- best_errors_step14 %>%
+top3_by_algorithm <- best_errors_step13 %>%
   subset(algorithm != "Baseline") %>%
   Get_TopRanked(group_cols = c("tissue", "granularity", "algorithm"),
                 n_top = 3,
@@ -59,8 +59,8 @@ group_cols <- c("tissue", Get_ParameterColumnNames())  %>%
 group_cols_toplevel <- setdiff(group_cols, "reference_data_name")
 
 top_errors <- list(
-  "by_reference" = Get_TopErrors(best_errors_step14, group_cols, n_cores, with_mean_rank = FALSE),
-  "by_algorithm" = Get_TopErrors(best_errors_step14, group_cols_toplevel, n_cores, with_mean_rank = FALSE),
+  "by_reference" = Get_TopErrors(best_errors_step13, group_cols, n_cores, with_mean_rank = FALSE),
+  "by_algorithm" = Get_TopErrors(best_errors_step13, group_cols_toplevel, n_cores, with_mean_rank = FALSE),
   "top3_by_tissue" = top3_by_tissue,
   "top3_by_algorithm" = top3_by_algorithm,
   "best_data_transform" = best_dt
@@ -369,9 +369,9 @@ baseline_bests <- top_errors$by_algorithm$errors %>%
                values_to = "baseline_value")
 
 # Sub class is missing some algorithms, this fills them in
-alg_info <- expand.grid(tissue = unique(best_errors_step14$tissue),
-                        algorithm = unique(best_errors_step14$algorithm),
-                        granularity = unique(best_errors_step14$granularity),
+alg_info <- expand.grid(tissue = unique(best_errors_step13$tissue),
+                        algorithm = unique(best_errors_step13$algorithm),
+                        granularity = unique(best_errors_step13$granularity),
                         error_metric = unique(baseline_bests$error_metric)) %>%
   subset(algorithm != "Baseline")
 
