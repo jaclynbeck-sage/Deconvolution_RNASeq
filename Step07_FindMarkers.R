@@ -17,8 +17,7 @@ marker_types_run <- c("dtangle", "seurat", "autogenes", "deseq2", "excluded_gene
 # marker finding can be run in parallel.
 do_parallel <- TRUE
 clust_type <- "FORK" # Use PSOCK for non-Unix systems
-dtangle_n_cores <- detectCores() - 1
-deseq2_n_cores <- detectCores() - 1
+n_cores <- detectCores() - 1
 
 # Which datasets to run on
 datasets <- all_singlecell_datasets()
@@ -31,7 +30,7 @@ granularities <- c("broad_class", "sub_class")
 
 if ("dtangle" %in% marker_types_run) {
   if (do_parallel) {
-    cl <- makeCluster(dtangle_n_cores, type = clust_type, outfile = "")
+    cl <- makeCluster(n_cores, type = clust_type, outfile = "")
   } else {
     cl <- NULL
   }
@@ -71,9 +70,9 @@ if ("autogenes" %in% marker_types_run) {
 if ("deseq2" %in% marker_types_run) {
   source(file.path("functions", "Step07d_FindMarkers_DESeq2.R"))
   if (!do_parallel) {
-    deseq2_n_cores <- 1
+    n_cores <- 1
   }
-  FindMarkers_DESeq2(datasets, granularities, deseq2_n_cores)
+  FindMarkers_DESeq2(datasets, granularities, n_cores)
 }
 
 
@@ -103,11 +102,18 @@ for (dataset in datasets) {
 
   for (file in marker_files) {
     markers <- readRDS(file)
-    markers$filtered_for_dx <- lapply(markers$filtered, setdiff, exclusions)
+    markers$filtered_for_dx <- list(
+      all = lapply(markers$all, setdiff, exclusions),
+      filtered = lapply(markers$filtered, setdiff, exclusions)
+    )
+
     saveRDS(markers, file)
 
-    loss <- (1 - sum(lengths(markers$filtered_for_dx)) / sum(lengths(markers$filtered))) * 100
-    print(str_glue("{basename(file)}: removed {round(loss)}% of total markers"))
+    loss1 <- (1 - sum(lengths(markers$filtered_for_dx$all)) / sum(lengths(markers$all))) * 100
+    loss2 <- (1 - sum(lengths(markers$filtered_for_dx$filtered)) / sum(lengths(markers$filtered))) * 100
+    print(str_glue("{basename(file)}: removed {round(loss1)}% of ",
+                   "non-logfc-filtered and {round(loss2)}% of logfc-filtered ",
+                   "markers."))
   }
 }
 
@@ -121,28 +127,42 @@ params_loop <- expand_grid(test_data_name = all_bulk_datasets(),
                            normalization = c("cpm", "tmm", "tpm"),
                            regression_method = c("none", "edger", "lme", "combat"))
 
-for (granularity in granularities) {
-  for (dataset in datasets) {
-    marker_files <- list.files(path = dir_markers,
-                               pattern = str_glue("{dataset}_{granularity}"),
-                               full.names = TRUE)
+for (dataset in datasets) {
+  marker_files <- list.files(path = dir_markers,
+                             pattern = dataset,
+                             full.names = TRUE)
 
-    for (file in marker_files) {
-      markers <- readRDS(file)
-      markers$ordered_by_correlation <- list()
+  if (do_parallel) {
+    cl <- makeCluster(n_cores, type = clust_type, outfile = "")
+  } else {
+    cl <- NULL
+  }
 
-      for (P in 1:nrow(params_loop)) {
-        params <- params_loop[P, ]
-        data <- Load_BulkData(params$test_data_name, params$normalization,
-                              params$regression_method)
-        markers_ordered <- OrderMarkers_ByCorrelation(markers$filtered,
-                                                      as.matrix(assay(data, "counts")))
+  parallel::parLapply(cl, marker_files, function(file) {
+    markers <- readRDS(file)
+    markers$ordered_by_correlation <- list(all = list(),
+                                           filtered = list())
 
-        markers$ordered_by_correlation[[paste(params, collapse = "_")]] <- markers_ordered
-      }
+    for (P in 1:nrow(params_loop)) {
+      params <- params_loop[P, ]
+      data <- Load_BulkData(params$test_data_name, params$normalization,
+                            params$regression_method)
+      data <- as.matrix(assay(data, "counts"))
+      marker_name <- paste(params, collapse = "_")
+      cat(marker_name, "\n")
 
-      print(file)
-      saveRDS(markers, file)
+      markers_all_ordered <- OrderMarkers_ByCorrelation(markers$all, data)
+      markers_filt_ordered <- OrderMarkers_ByCorrelation(markers$filtered, data)
+
+      markers$ordered_by_correlation$all[[marker_name]] <- markers_all_ordered
+      markers$ordered_by_correlation$filtered[[marker_name]] <- markers_filt_ordered
     }
+
+    print(file)
+    saveRDS(markers, file)
+  })
+
+  if (do_parallel) {
+    stopCluster(cl)
   }
 }
