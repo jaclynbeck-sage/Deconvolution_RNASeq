@@ -1,4 +1,4 @@
-# Configuration for running DeconRNASeq in Step09
+# Configuration for running DeconRNASeq in Step08
 # Variables that need to be defined are:
 #   normalizations - vector with any combination of 'counts', 'cpm', 'tmm',
 #                    'tpm', 'log_cpm', 'log_tmm', or 'log_tpm', depending on
@@ -38,7 +38,7 @@ alg_config <- list(
   additional_args = expand_grid(use_scale = c(TRUE, FALSE)),
 
   # Define the function that runs each param set
-  inner_loop_file = file.path("functions", "Step09_SignatureBased_InnerLoop.R"),
+  inner_loop_file = file.path("functions", "Step08_SignatureBased_InnerLoop.R"),
   inner_loop_func = "SignatureBased_InnerLoop", # must be a string
   required_libraries = c("DeconRNASeq"),
 

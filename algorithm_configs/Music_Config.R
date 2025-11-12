@@ -1,4 +1,4 @@
-# Configuration for running MuSiC in Step09
+# Configuration for running MuSiC in Step08
 # Variables that need to be defined are:
 #   normalizations - vector with any combination of 'counts', 'cpm', 'tmm',
 #                    'tpm', 'log_cpm', 'log_tmm', or 'log_tpm', depending on
@@ -49,7 +49,7 @@ alg_config <- list(
                                 normalize = c(TRUE, FALSE)),
 
   # Define the function that runs each param set
-  inner_loop_file = file.path("functions", "Step09_Music_InnerLoop.R"),
+  inner_loop_file = file.path("functions", "Step08_Music_InnerLoop.R"),
   inner_loop_func = "Music_InnerLoop", # must be a string
   required_libraries = c("MuSiC", "SingleCellExperiment"),
 

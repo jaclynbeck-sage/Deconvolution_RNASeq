@@ -10,7 +10,7 @@ cx_folder <- synStore(cx_folder, forceVersion = FALSE)
 sc_df <- GetChildrenAsDf("syn58807549")
 bulk_df <- GetChildrenAsDf("syn58841972")
 
-github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step09_RunDeconvolutionAlgorithms.R"
+github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step08_RunDeconvolutionAlgorithms.R"
 ref_datasets <- unique(sc_df$dataset)
 bulk_datasets <- unique(bulk_df$dataset)
 

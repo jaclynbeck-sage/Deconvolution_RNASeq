@@ -4,7 +4,7 @@ library(tidyr)
 library(stringr)
 
 source(file.path("functions", "General_HelperFunctions.R"))
-source(file.path("functions", "Step09_Deconvolution_HelperFunctions.R"))
+source(file.path("functions", "Step08_Deconvolution_HelperFunctions.R"))
 
 # Parameter setup --------------------------------------------------------------
 
@@ -104,7 +104,7 @@ for (P in 1:nrow(params_loop1)) {
 
   results_list <- parLapply(cl, 1:nrow(params_loop2), function(R) {
     source(file.path("functions", "General_HelperFunctions.R"))
-    source(file.path("functions", "Step09_ArgumentChecking_HelperFunctions.R"))
+    source(file.path("functions", "Step08_ArgumentChecking_HelperFunctions.R"))
     source(alg_config$inner_loop_file) # defined in the config
 
     params <- cbind(params_loop1[P, ], params_loop2[R, ])

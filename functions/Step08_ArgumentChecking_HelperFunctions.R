@@ -1,4 +1,4 @@
-# Helper functions for checking arguments during step 9. These exist to avoid
+# Helper functions for checking arguments during step 08. These exist to avoid
 # copy/pasting the same checks and error messages across all the algorithm files.
 
 # For readability

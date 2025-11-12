@@ -1,0 +1,22 @@
+default:
+  normalizations: ["cpm", "tpm"] # CibersortX works on linear-scale data
+
+  # CibersortX can use a signature matrix it creates, or the signature created by this pipeline
+  reference_input_types: ["cibersortx", "signature"]
+
+  # For params_loop2 (algorithm-specific arguments) in main function
+  # Note: If the input type is "cibersortx", only filter_level = 0 will be used.
+  params_markers_function: "CreateParams_FilterableSignature"
+  params_markers:
+    filter_levels: [0, 3] # All other args are default
+
+  # Use rmbatchSmode to correct signature or not
+  additional_args: !expr expand_grid(batch_correct = c(TRUE, FALSE))
+
+  # Define the function that runs each param set
+  inner_loop_file: !expr file.path("functions", "Step08_CibersortX_InnerLoop.R")
+  inner_loop_func: "CibersortX_InnerLoop" # must be a string
+  required_libraries: "omnideconv"
+
+  # How many cores to use in parallel
+  cores: 1 # Only use more than one core if batch-adjusted signature matrices are pre-computed

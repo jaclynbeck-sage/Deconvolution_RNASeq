@@ -90,11 +90,11 @@ qstats_all <- lapply(1:nrow(iter_vars), function(iter_row) {
   algorithm <- iter_vars$algorithm[iter_row]
   granularity <- iter_vars$granularity[iter_row]
 
-  est_files_step09 <- list.files(file.path(dir_estimates, bulk_dataset, algorithm),
+  est_files_step08 <- list.files(file.path(dir_estimates, bulk_dataset, algorithm),
                                  pattern = granularity,
                                  recursive = TRUE, full.names = TRUE)
 
-  if (length(est_files_step09) == 0) {
+  if (length(est_files_step08) == 0) {
     message(str_glue("No data found for {bulk_dataset} / {algorithm} / ",
                      "{granularity}. Skipping..."))
     next
@@ -106,14 +106,14 @@ qstats_all <- lapply(1:nrow(iter_vars), function(iter_row) {
 
   # Results from this loop will be combined at the end to calculate top-level
   # stats.
-  file_qstats <- mclapply(est_files_step09, function(est_f) {
+  file_qstats <- mclapply(est_files_step08, function(est_f) {
 
     ## Load all error and estimate files related to est_f --------------------
     file_id <- str_replace(basename(est_f), "estimates_", "") %>%
       str_replace(".rds", "")
 
-    est_list_step09 <- readRDS(est_f)
-    file_params <- FileParams_FromParams(est_list_step09[[1]]$params)
+    est_list_step08 <- readRDS(est_f)
+    file_params <- FileParams_FromParams(est_list_step08[[1]]$params)
 
     err_f_step11 <- Find_ErrorFiles(bulk_dataset, algorithm, file_id)
     best_est_f_step13 <- Find_BestEstimateFiles(bulk_dataset, algorithm, file_id)
@@ -126,7 +126,7 @@ qstats_all <- lapply(1:nrow(iter_vars), function(iter_row) {
                      "{basename(est_f)}. Returning abbreviated stats data."))
 
       n_valid_results <- data.frame(n_valid = 0,
-                                    n_possible = length(est_list_step09))
+                                    n_possible = length(est_list_step08))
       n_valid_results <- cbind(n_valid_results, file_params)
 
       return(list("n_valid_results" = n_valid_results))
@@ -141,7 +141,7 @@ qstats_all <- lapply(1:nrow(iter_vars), function(iter_row) {
 
     # Must be calculated before subsetting to valid results
     n_valid_results <- data.frame(n_valid = length(err_list_step11$param_ids),
-                                  n_possible = length(est_list_step09))
+                                  n_possible = length(est_list_step08))
     n_valid_results <- cbind(n_valid_results, file_params)
 
 

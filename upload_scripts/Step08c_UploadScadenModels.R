@@ -3,7 +3,7 @@ library(dplyr)
 source("Filenames.R")
 source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
-models_folder <- Folder("09_algorithm_models", parent = "syn68238853")
+models_folder <- Folder("08_algorithm_models", parent = "syn68238853")
 models_folder <- synStore(models_folder, forceVersion = FALSE)
 
 # Deconvolution WG Synapse space
@@ -18,7 +18,7 @@ provenance_df <- rbind(sc_df, bulk_df)
 # Loop over each model and upload
 models <- list.files(dir_scaden_models, pattern = ".*_.*", full.names = TRUE)
 
-github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step09_RunDeconvolutionAlgorithms.R"
+github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step08_RunDeconvolutionAlgorithms.R"
 
 for (model_folder_name in models) {
   datasets <- str_split(basename(model_folder_name), "_", simplify = TRUE)[1:2]

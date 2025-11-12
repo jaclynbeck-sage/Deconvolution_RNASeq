@@ -6,7 +6,7 @@ source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 # TODO add markers to provenance?
 
 # Deconvolution WG Synapse space
-output_folder <- Folder("09_estimates", parent = "syn68238853")
+output_folder <- Folder("08_estimates", parent = "syn68238853")
 output_folder <- synStore(output_folder, forceVersion = FALSE)
 
 # Get provenance IDs
@@ -53,7 +53,7 @@ for (bulk in test_datasets) {
                    provenance = list("used" = c(), "executed" = github))
       }
     } else {
-      github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step09_RunDeconvolutionAlgorithms.R"
+      github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step08_RunDeconvolutionAlgorithms.R"
 
       for (ref in reference_datasets) {
         files <- grep(ref, files_alg, value = TRUE)

@@ -5,12 +5,12 @@ library(tidyr)
 library(stringr)
 
 source(file.path("functions", "General_HelperFunctions.R"))
-source(file.path("functions", "Step09_Deconvolution_HelperFunctions.R"))
+source(file.path("functions", "Step08_Deconvolution_HelperFunctions.R"))
 
 # Parameter setup --------------------------------------------------------------
 
 # options: "CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "HSPE", "Music", "Scaden"
-# Note that if an algorithm was run in Step09 with "ct_ad_only" = FALSE, all this
+# Note that if an algorithm was run in Step08 with "ct_ad_only" = FALSE, all this
 # script will do is subset the existing output to the results from the top
 # parameter sets and save those as a new file.
 algorithm <- "CibersortX"
@@ -96,7 +96,7 @@ for (P in 1:nrow(params_loop1)) {
     data$bulk_metadata <- bulk_metadata
   }
 
-  # By the time we run this script, we have already run Step09 and there may be
+  # By the time we run this script, we have already run Step08 and there may be
   # a saved estimates file containing results for all samples or CT/AD samples
   # only. If this is the case, we only need to re-run the algorithm on the
   # samples not in the file, and concatenate the results together, instead of
@@ -111,7 +111,7 @@ for (P in 1:nrow(params_loop1)) {
                                           file_params$regression_method)
 
   if (!is.null(prev_output)) {
-    message(str_glue("Found Step09 result for {top_params$file_id}"))
+    message(str_glue("Found Step08 result for {top_params$file_id}"))
   }
 
   ## Loop through algorithm-specific arguments ---------------------------------
@@ -121,7 +121,7 @@ for (P in 1:nrow(params_loop1)) {
 
   results_list <- foreach(R = 1:nrow(top_params$params), .packages = required_libraries) %dopar% {
     source(file.path("functions", "General_HelperFunctions.R"))
-    source(file.path("functions", "Step09_ArgumentChecking_HelperFunctions.R"))
+    source(file.path("functions", "Step08_ArgumentChecking_HelperFunctions.R"))
     source(alg_config$inner_loop_file) # defined in the config
 
     params <- top_params$params[R, ] %>%
@@ -138,7 +138,7 @@ for (P in 1:nrow(params_loop1)) {
 
     # If we've already run this script on this parameter set, the intermediate
     # file will have "best_estimates" at the end of the filename to differentiate
-    # it from Step09 results that have all estimate output.
+    # it from Step08 results that have all estimate output.
     prev_res <- Load_AlgorithmIntermediate(params)
     if (!is.null(prev_res)) {
       message(paste0("Using previously-run result for ",
@@ -149,13 +149,13 @@ for (P in 1:nrow(params_loop1)) {
 
     if (!is.null(prev_output)) {
       if (!(param_id %in% names(prev_output))) {
-        stop("Step09 results do not contain this parameter set.")
+        stop("Step08 results do not contain this parameter set.")
       }
 
       prev_res <- prev_output[[param_id]]
       gc()
 
-      message(paste("Found Step09 result containing", nrow(prev_res$estimates),
+      message(paste("Found Step08 result containing", nrow(prev_res$estimates),
                     "samples."))
 
       if ("test" %in% names(data)) {
