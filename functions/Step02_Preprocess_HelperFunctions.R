@@ -563,6 +563,7 @@ DownloadData_SEARef <- function(metadata_only = FALSE) {
   files[["counts"]] <- file_searef_h5
 
   if (!file.exists(files[["counts"]]) & !metadata_only) { # Don't re-download, this file is large
+    url_searef_h5 <- config::get("step02_preprocess")$searef$url_searef_h5
     download.file(url_searef_h5, destfile = files[["counts"]], method = "curl")
   }
 

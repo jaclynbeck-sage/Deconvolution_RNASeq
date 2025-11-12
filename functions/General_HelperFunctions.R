@@ -218,43 +218,36 @@ CreateParams_FilterableSignature <- function(filter_levels = c(1, 2, 3),
 # purified cells.
 #
 # Arguments:
-#   singlecell_counts = matrix of counts (rows = genes, cols = cells)
-#   samples = vector of sample IDs that is the same length as
-#             ncol(singlecell_counts). Must either be a factor (contains
-#             multiple sample IDs) or a vector with the same sample ID repeated
-#             (for all cells belonging to a single sample).
-#   celltypes = vector of cell type assignments that is the same length as
-#               ncol(singlecell_counts). Must be a factor.
+#   sce = a SingleCellExperiment, which must have "sample", "broad_class", and
+#         "sub_class" columns in its metadata.
+#   granularity = either "broad_class" or "sub_class"
 #
 # Returns:
 #   matrix of percentages (rows = samples, cols = cell types), whose rows sum
 #   to 1.
-# TODO use scuttle aggregation instead
-CalculatePercentRNA <- function(singlecell_counts, samples, celltypes) {
-  # Sum all counts per gene for each sample/celltype combination
-  y <- model.matrix(~ 0 + samples:celltypes)
-  count_sums <- singlecell_counts %*% y
+CalculatePercentRNA <- function(sce, granularity) {
+  sce$celltype <- colData(sce)[, granularity]
+  aggr <- scuttle::aggregateAcrossCells(sce,
+                                        ids = paste(sce$sample, sce$celltype),
+                                        statistics = "sum")
 
-  # Sum over all genes for each sample/celltype combination
-  count_sums <- colSums(count_sums)
+  count_sums <- colSums(counts(aggr))
+  count_sums <- data.frame(ids = names(count_sums), counts = as.numeric(count_sums))
 
-  # names are of the format "samples<sample>:celltypes<celltype>", split
-  # them apart by the ":" into a data frame w/ 2 columns
-  col_info <- str_split(names(count_sums), ":", simplify = TRUE)
-  sample_list <- unique(col_info[, 1])
+  pcts <- merge(as.data.frame(colData(aggr)), count_sums) |>
+    group_by(sample) |>
+    mutate(pct = counts / sum(counts)) |>
+    select(sample, celltype, pct) |>
+    tidyr::pivot_wider(id_cols = "sample",
+                       names_from = "celltype",
+                       values_from = "pct") |>
+    tibble::column_to_rownames("sample") |>
+    as.matrix()
 
-  pctRNA <- sapply(sample_list, function(samp) {
-    # All entries for this sample = 1 entry per cell type
-    cols <- which(col_info[, 1] == samp)
-    pct <- count_sums[cols] / sum(count_sums[cols])
+  # Fill in 0's for any samples that didn't have a particular cell type
+  pcts[is.na(pcts)] <- 0
 
-    # Remove extra labels added by model.matrix
-    names(pct) <- str_replace(names(pct), "samples.*celltypes", "")
-    return(pct)
-  })
-
-  colnames(pctRNA) <- str_replace(colnames(pctRNA), "samples", "")
-  return(t(pctRNA))
+  return(pcts)
 }
 
 
