@@ -57,12 +57,16 @@ for (dataset in datasets) {
                                         ids = paste(sce$sample, sce$celltype),
                                         statistics = "sum")
 
-    colData(pb) <- colData(pb)[, c("ids", "sample", "diagnosis", "celltype", "ncells")]
+    # Reassign "sample" to be the new ID, but preserve original sample values
+    pb$sample_orig <- pb$sample
+    pb$sample <- pb$ids
+
+    colData(pb) <- colData(pb)[, c("sample", "sample_orig", "diagnosis", "celltype", "ncells")]
 
     pb$tmm_factors <- edgeR::normLibSizes(counts(pb), method = "TMMwsp")
 
     # There will be a single "1" value per row, no need to divide for percentages
-    propCells <- table(pb$ids, pb$celltype)
+    propCells <- table(pb$sample, pb$celltype)
 
     # Since these are pure samples, pctRNA and propCells = 1 where the cell type
     # matches the pure sample. pctRNA is therefore identical to propCells.

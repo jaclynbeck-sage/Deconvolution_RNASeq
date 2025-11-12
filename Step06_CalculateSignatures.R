@@ -20,13 +20,14 @@ for (dataset in datasets) {
   # Calculate a signature for each cell type. This matrix includes all genes in
   # the data set and isn't filtered at this point.
   signatures <- lapply(c("cpm", "tmm"), function(normalization) {
-    sig_broad <- CalculateSignature(dataset, "broad_class",
-                                    normalization,
-                                    geom_mean = FALSE)
-    sig_sub <- CalculateSignature(dataset, "sub_class",
-                                  normalization,
-                                  geom_mean = FALSE)
-    return(list("broad_class" = sig_broad, "sub_class" = sig_sub))
+    pb <- Load_PseudobulkPureSamples(dataset, "broad_class", normalization)
+    sig_broad <- scuttle::summarizeAssayByGroup(pb, ids = pb$celltype, statistics = "mean")
+
+    pb <- Load_PseudobulkPureSamples(dataset, "sub_class", normalization)
+    sig_sub <- scuttle::summarizeAssayByGroup(pb, ids = pb$celltype, statistics = "mean")
+
+    return(list("broad_class" = assay(sig_broad, "mean"),
+                "sub_class" = assay(sig_sub, "mean")))
   })
 
   names(signatures) <- c("cpm", "tmm")

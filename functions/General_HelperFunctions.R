@@ -274,77 +274,30 @@ CalculatePercentRNA <- function(sce, granularity) {
 CalculateA <- function(dataset, granularity) {
   pb <- Load_PseudobulkPureSamples(dataset, granularity, normalization = "counts")
 
-  pb_counts <- assay(pb, "counts")
-  count_sums <- colSums(pb_counts)
+  count_sums <- colSums(assay(pb, "counts"))
+  count_sums <- data.frame(sample = names(count_sums), count_sums = count_sums)
 
-  samples <- str_replace(names(count_sums), ".*_", "")
+  A <- merge(as.data.frame(colData(pb)), count_sums) |>
+    group_by(sample_orig) |>
+    mutate(
+      # sum of counts for a specific cell type / number of cells of that cell type
+      # gives average library size
+      avg_lib_size = count_sums / ncells,
+      # Normalize average library size across each sample so
+      # sum(lib_size of every cell type) for each sample = 1
+      norm_lib_size = avg_lib_size / sum(avg_lib_size)
+    ) |>
+    select(sample_orig, celltype, norm_lib_size) |>
+    # Make a sample x celltype matrix
+    tidyr::pivot_wider(id_cols = sample_orig,
+                       names_from = "celltype",
+                       values_from = "norm_lib_size") |>
+    tibble::column_to_rownames("sample_orig") |>
+    # Mean library size for each cell type across all samples, ignoring NAs
+    # where a sample doesn't have that cell type.
+    colMeans(na.rm = TRUE)
 
-  # For each sample
-  A_s <- sapply(unique(samples), function(samp) {
-    cols <- grepl(samp, names(count_sums))
-
-    # Average library size = sum over all genes for each sample/celltype
-    # divided by number of cells for that sample/celltype
-    a_s <- count_sums[cols] / pb$n_cells[cols]
-    names(a_s) <- pb$celltype[cols]
-
-    # Some samples don't have all cell types
-    missing <- setdiff(levels(pb$celltype), names(a_s))
-    a_s[missing] <- NA
-
-    a_s <- a_s[levels(pb$celltype)]
-
-    return(a_s)
-  })
-
-  # Normalize each sample row to sum to 1
-  A_s <- t(sweep(A_s, 2, colSums(A_s, na.rm = TRUE), "/"))
-
-  # Take the means but exclude entries for samples who don't have a certain cell type
-  A_s[A_s == 0] <- NA
-  A <- colMeans(A_s, na.rm = TRUE)
   A <- A / sum(A) # Enforce sum to 1
-}
-
-
-# CalculateSignature: Creates a cell-type-specific "signature" matrix that
-# describes the expected count of each gene for each cell type.
-#
-# Uses pseudobulk pure samples, where each sample is the sum of all raw counts
-# of a specific cell type from a specific donor. The pseudobulk counts are
-# normalized to CPM, and the CPM values of each gene for each cell type are
-# averaged together.
-#
-# Arguments:
-#   dataset = the name of the dataset to load
-#   granularity = either "broad_class" or "sub_class"
-#   normalization = either "cpm" or "tmm", for whether to use pure CPM or
-#                   normalize using tmm factors
-#   geom_mean = whether to take the geometric mean instead of the arithmetic mean
-#
-# Returns:
-#   matrix of average CPMs for each gene, for each cell type (rows = genes,
-#   columns = cell types)
-CalculateSignature <- function(dataset, granularity, normalization, geom_mean = FALSE) {
-  pb <- Load_PseudobulkPureSamples(dataset, granularity, normalization)
-
-  pb_cpm <- assay(pb, "counts")
-
-  # Get the mean over all samples, for each gene and cell type
-  sig <- sapply(levels(pb$celltype), function(ct) {
-    cols <- which(pb$celltype == ct)
-    if (geom_mean) { # Doesn't give CPM-like values
-      log_means <- rowMeans(log(pb_cpm[, cols] + 1), na.rm = TRUE)
-      cpm_means <- exp(log_means) - 1
-      cpm_means[cpm_means < 0] <- 0
-
-    } else {
-      cpm_means <- rowMeans(pb_cpm[, cols], na.rm = TRUE)
-    }
-    return(cpm_means)
-  })
-
-  return(sig)
 }
 
 
