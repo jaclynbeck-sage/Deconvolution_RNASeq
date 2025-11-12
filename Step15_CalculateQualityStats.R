@@ -116,12 +116,12 @@ qstats_all <- lapply(1:nrow(iter_vars), function(iter_row) {
     file_params <- FileParams_FromParams(est_list_step08[[1]]$params)
 
     err_f_step10 <- Find_ErrorFiles(bulk_dataset, algorithm, file_id)
-    best_est_f_step13 <- Find_BestEstimateFiles(bulk_dataset, algorithm, file_id)
+    best_est_f_step12 <- Find_BestEstimateFiles(bulk_dataset, algorithm, file_id)
 
     # If there weren't any valid results for this file, the error file won't
     # exist. Create an abbreviated quality stats file for the sole purpose of
     # keeping track of number of failures.
-    if (length(err_f_step10) != 1 || length(best_est_f_step13) != 1) {
+    if (length(err_f_step10) != 1 || length(best_est_f_step12) != 1) {
       print(str_glue("No valid error or best estimates files found for ",
                      "{basename(est_f)}. Returning abbreviated stats data."))
 
@@ -133,11 +133,11 @@ qstats_all <- lapply(1:nrow(iter_vars), function(iter_row) {
     }
 
     err_list_step10 <- readRDS(err_f_step10)
-    best_est_list_step13 <- readRDS(best_est_f_step13)
+    best_est_list_step12 <- readRDS(best_est_f_step12)
 
 
     ## Valid vs possible results ---------------------------------------------
-    # Using all errors from step 11
+    # Using all errors from step 10
 
     # Must be calculated before subsetting to valid results
     n_valid_results <- data.frame(n_valid = length(err_list_step10$param_ids),
@@ -147,7 +147,7 @@ qstats_all <- lapply(1:nrow(iter_vars), function(iter_row) {
 
     ## Subset to results from top errors -------------------------------------
 
-    best_param_ids <- intersect(names(best_est_list_step13),
+    best_param_ids <- intersect(names(best_est_list_step12),
                                 top_errors$param_ids)
 
     if (length(best_param_ids) == 0) {
@@ -156,20 +156,20 @@ qstats_all <- lapply(1:nrow(iter_vars), function(iter_row) {
       return(list("n_valid_results" = n_valid_results))
     }
 
-    best_params <- List_to_DF(best_est_list_step13, "params") %>%
+    best_params <- List_to_DF(best_est_list_step12, "params") %>%
       mutate(param_id = rownames(.)) %>%
       subset(param_id %in% best_param_ids) %>%
       tibble::remove_rownames()
 
-    est_pcts_step13 <- Subset_BestEstimates(best_param_ids,
-                                            best_est_list_step13,
+    est_pcts_step12 <- Subset_BestEstimates(best_param_ids,
+                                            best_est_list_step12,
                                             combined_metadata)
 
 
     ## Number of 0 guesses for each cell type --------------------------------
     # For best estimates
 
-    num_zeros <- est_pcts_step13 %>%
+    num_zeros <- est_pcts_step12 %>%
       group_by(tissue, param_id) %>%
       summarize(across(where(is.numeric), ~ sum(.x == 0)),
                 .groups = "drop") %>%
@@ -177,7 +177,7 @@ qstats_all <- lapply(1:nrow(iter_vars), function(iter_row) {
 
     return(list("n_valid_results" = n_valid_results,
                 "n_zero_guesses" = num_zeros,
-                "best_estimates" = est_pcts_step13,
+                "best_estimates" = est_pcts_step12,
                 "best_params" = best_params))
   }, mc.cores = n_cores)
 

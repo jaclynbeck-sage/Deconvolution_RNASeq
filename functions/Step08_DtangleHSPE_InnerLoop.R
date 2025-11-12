@@ -48,7 +48,7 @@ DtangleHSPE_InnerLoop <- function(data, params) {
                          n_markers = lengths(markers), # pass the actual number of markers we have after filtering
                          markers = markers,
                          loss_fn = "L2", # 'L2' usually converges faster than 'var' with nearly identical results
-                         seed = 12345,
+                         seed = sageRNAUtils::string_to_seed(paste(params, collapse = " ")),
                          verbose = TRUE)
 
     # Get rid of "diag" (index 5), which is huge and unneeded

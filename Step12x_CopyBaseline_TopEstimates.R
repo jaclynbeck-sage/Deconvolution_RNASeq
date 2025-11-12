@@ -1,5 +1,5 @@
 # This script copies the top-performing Baseline estimates into the top
-# estimates directory, as if they were run through step 13. We don't run step 13
+# estimates directory, as if they were run through step 12. We don't run step 12
 # on Baseline estimates directly because we don't use a Baseline config file
 # or an inner loop script on Baseline data.
 library(dplyr)

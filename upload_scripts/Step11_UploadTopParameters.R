@@ -4,12 +4,12 @@ source("Filenames.R")
 source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
 # Deconvolution WG Synapse space
-top_params_folder <- Folder("12_top_parameters", parent = "syn68238853")
+top_params_folder <- Folder("11_top_parameters", parent = "syn68238853")
 top_params_folder <- synStore(top_params_folder, forceVersion = FALSE)
 
 # Provenance TODO
 
-github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step12_Get_TopParamSets.R"
+github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step11_Get_TopParamSets.R"
 
 # Loop over each data set and algorithm
 for (test_dataset in c("Mayo", "MSBB", "ROSMAP")) {

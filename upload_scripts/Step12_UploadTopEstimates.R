@@ -6,7 +6,7 @@ source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 # TODO provenance
 
 # Deconvolution WG Synapse space
-output_folder <- Folder("13_top_estimates", parent = "syn68238853")
+output_folder <- Folder("12_top_estimates", parent = "syn68238853")
 output_folder <- synStore(output_folder, forceVersion = FALSE)
 
 algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "HSPE",
@@ -27,7 +27,7 @@ for (bulk in test_datasets) {
 
     files_alg <- list.files(file.path(dir_bulk, alg), full.names = TRUE)
 
-    github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step13_RunDeconvolution_TopParameters.R"
+    github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step12_RunDeconvolution_TopParameters.R"
 
     for (filename in files_alg) {
       UploadFile(filename,

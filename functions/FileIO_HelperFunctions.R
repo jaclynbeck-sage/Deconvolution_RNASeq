@@ -736,7 +736,7 @@ Load_ErrorIntermediate <- function(params) {
 }
 
 
-# Load_TopParams: loads a top parameters file as calculated in Step 12.
+# Load_TopParams: loads a top parameters file as calculated in Step 11.
 #
 # Arguments:
 #   params = a named vector or single-row dataframe with the parameters used to
