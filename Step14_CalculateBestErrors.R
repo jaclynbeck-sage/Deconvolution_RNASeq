@@ -2,7 +2,7 @@
 # (correlation, rMSE, and mAPE) between [signature * estimated_percents] and the
 # actual bulk data, for each estimate in the file. Estimates with too many zero
 # values for major cell types are discarded. This script is nearly identical to
-# Step11_CalculateErrors.R but has been copied here with minor edits to make the
+# Step10_CalculateErrors.R but has been copied here with minor edits to make the
 # pipeline steps clearer.
 library(Matrix)
 library(dplyr)
@@ -12,7 +12,7 @@ library(foreach)
 library(doParallel)
 
 source(file.path("functions", "General_HelperFunctions.R"))
-source(file.path("functions", "Step11_Error_HelperFunctions.R"))
+source(file.path("functions", "Step10_Error_HelperFunctions.R"))
 
 granularity <- "broad_class"
 bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
@@ -108,7 +108,7 @@ for (bulk_dataset in bulk_datasets) {
 
       error_list <- foreach(deconv_result = deconv_list) %dopar% {
         source(file.path("functions", "General_HelperFunctions.R"))
-        source(file.path("functions", "Step11_Error_HelperFunctions.R"))
+        source(file.path("functions", "Step10_Error_HelperFunctions.R"))
 
         param_id <- deconv_result$param_id
         params <- deconv_result$params %>% mutate(mode = "best_estimates")

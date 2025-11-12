@@ -186,7 +186,7 @@ for (P in 1:nrow(params_loop1)) {
     }
 
     # Call the algorithm-specific function to run it with this set of parameters
-    set.seed(12345)
+    set.seed(sageRNAUtils::string_to_seed(paste(params, collapse = " ")))
     inner_loop_func <- match.fun(alg_config$inner_loop_func)
 
     res <- inner_loop_func(data_filt, params)

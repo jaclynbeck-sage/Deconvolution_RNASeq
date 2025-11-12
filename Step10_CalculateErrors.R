@@ -9,7 +9,7 @@ library(purrr)
 library(parallel)
 
 source(file.path("functions", "General_HelperFunctions.R"))
-source(file.path("functions", "Step11_Error_HelperFunctions.R"))
+source(file.path("functions", "Step10_Error_HelperFunctions.R"))
 
 granularity <- "broad_class"
 bulk_datasets <- all_bulk_datasets()
@@ -106,7 +106,7 @@ for (bulk_dataset in bulk_datasets) {
 
       error_list <- parLapply(cl, deconv_list, function(deconv_result) {
         source(file.path("functions", "General_HelperFunctions.R"))
-        source(file.path("functions", "Step11_Error_HelperFunctions.R"))
+        source(file.path("functions", "Step10_Error_HelperFunctions.R"))
 
         param_id <- deconv_result$param_id
         params <- deconv_result$params

@@ -33,7 +33,7 @@ params_list_df <- do.call(rbind, params_list_df)
 params_list_df$name_base <- str_replace(unlist(params_list_df$name), "estimates_", "")
 params_list_df$name_base <- str_replace(params_list_df$name_base, ".rds", "")
 
-github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step11_CalculateErrors.R"
+github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step10_CalculateErrors.R"
 
 # Loop over each data set and algorithm
 for (test_dataset in c("Mayo", "MSBB", "ROSMAP")) { #unique(params_list_df$test_dataset)) {

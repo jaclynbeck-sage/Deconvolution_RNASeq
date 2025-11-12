@@ -40,7 +40,6 @@ params_permute <- expand.grid(algorithm = "Baseline",
 
 # Main loop --------------------------------------------------------------------
 
-set.seed(12345)
 for (granularity in c("broad_class", "sub_class")) {
   # Get which celltypes are present by looking at the metadata from the Cain
   # dataset, which was used to map cell type labels on to all other single cell
@@ -50,6 +49,8 @@ for (granularity in c("broad_class", "sub_class")) {
 
   # Loop over all 3 bulk datasets
   for (bulk_dataset in bulk_datasets) {
+    set.seed(sageRNAUtils::string_to_seed(paste(bulk_dataset, "Baseline")))
+
     se <- Load_BulkData(bulk_dataset, "counts", "none")
     samples <- colnames(se)
 

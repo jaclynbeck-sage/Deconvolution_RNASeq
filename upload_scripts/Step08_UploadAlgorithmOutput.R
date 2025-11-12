@@ -46,7 +46,7 @@ for (bulk in test_datasets) {
     files_alg <- list.files(file.path(dir_bulk, alg), full.names = TRUE)
 
     if (alg == "Baseline") {
-      github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step10_GenerateBaselineData.R"
+      github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step09_GenerateBaselineData.R"
       for (filename in files_alg) {
         UploadFile(filename,
                    parent_folder = alg_folder,

@@ -115,13 +115,13 @@ qstats_all <- lapply(1:nrow(iter_vars), function(iter_row) {
     est_list_step08 <- readRDS(est_f)
     file_params <- FileParams_FromParams(est_list_step08[[1]]$params)
 
-    err_f_step11 <- Find_ErrorFiles(bulk_dataset, algorithm, file_id)
+    err_f_step10 <- Find_ErrorFiles(bulk_dataset, algorithm, file_id)
     best_est_f_step13 <- Find_BestEstimateFiles(bulk_dataset, algorithm, file_id)
 
     # If there weren't any valid results for this file, the error file won't
     # exist. Create an abbreviated quality stats file for the sole purpose of
     # keeping track of number of failures.
-    if (length(err_f_step11) != 1 || length(best_est_f_step13) != 1) {
+    if (length(err_f_step10) != 1 || length(best_est_f_step13) != 1) {
       print(str_glue("No valid error or best estimates files found for ",
                      "{basename(est_f)}. Returning abbreviated stats data."))
 
@@ -132,7 +132,7 @@ qstats_all <- lapply(1:nrow(iter_vars), function(iter_row) {
       return(list("n_valid_results" = n_valid_results))
     }
 
-    err_list_step11 <- readRDS(err_f_step11)
+    err_list_step10 <- readRDS(err_f_step10)
     best_est_list_step13 <- readRDS(best_est_f_step13)
 
 
@@ -140,7 +140,7 @@ qstats_all <- lapply(1:nrow(iter_vars), function(iter_row) {
     # Using all errors from step 11
 
     # Must be calculated before subsetting to valid results
-    n_valid_results <- data.frame(n_valid = length(err_list_step11$param_ids),
+    n_valid_results <- data.frame(n_valid = length(err_list_step10$param_ids),
                                   n_possible = length(est_list_step08))
     n_valid_results <- cbind(n_valid_results, file_params)
 
