@@ -2,16 +2,23 @@ source("Filenames.R")
 source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
 # Deconvolution WG Synapse space
-input_folder <- Folder("04_single_cell", parent = "syn68238853")
+input_folder <- Folder(basename(dir_singlecell), parent = config::get("upload_synid"))
 input_folder <- synStore(input_folder, forceVersion = FALSE)
 
-provenance <- list("cain" = c("syn68239073.1", "syn68239068.1"),
-                   "lau" = c("syn68239080.1", "syn68239074.1"),
-                   "leng" = c("syn68239086.1", "syn68239081.1"),
-                   "mathys" = c("syn68239089.1", "syn68239087.1"),
-                   "seaRef" = c("syn68239090.1", url_searef_h5))
+cfg1 <- config::get("step02_preprocess")
+cfg2 <- config::get("step04_label_transfer")
 
-github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step04_TransferCellTypeLabels.R"
+cfg1$lau$geo_accession <- paste0("https://www.ncbi.nlm.nih.gov/geo/download/?acc=",
+                                 cfg1$lau$geo_accession)
+
+provenance <- list(
+  cain = c(unlist(cfg1$cain), cfg2$cain_annotations),
+  lau = c(unlist(cfg1$lau), cfg2$lau_annotations),
+  mathys = c(unlist(cfg1$mathys), cfg2$mathys_annotations),
+  seaRef = unlist(cfg1$searef) # no annotations for seaRef
+)
+
+github <- paste0(config::get("github_repo_url"), "Step04_TransferCellTypeLabels.R")
 
 # Processed single cell datasets
 for (dataset in names(provenance)) {
@@ -19,6 +26,6 @@ for (dataset in names(provenance)) {
   for (filename in files) {
     UploadFile(filename, input_folder,
                list("used" = c(provenance[[dataset]]),
-                    executed = github))
+                    "executed" = github))
   }
 }

@@ -2,7 +2,7 @@ source("Filenames.R")
 source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
 # Deconvolution WG Synapse space
-meta_folder <- Folder("01_metadata", parent = config::get("upload_synid"))
+meta_folder <- Folder(basename(dir_metadata), parent = config::get("upload_synid"))
 meta_folder <- synStore(meta_folder, forceVersion = FALSE)
 
 cfg <- config::get("step01_gene_metadata")
@@ -18,7 +18,7 @@ provenance <- list(
   ),
   "ihc" = cfg$git_ihc)
 
-github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step01_Preprocess_ExternalMetadata.R"
+github <- paste0(config::get("github_repo_url"), "Step01_Preprocess_ExternalMetadata.R")
 
 UploadFile(file_gene_list, meta_folder,
            list("used" = provenance$genes,

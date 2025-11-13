@@ -4,15 +4,20 @@ source("Filenames.R")
 source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
 # Deconvolution WG Synapse space
-markers_folder <- Folder("07_markers", parent = "syn68238853")
+markers_folder <- Folder(basename(dir_markers), parent = config::get("upload_synid"))
 markers_folder <- synStore(markers_folder, forceVersion = FALSE)
 
-meta_folder <- Folder("01_metadata", parent = "syn68238853")
+meta_folder <- Folder(basename(dir_metadata), parent = config::get("upload_synid"))
 meta_folder <- synStore(meta_folder, forceVersion = FALSE)
 
 # Get provenance IDs
-sce_df <- GetChildrenAsDf("syn58807549")
-pseudo_df <- GetChildrenAsDf("syn58808874")
+main_folders <- synGetChildren(config::get("upload_synid"))$asList()
+main_folders <- do.call(rbind, main_folders) |> as.data.frame()
+singlecell_folder <- main_folders$id[main_folders$name == basename(dir_singlecell)] |> unlist()
+pseudo_folder <- main_folders$id[main_folders$name == basename(dir_pseudobulk)] |> unlist()
+
+sce_df <- GetChildrenAsDf(singlecell_folder)
+pseudo_df <- GetChildrenAsDf(pseudo_folder)
 
 colnames(sce_df) <- c("sce_name", "sce_id", "dataset")
 
@@ -23,17 +28,17 @@ provenance_df <- merge(sce_df, pseudo_df, by = "dataset")
 
 datasets <- unique(provenance_df$dataset)
 
-github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step07_FindMarkers.R"
+github <- paste0(config::get("github_repo_url"), "Step07_FindMarkers.R")
 
-# Markers
 for (dset in datasets) {
+  # Marker files
   files <- list.files(dir_markers, pattern = dset, full.names = TRUE)
 
   for (filename in files) {
     broadfine <- if (grepl("broad", filename)) "broad_class" else "sub_class"
     provenance <- subset(provenance_df, dataset == dset & granularity == broadfine)
 
-    if (grepl("pseudobulk", filename)) {
+    if (grepl("deseq2", filename) || grepl("dtangle", filename)) {
       provenance <- provenance$pseudobulk_id
     } else {
       provenance <- provenance$sce_id
@@ -43,10 +48,8 @@ for (dset in datasets) {
                list("used" = provenance,
                     "executed" = github))
   }
-}
 
-# Excluded genes go in the metadata folder
-for (dset in datasets) {
+  # Excluded genes go in the metadata folder
   filename <- file.path(dir_metadata, str_glue("{dset}_excluded_genes.rds"))
   if (file.exists(filename)) {
     provenance <- sce_df$id[sce_df$dataset == dset]
@@ -56,4 +59,3 @@ for (dset in datasets) {
                     "executed" = github))
   }
 }
-

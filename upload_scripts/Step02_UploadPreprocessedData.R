@@ -2,7 +2,7 @@ source("Filenames.R")
 source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
 # Deconvolution WG Synapse space
-input_folder <- Folder("02_preprocessed", parent = config::get("upload_synid"))
+input_folder <- Folder(basename(dir_preprocessed), parent = config::get("upload_synid"))
 input_folder <- synStore(input_folder, forceVersion = FALSE)
 
 provenance <- config::get("step02_preprocess")
@@ -13,7 +13,7 @@ provenance$lau$geo_accession <- paste0("https://www.ncbi.nlm.nih.gov/geo/downloa
 provenance <- lapply(provenance, unlist)
 
 genes <- config::get("gene_metadata_synid")
-github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step02_Preprocess_RNASeqData.R"
+github <- paste0(config::get("github_repo_url"), "Step02_Preprocess_RNASeqData.R")
 
 # Processed single cell datasets
 for (dataset in names(provenance)) {

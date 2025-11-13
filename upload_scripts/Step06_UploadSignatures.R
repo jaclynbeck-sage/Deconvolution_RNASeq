@@ -2,12 +2,16 @@ source("Filenames.R")
 source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
 # Deconvolution WG Synapse space
-sig_folder <- Folder("06_signatures", parent = "syn68238853")
+sig_folder <- Folder(basename(dir_signatures), parent = config::get("upload_synid"))
 sig_folder <- synStore(sig_folder, forceVersion = FALSE)
 
-provenance <- GetChildrenAsDf("syn58807549")
+main_folders <- synGetChildren(config::get("upload_synid"))$asList()
+main_folders <- do.call(rbind, main_folders) |> as.data.frame()
+singlecell_folder <- main_folders$id[main_folders$name == basename(dir_singlecell)] |> unlist()
 
-github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step06_CalculateSignatures.R"
+provenance <- GetChildrenAsDf(singlecell_folder)
+
+github <- paste0(config::get("github_repo_url"), "Step06_CalculateSignatures.R")
 
 for (dataset in provenance$dataset) {
   files <- list.files(dir_signatures, pattern = dataset, full.names = TRUE)
