@@ -85,9 +85,9 @@ Load_CountsFile <- function(filename, normalization, regression_method = "none")
   # The remaining normalizations all need CPM, TPM, or TMM
 
   # TPM for bulk data only
-  if (grepl("tpm", normalization) & "exon_length" %in% colnames(rowData(se_obj))) {
+  if (grepl("tpm", normalization) & "gene_length" %in% colnames(rowData(se_obj))) {
     norm_counts <- scuttle::calculateTPM(se_obj,
-                                         lengths = rowData(se_obj)$exon_length)
+                                         lengths = rowData(se_obj)$gene_length)
   }
   # CPM for single cell, and for bulk if TPM is not specified
   else {
@@ -141,6 +141,11 @@ Load_CountsFile <- function(filename, normalization, regression_method = "none")
 Load_SingleCell <- function(dataset, granularity, normalization = "counts") {
   sc_file <- file.path(dir_singlecell, str_glue("{dataset}_sce.rds"))
 
+  # Single cell data doesn't use TPM normalization
+  if (grepl("tpm", normalization)) {
+    normalization <- str_replace(normalization, "tpm", "cpm")
+  }
+
   singlecell <- Load_CountsFile(sc_file, normalization, regression_method = "none")
   metadata <- colData(singlecell)
 
@@ -190,6 +195,11 @@ Save_SingleCell <- function(dataset, sce) {
 Load_PseudobulkPureSamples <- function(dataset, granularity, normalization = "counts") {
   pb_file <- str_glue("pseudobulk_{dataset}_puresamples_{granularity}.rds")
   pb_file <- file.path(dir_pseudobulk, pb_file)
+
+  # Pseudobulk data doesn't use TPM normalization
+  if (grepl("tpm", normalization)) {
+    normalization <- str_replace(normalization, "tpm", "cpm")
+  }
 
   pseudobulk <- Load_CountsFile(pb_file, normalization, regression_method = "none")
   return(pseudobulk)
