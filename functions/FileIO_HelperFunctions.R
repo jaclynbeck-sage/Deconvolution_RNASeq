@@ -858,10 +858,6 @@ Load_Markers <- function(dataset, granularity, marker_type,
 
   markers <- readRDS(file = marker_file)
 
-  if (any(lengths(markers$filtered) < 3)) {
-    return(NULL)
-  }
-
   return(markers)
 }
 

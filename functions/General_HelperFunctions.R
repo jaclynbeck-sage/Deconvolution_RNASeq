@@ -144,11 +144,15 @@ Load_AlgorithmInputData_FromParams <- function(params) {
 #   marker_order = "distance" or "correlation", whether markers should be
 #                  ordered by largest expression difference between cell types
 #                  or by correlation with other markers for the same cell type
+#   filter_ad_genes = whether to filter genes that change with AD from the set
+#                  of markers
 #
 # Returns:
 #   a tibble containing all possible valid combinations of the arguments
 CreateParams_MarkerTypes <- function(n_markers = NULL, marker_types = NULL,
-                                     marker_order = c("distance", "correlation")) {
+                                     marker_order = c("distance", "correlation"),
+                                     filter_logfc_genes = TRUE,
+                                     filter_ad_genes = FALSE) {
   # Default values for n_markers and marker_types if they are not defined
   if (is.null(n_markers)) {
     n_markers <- c(3, 5, 10, 20, 50, 100, 200, 500)
@@ -165,7 +169,9 @@ CreateParams_MarkerTypes <- function(n_markers = NULL, marker_types = NULL,
 
   params <- tidyr::expand_grid(n_markers = n_markers,
                                marker_types, # this is a data frame
-                               marker_order = marker_order)
+                               marker_order = marker_order,
+                               filter_logfc_genes = filter_logfc_genes,
+                               filter_ad_genes = filter_ad_genes)
 
   params <- params %>% distinct()
   return(params)
@@ -189,8 +195,11 @@ CreateParams_MarkerTypes <- function(n_markers = NULL, marker_types = NULL,
 CreateParams_FilterableSignature <- function(filter_levels = c(1, 2, 3),
                                              n_markers = NULL,
                                              marker_types = NULL,
-                                             marker_order = c("distance", "correlation")) {
-  params_tmp <- CreateParams_MarkerTypes(n_markers, marker_types, marker_order)
+                                             marker_order = c("distance", "correlation"),
+                                             filter_logfc_genes = TRUE,
+                                             filter_ad_genes = FALSE) {
+  params_tmp <- CreateParams_MarkerTypes(n_markers, marker_types, marker_order,
+                                         filter_logfc_genes, filter_ad_genes)
 
   params <- tidyr::expand_grid(filter_level = filter_levels,
                                params_tmp)
@@ -340,6 +349,12 @@ CalculateA <- function(dataset, granularity) {
 #                  expression difference between the cell type and all other
 #                  cell types) or correlation (prioritize markers with the
 #                  highest correlation to other markers for that cell type)
+#   filter_logfc_genes = if TRUE, use a filtered set of markers where each gene
+#                  has a >1 logfc (>0.25 for subclass) between the target cell
+#                  type and any other cell type. If FALSE, use all discovered
+#                  markers.
+#   filter_ad_genes = remove genes that change with AD in the reference data set
+#                  from the list of markers, if markers are being used.
 #   test_data_name = the name of the test data set. Only used if marker_order
 #                    is "correlation".
 #   normalization = the normalization strategy. Only used if marker_order is
@@ -351,9 +366,10 @@ CalculateA <- function(dataset, granularity) {
 #   signature matrix containing only the genes that pass the specified filters.
 #   rows = genes, columns = cell types.
 FilterSignature <- function(signature, filter_level = 1, reference_data_name = NULL,
-                            granularity = NULL, n_markers = 1.0,
+                            granularity = NULL, n_markers = 3,
                             marker_type = "dtangle", marker_subtype = "diff",
-                            marker_order = "distance", test_data_name = NULL,
+                            marker_order = "distance", filter_logfc_genes = TRUE,
+                            filter_ad_genes = FALSE, test_data_name = NULL,
                             normalization = NULL, regression_method = NULL) {
   # Filter for genes where at least one cell type expresses at > 1 cpm
   if (filter_level == 1) {
@@ -372,6 +388,8 @@ FilterSignature <- function(signature, filter_level = 1, reference_data_name = N
     markers <- FilterMarkers(reference_data_name, granularity, n_markers,
                              marker_type, marker_subtype, marker_order,
                              available_genes = rownames(signature),
+                             filter_logfc_genes = filter_logfc_genes,
+                             filter_ad_genes = filter_ad_genes,
                              test_data_name = test_data_name,
                              normalization = normalization,
                              regression_method = regression_method)
@@ -408,6 +426,8 @@ FilterSignature_FromParams <- function(signature, params) {
                          marker_type = params$marker_type,
                          marker_subtype = params$marker_subtype,
                          marker_order = params$marker_order,
+                         filter_logfc_genes = params$filter_logfc_genes,
+                         filter_ad_genes = params$filter_ad_genes,
                          test_data_name = params$test_data_name,
                          normalization = params$normalization,
                          regression_method = params$regression_method))
@@ -428,7 +448,8 @@ FilterSignature_FromParams <- function(signature, params) {
 #   a list where each item is a vector of marker genes for a given cell type
 FilterMarkers <- function(reference_data_name, granularity, n_markers,
                           marker_type, marker_subtype, marker_order,
-                          available_genes, test_data_name = NULL,
+                          available_genes, filter_logfc_genes = TRUE,
+                          filter_ad_genes = FALSE, test_data_name = NULL,
                           normalization = NULL, regression_method = NULL) {
   markers <- Load_Markers(reference_data_name, granularity, marker_type,
                           marker_subtype)
@@ -437,37 +458,38 @@ FilterMarkers <- function(reference_data_name, granularity, n_markers,
     return(NULL)
   }
 
+  marker_category <- ifelse(filter_logfc_genes, "filtered", "all")
+
   if (marker_order == "correlation") {
     data_name <- paste(test_data_name, normalization, regression_method,
                        sep = "_")
     data_name <- str_replace(data_name, "log_", "")
     data_name <- str_replace(data_name, "counts", "cpm")
 
-    markers <- markers$ordered_by_correlation[[data_name]]
+    markers_out <- markers$ordered_by_correlation[[marker_category]][[data_name]]
   } else {
-    markers <- markers$filtered
+    markers_out <- markers[[marker_category]]
   }
+
+  # Remove genes that change in AD for this data set if applicable
+  if (filter_ad_genes) {
+    markers_out <- lapply(markers_out, function(mkrs) {
+      setdiff(mkrs, markers$ad_gene_exclusions)
+    })
+  }
+
+  markers <- markers_out
 
   # Remove genes that don't exist in the data
   markers <- lapply(markers, function(X) {
     intersect(X, available_genes)
   })
 
-  # We can't use these markers if any cell type has < 3 markers after filtering
-  if (any(lengths(markers) < 3)) {
-    return(NULL)
-  }
-
   # Get the minimum of n_markers and the actual number of markers for each cell type
   n_markers <- sapply(lengths(markers), min, n_markers)
 
-  # Regardless of method, make sure there are at least 3 markers per cell type
-  # if possible
-  n_markers <- pmax(n_markers, 3) |> # At least 3
-    pmin(lengths(markers)) # But if there are less than 3 markers for a cell
-                           # type, use that number instead
-
-  if (any(n_markers == 0)) {
+  # We can't use these markers if any cell type has < 3 markers after filtering
+  if (any(n_markers < 3)) {
     return(NULL)
   }
 
@@ -490,7 +512,7 @@ FilterMarkers <- function(reference_data_name, granularity, n_markers,
 #                     and bulk data set.
 #   params = a named vector or one-row data frame with the parameters to use.
 #            Must contain variables with the same names as the arguments to
-#            Filter_Markers (except for "available_genes").
+#            FilterMarkers (except for "available_genes").
 #
 # Returns:
 #   a list where each item is a vector of marker genes for a given cell type
@@ -502,6 +524,8 @@ FilterMarkers_FromParams <- function(available_genes, params) {
                        marker_subtype = params$marker_subtype,
                        marker_order = params$marker_order,
                        available_genes = available_genes,
+                       filter_logfc_genes = params$filter_logfc_genes,
+                       filter_ad_genes = params$filter_ad_genes,
                        test_data_name = params$test_data_name,
                        normalization = params$normalization,
                        regression_method = params$regression_method))

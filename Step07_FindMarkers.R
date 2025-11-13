@@ -102,15 +102,14 @@ for (dataset in datasets) {
 
   for (file in marker_files) {
     markers <- readRDS(file)
-    markers$filtered_for_dx <- list(
-      all = lapply(markers$all, setdiff, exclusions),
-      filtered = lapply(markers$filtered, setdiff, exclusions)
-    )
+    markers$ad_gene_exclusions <- exclusions
 
     saveRDS(markers, file)
 
-    loss1 <- (1 - sum(lengths(markers$filtered_for_dx$all)) / sum(lengths(markers$all))) * 100
-    loss2 <- (1 - sum(lengths(markers$filtered_for_dx$filtered)) / sum(lengths(markers$filtered))) * 100
+    loss1 <- (1 - length(setdiff(unlist(markers$all), markers$ad_gene_exclusions)) /
+                sum(lengths(markers$all))) * 100
+    loss2 <- (1 - length(setdiff(unlist(markers$filtered), markers$ad_gene_exclusions)) /
+                sum(lengths(markers$filtered))) * 100
     print(str_glue("{basename(file)}: removed {round(loss1)}% of ",
                    "non-logfc-filtered and {round(loss2)}% of logfc-filtered ",
                    "markers."))

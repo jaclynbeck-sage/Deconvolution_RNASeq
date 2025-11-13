@@ -1,6 +1,7 @@
 default:
   upload_synid: "syn70819544"
   gene_metadata_synid: "syn70819916.3" # Populated after first upload of step 01
+  github_repo_url: "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/"
 
   step01_gene_metadata:
     gtf_bulk: "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_43/gencode.v43.primary_assembly.annotation.gtf.gz"
