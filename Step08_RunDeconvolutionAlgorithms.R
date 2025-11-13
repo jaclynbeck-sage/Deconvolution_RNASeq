@@ -11,26 +11,19 @@ source(file.path("functions", "Step08_Deconvolution_HelperFunctions.R"))
 # options: "CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "Music", "Scaden"
 algorithm <- "CibersortX"
 
-datasets <- all_singlecell_datasets()
+alg_config <- config::get(file = file.path("algorithm_configs",
+                                           str_glue("{algorithm}_config.yml")))
 
-ct_ad_only <- TRUE
-
-# Force these two algorithms to use all data all the time. For the paper, I
-# also ran DeconRNASeq and Dtangle with ct_ad_only = FALSE.
-if ((algorithm %in% c("CibersortX", "Scaden"))) {
-  ct_ad_only <- FALSE
-}
-
-source(file.path("algorithm_configs", str_glue("{algorithm}_Config.R")))
+ct_ad_only <- alg_config$ct_ad_only
 
 # datasets and normalization parameters
 params_loop1 <- tidyr::expand_grid(
   algorithm = algorithm,
-  reference_data_name = datasets,
+  reference_data_name = all_singlecell_datasets(),
   test_data_name = all_bulk_datasets(),
   granularity = c("broad_class", "sub_class"),
-  reference_input_type = alg_config$reference_input_types,
-  normalization = alg_config$normalizations,
+  reference_input_type = alg_config$reference_input_type,
+  normalization = alg_config$normalization,
   regression_method = c("none", "edger", "lme", "combat")
 ) %>%
   arrange(normalization)
@@ -38,8 +31,15 @@ params_loop1 <- tidyr::expand_grid(
 # Algorithm-specific parameters -- marker types, number of markers, plus any
 # additional arguments to the algorithm itself. alg_config$additional_args can
 # be NULL if no other additional args.
-params_loop2 <- tidyr::expand_grid(alg_config$params_markers,
-                                   alg_config$additional_args)
+marker_args <- do.call(alg_config$marker_function, args = alg_config$params_markers)
+
+if (length(alg_config$additional_args) == 0) {
+  params_loop2 <- marker_args
+} else {
+  addl_args <- expand.grid(alg_config$additional_args)
+  params_loop2 <- tidyr::expand_grid(marker_args,
+                                     addl_args)
+}
 
 
 # Parallel execution setup -----------------------------------------------------

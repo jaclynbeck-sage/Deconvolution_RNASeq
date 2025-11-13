@@ -24,7 +24,6 @@
 #   list of genes used as markers for this run
 Music_InnerLoop <- function(data, params, verbose = FALSE) {
   # Unpack variables for readability, enforce they are the correct types
-  ct_cov <- as.logical(params$ct.cov)
   centered <- as.logical(params$centered)
   normalize <- as.logical(params$normalize)
 
@@ -58,17 +57,16 @@ Music_InnerLoop <- function(data, params, verbose = FALSE) {
       cs <- data.frame(cells = names(data$sc_basis$M.S),
                        sizes = data$sc_basis$M.S)
 
-      result <- music_prop(bulk.mtx = data$test,
-                           sc.sce = data$reference,
-                           markers = markers_use,
-                           clusters = "celltype",
-                           samples = "sample",
-                           verbose = verbose,
-                           cell_size = cs,
-                           ct.cov = ct_cov,
-                           centered = centered,
-                           normalize = normalize,
-                           sc.basis = sc_basis_precomputed)
+      result <- MuSiC::music_prop(bulk.mtx = data$test,
+                                  sc.sce = data$reference,
+                                  markers = markers_use,
+                                  clusters = "celltype",
+                                  samples = "sample",
+                                  verbose = verbose,
+                                  cell_size = cs,
+                                  centered = centered,
+                                  normalize = normalize,
+                                  sc.basis = sc_basis_precomputed)
 
       # Remove "Weight.gene", "r.squared.full", and "Var.prop". "Weight.gene"
       # especially is a very large array and is unneeded, so this reduces
