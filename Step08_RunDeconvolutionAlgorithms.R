@@ -89,11 +89,6 @@ for (P in 1:nrow(params_loop1)) {
   } else if (algorithm == "Music") {
     # Extra pre-processing needed for MuSiC -- calculate or load sc_basis
     data <- Modify_Music_Input(data, params_loop1[P,])
-
-  } else if (algorithm == "Scaden") {
-    # Scaden needs to run each tissue separately so we need to bring that info
-    # into the inner loop
-    data$bulk_metadata <- bulk_metadata
   }
 
   ## Loop through algorithm-specific arguments ---------------------------------

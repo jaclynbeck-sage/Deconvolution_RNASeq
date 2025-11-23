@@ -205,12 +205,15 @@ CreateParams_FilterableSignature <- function(filter_levels = c(1, 2, 3),
                                params_tmp)
 
   # Some filter_type / n_markers combos are not valid, get rid of them
-  # (filter levels 1 & 2 don't use n_markers or marker_type arguments)
+  # (filter levels 0, 1 & 2 don't use n_markers or marker_type arguments)
   low_filt <- params$filter_level < 3
   params$marker_type[low_filt] <- "None"
   params$marker_subtype[low_filt] <- "None"
   params$n_markers[low_filt] <- -1
   params$marker_order[low_filt] <- "distance"
+  params$filter_logfc_genes[low_filt] <- FALSE
+  params$filter_ad_genes[low_filt] <- FALSE
+
 
   params <- params %>% distinct()
   return(params)

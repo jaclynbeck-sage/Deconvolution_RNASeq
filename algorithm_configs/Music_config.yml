@@ -25,5 +25,7 @@ default:
   # Whether to run only Control and AD samples, or run all samples.
   ct_ad_only: false
 
-  # How many cores to use in parallel
-  cores: 10 # Machine this was set up for has 16 cores
+  # How many cores to use in parallel -- Music multi-threads a little bit and
+  # requires a lot of memory. cores/2 works for broad class but needs to be
+  # reduced to ~ cores/3 for sub class.
+  cores: !expr round(parallel::detect_cores() / 2)
