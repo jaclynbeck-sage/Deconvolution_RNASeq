@@ -3,14 +3,15 @@ library(dplyr)
 source("Filenames.R")
 source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
-cx_folder <- Folder("cibersortx_batch_corrected", parent = "syn59480278")
+cx_folder <- Folder("cibersortx_batch_corrected", parent = config::get("upload_synid"))
 cx_folder <- synStore(cx_folder, forceVersion = FALSE)
 
 # Provenance
-sc_df <- GetChildrenAsDf("syn58807549")
-bulk_df <- GetChildrenAsDf("syn58841972")
+main_folders <- GetMainFolderIds()
+sc_df <- GetChildrenAsDf(main_folders[[basename(dir_singlecell)]]$id)
+bulk_df <- GetChildrenAsDf(main_folders[[basename(dir_bulk)]]$id)
 
-github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step08_RunDeconvolutionAlgorithms.R"
+github <- paste0(config::get("github_repo_url"), "Step08_RunDeconvolutionAlgorithms.R")
 ref_datasets <- unique(sc_df$dataset)
 bulk_datasets <- unique(bulk_df$dataset)
 

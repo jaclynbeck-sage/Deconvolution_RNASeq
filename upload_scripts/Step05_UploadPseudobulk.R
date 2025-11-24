@@ -5,11 +5,8 @@ source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 pseudo_folder <- Folder(basename(dir_pseudobulk), parent = config::get("upload_synid"))
 pseudo_folder <- synStore(pseudo_folder, forceVersion = FALSE)
 
-main_folders <- synGetChildren(config::get("upload_synid"))$asList()
-main_folders <- do.call(rbind, main_folders) |> as.data.frame()
-singlecell_folder <- main_folders$id[main_folders$name == basename(dir_singlecell)] |> unlist()
-
-provenance <- GetChildrenAsDf(singlecell_folder)
+main_folders <- GetMainFolderIds()
+provenance <- GetChildrenAsDf(main_folders[[basename(dir_singlecell)]]$id)
 
 github <- paste0(config::get("github_repo_url"), "Step05_GeneratePseudobulk.R")
 

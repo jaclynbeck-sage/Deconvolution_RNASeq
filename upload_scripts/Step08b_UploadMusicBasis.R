@@ -3,16 +3,17 @@ library(dplyr)
 source("Filenames.R")
 source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
-models_folder <- Folder("08_algorithm_models", parent = "syn68238853")
+models_folder <- Folder("08_algorithm_models", parent = config::get("upload_synid"))
 models_folder <- synStore(models_folder, forceVersion = FALSE)
 
 music_folder <- Folder("music_basis", parent = models_folder)
 music_folder <- synStore(music_folder, forceVersion = FALSE)
 
 # Provenance
-sc_df <- GetChildrenAsDf("syn58807549")
+main_folders <- GetMainFolderIds()
+sc_df <- GetChildrenAsDf(main_folders[[basename(dir_singlecell)]]$id)
 
-github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step08_RunDeconvolutionAlgorithms.R"
+github <- paste0(config::get("github_repo_url"), "Step08_RunDeconvolutionAlgorithms.R")
 datasets <- unique(sc_df$dataset)
 
 for (dataset in datasets) {

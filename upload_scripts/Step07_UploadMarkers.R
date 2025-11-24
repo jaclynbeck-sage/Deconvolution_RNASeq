@@ -11,13 +11,10 @@ meta_folder <- Folder(basename(dir_metadata), parent = config::get("upload_synid
 meta_folder <- synStore(meta_folder, forceVersion = FALSE)
 
 # Get provenance IDs
-main_folders <- synGetChildren(config::get("upload_synid"))$asList()
-main_folders <- do.call(rbind, main_folders) |> as.data.frame()
-singlecell_folder <- main_folders$id[main_folders$name == basename(dir_singlecell)] |> unlist()
-pseudo_folder <- main_folders$id[main_folders$name == basename(dir_pseudobulk)] |> unlist()
+main_folders <- GetMainFolderIds()
 
-sce_df <- GetChildrenAsDf(singlecell_folder)
-pseudo_df <- GetChildrenAsDf(pseudo_folder)
+sce_df <- GetChildrenAsDf(main_folders[[basename(dir_singlecell)]]$id)
+pseudo_df <- GetChildrenAsDf(main_folders[[basename(dir_pseudobulk)]]$id)
 
 colnames(sce_df) <- c("sce_name", "sce_id", "dataset")
 
