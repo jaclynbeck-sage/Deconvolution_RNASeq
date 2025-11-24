@@ -70,5 +70,9 @@ remotes::install_github("omnideconv/DWLS",
                         clean = TRUE)
 omnideconv::install_all_python()
 
-# virtualenv setup for AutogeneS marker finding
-reticulate::virtualenv_install("r-omnideconv", packages = c("scanpy", "scikit-misc"))
+# Further r-omnideconv virtualenv setup to ensure package versions are compatible.
+# requirements file was generated with `pip freeze > omnideconv_requirements.txt`
+# in an existing r-omnideconv environment that had already been set up and
+# confirmed to work.
+reticulate::virtualenv_install("r-omnideconv",
+                               requirements = file.path("docker", "omnideconv_requirements.txt"))
