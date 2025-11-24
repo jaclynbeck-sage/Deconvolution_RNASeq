@@ -16,7 +16,6 @@ default:
   # Define the function that runs each param set
   inner_loop_file: !expr file.path("functions", "Step08_CibersortX_InnerLoop.R")
   inner_loop_func: "CibersortX_InnerLoop" # must be a string
-  required_libraries: "omnideconv"
 
   # How many cores to use in parallel
   cores: 1 # Only use more than one core if batch-adjusted signature matrices are pre-computed

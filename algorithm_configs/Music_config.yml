@@ -20,7 +20,6 @@ default:
   # Define the function that runs each param set
   inner_loop_file: !expr file.path("functions", "Step08_Music_InnerLoop.R")
   inner_loop_func: "Music_InnerLoop" # must be a string
-  required_libraries: ["MuSiC", "SingleCellExperiment"]
 
   # Whether to run only Control and AD samples, or run all samples.
   ct_ad_only: false
@@ -28,4 +27,4 @@ default:
   # How many cores to use in parallel -- Music multi-threads a little bit and
   # requires a lot of memory. cores/2 works for broad class but needs to be
   # reduced to ~ cores/3 for sub class.
-  cores: !expr round(parallel::detect_cores() / 2)
+  cores: !expr round(parallel::detectCores() / 2)

@@ -42,8 +42,8 @@ GetChildrenAsDf <- function(syn_id) {
       mutate(name = unlist(name),
              id = unlist(id))
 
-  syn_df$dataset <- str_replace(str_replace(syn_df$name, "pseudobulk_", ""),
-                                "_.*", "")
+  syn_df$dataset <- str_replace(syn_df$name, "pseudobulk_", "") |>
+    str_replace("_.*", "")
 
   if (any(grepl("[broad|sub]_class", syn_df$name))) {
     syn_df$granularity <- "broad_class"

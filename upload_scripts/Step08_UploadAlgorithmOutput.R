@@ -6,19 +6,27 @@ source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 # TODO add markers to provenance?
 
 # Deconvolution WG Synapse space
-output_folder <- Folder("08_estimates", parent = "syn68238853")
+output_folder <- Folder("08_estimates", parent = config::get("upload_synid"))
 output_folder <- synStore(output_folder, forceVersion = FALSE)
 
 # Get provenance IDs
-input_ids <- list(sce = "syn58807549",
-                  pseudobulk = "syn58808874",
-                  signatures = "syn59480278",
-                  bulk = "syn58841972")
+main_folders <- synGetChildren(config::get("upload_synid"))$asList()
+main_folders <- do.call(rbind, main_folders) |> as.data.frame()
+singlecell_folder <- main_folders$id[main_folders$name == basename(dir_singlecell)] |> unlist()
+pseudo_folder <- main_folders$id[main_folders$name == basename(dir_pseudobulk)] |> unlist()
+sig_folder <- main_folders$id[main_folders$name == basename(dir_signatures)] |> unlist()
+bulk_folder <- main_folders$id[main_folders$name == basename(dir_bulk)] |> unlist()
+
+input_ids <- list(sce = singlecell_folder,
+                  pseudobulk = pseudo_folder,
+                  signatures = sig_folder,
+                  bulk = bulk_folder)
 
 dfs <- lapply(input_ids, GetChildrenAsDf)
 
 dfs$pseudobulk <- subset(dfs$pseudobulk, grepl("puresamples", name))
 dfs$signatures <- subset(dfs$signatures, grepl("signature", name))
+dfs$bulk$dataset <- str_replace(dfs$bulk$name, "_se.rds", "")
 
 colnames(dfs$sce) <- c("sc_name", "sc_id", "dataset")
 colnames(dfs$pseudobulk) <- c("pb_name", "pb_id", "dataset", "granularity")

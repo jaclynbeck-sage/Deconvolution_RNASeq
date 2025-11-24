@@ -38,6 +38,8 @@ SignatureBased_InnerLoop <- function(data, params) {
     {
       # Run DeconRNASeq --------------------------------------------------------
       if (params$algorithm == "DeconRNASeq") {
+        require(DeconRNASeq)
+
         # DeconRNASeq-specific argument
         use_scale <- as.logical(params$use_scale)
 
@@ -45,12 +47,12 @@ SignatureBased_InnerLoop <- function(data, params) {
         bulk_mat_filt <- as.data.frame(bulk_mat_filt)
         signature_filt <- as.data.frame(signature_filt)
 
-        res_orig <- DeconRNASeq(bulk_mat_filt,
-                                signature_filt,
-                                proportions = NULL,
-                                known.prop = FALSE,
-                                use.scale = use_scale,
-                                fig = FALSE)
+        res_orig <- DeconRNASeq::DeconRNASeq(bulk_mat_filt,
+                                             signature_filt,
+                                             proportions = NULL,
+                                             known.prop = FALSE,
+                                             use.scale = use_scale,
+                                             fig = FALSE)
 
         rownames(res_orig$out.all) <- colnames(bulk_mat_filt)
         res <- list("estimates" = res_orig$out.all)
