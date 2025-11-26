@@ -85,9 +85,8 @@ Load_CountsFile <- function(filename, normalization, regression_method = "none")
   # The remaining normalizations all need CPM, TPM, or TMM
 
   # TPM for bulk data only
-  if (grepl("tpm", normalization) && "gene_length" %in% colnames(rowData(se_obj))) {
-    norm_counts <- scuttle::calculateTPM(se_obj,
-                                         lengths = rowData(se_obj)$gene_length)
+  if (grepl("tpm", normalization) && "tpm" %in% names(assays(se_obj))) {
+    norm_counts <- scuttle::calculateCPM(assay(se_obj, "tpm"))
   }
   # CPM for single cell, and for bulk if TPM is not specified
   else {
@@ -271,7 +270,7 @@ Save_Pseudobulk <- function(se, dataset, data_type, granularity) {
 
 Load_SimulatedScadenData <- function(dataset, granularity, normalization) {
   sim_file <- str_glue("simulated_{dataset}_{granularity}_{normalization}.rds")
-  sim_file <- file.path(dir_pseudobulk, "scaden_simulated", sim_file)
+  sim_file <- file.path(dir_scaden_pseudobulk, sim_file)
 
   # Always use the CPM file if normalization is "tpm", since TPM doesn't apply
   # to single cell data.
@@ -286,7 +285,7 @@ Load_SimulatedScadenData <- function(dataset, granularity, normalization) {
 
 save_SimulatedScadenData <- function(se, dataset, granularity, normalization) {
   filename <- str_glue("simulated_{dataset}_{granularity}_{normalization}.rds")
-  saveRDS(se, file = file.path(dir_pseudobulk, "scaden_simulated", filename))
+  saveRDS(se, file = file.path(dir_scaden_pseudobulk, filename))
 }
 
 

@@ -24,6 +24,8 @@ dir_tmp <- file.path(dir_data, "tmp")
 dir_estimates_tmp <- file.path(dir_estimates, "tmp")
 dir_errors_tmp <- file.path(dir_errors, "tmp")
 
+dir_scaden_pseudobulk <- file.path(dir_pseudobulk, "scaden_simulated")
+
 dir_cibersort_corrected_signatures <- file.path(dir_signatures, "cibersortx_batch_corrected")
 dir_cibersort <- "/data" # outside this working directory, gets shared with cibersort docker
 

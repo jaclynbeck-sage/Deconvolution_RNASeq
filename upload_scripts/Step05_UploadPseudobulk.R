@@ -5,6 +5,9 @@ source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 pseudo_folder <- Folder(basename(dir_pseudobulk), parent = config::get("upload_synid"))
 pseudo_folder <- synStore(pseudo_folder, forceVersion = FALSE)
 
+scaden_folder <- Folder(basename(dir_scaden_pseudobulk), parent = pseudo_folder)
+scaden_folder <- synStore(scaden_folder, forceVersion = FALSE)
+
 main_folders <- GetMainFolderIds()
 provenance <- GetChildrenAsDf(main_folders[[basename(dir_singlecell)]]$id)
 
@@ -14,6 +17,13 @@ for (dataset in provenance$dataset) {
   files <- list.files(dir_pseudobulk, pattern = dataset, full.names = TRUE)
   for (filename in files) {
     UploadFile(filename, pseudo_folder,
+               list("used" = provenance$id[provenance$dataset == dataset],
+                    "executed" = github))
+  }
+
+  files_scaden <- list.files(dir_scaden_pseudobulk, pattern = dataset, full.names = TRUE)
+  for (filename in files_scaden) {
+    UploadFile(filename, scaden_folder,
                list("used" = provenance$id[provenance$dataset == dataset],
                     "executed" = github))
   }

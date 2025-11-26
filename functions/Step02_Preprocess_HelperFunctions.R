@@ -1215,8 +1215,10 @@ QC_BulkData <- function(dataset, metadata) {
   return(metadata)
 }
 
-ReadCounts_Bulk <- function(files) {
-  counts <- lapply(grep("counts", names(files), value = TRUE), function(c_name) {
+# By default this will read counts matrices, but setting data_type = "tpm" will
+# read TPM matrices instead
+ReadCounts_Bulk <- function(files, data_type = "counts") {
+  counts <- lapply(grep(data_type, names(files), value = TRUE), function(c_name) {
     read.table(files[[c_name]]$path, header = TRUE) |>
       dplyr::select(-transcript_id.s.)
   })

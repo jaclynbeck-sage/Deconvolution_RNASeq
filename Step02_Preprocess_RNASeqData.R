@@ -252,7 +252,14 @@ for (dataset in datasets) {
   if (is_bulk(dataset)) {
     print(table(metadata$diagnosis, metadata$tissue))
 
-    se <- SummarizedExperiment(assays = list(counts = counts),
+    # Get TPM data and subset to the same genes/samples in "counts"
+    tpm <- ReadCounts_Bulk(files, data_type = "tpm")
+
+    tpm <- tpm[genes$ensembl_gene_id, colnames(counts)]
+    rownames(tpm) <- genes$hgnc_symbol
+
+    se <- SummarizedExperiment(assays = list(counts = counts,
+                                             tpm = tpm),
                                colData = metadata,
                                rowData = genes)
 
