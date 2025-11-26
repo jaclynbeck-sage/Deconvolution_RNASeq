@@ -3,9 +3,8 @@
 #
 # Arguments:
 #   data = a named list that must contain the following items:
-#     reference = a SingleCellExperiment object containing the reference data.
-#                 Must have a colData column named "celltype", denoting the cell
-#                 type assignment of each cell.
+#     reference = a Summarized object containing the reference data, which is
+#                 a simulated pseudobulk data set generated in Step 05.
 #     test = a matrix (genes x samples) of bulk data. Must be a dense matrix.
 #   params = a single-row data frame or a named vector/list of parameters
 #            containing the following variables: algorithm, reference_data_name,
@@ -30,49 +29,14 @@ Scaden_InnerLoop <- function(data, params) {
   dir.create(mod_path, recursive = TRUE, showWarnings = FALSE)
   dir.create(temp_path, recursive = TRUE, showWarnings = FALSE)
 
-  # Check if simulated data already exists -- if so, it can be re-used.
-  dir_simulated <- file.path(full_filepath, "simulated_data")
-  file_simulated <- file.path(dir_simulated,
-                              paste0(paste(params$reference_data_name,
-                                           params$granularity,
-                                           params$normalization,
-                                           params$n_cells,
-                                           sep = "_"),
-                                     ".h5ad"))
-
-  # TPM and CPM normalization are the same for single cell
-  file_simulated <- str_replace(file_simulated, "_tpm_", "_cpm_")
-
-  # If it doesn't exist, make simulated data
-  if (!file.exists(file_simulated)) {
-    # Needs to be a dense matrix
-    dense_sce <- as.matrix(t(counts(data$reference)))
-    gc()
-
-    simulated_h5 <- omnideconv::scaden_simulate(
-      cell_type_annotations = as.character(data$reference$celltype),
-      gene_labels = rownames(data$reference),
-      single_cell_object = dense_sce,
-      temp_dir = temp_path,
-      cells = params$n_cells,
-      verbose = TRUE
-    )
-
-    rm(dense_sce)
-    gc()
-
-    # Move the simulated data file out of the temp directory to its expected
-    # location for use next time
-    dir.create(dir_simulated, recursive = TRUE, showWarnings = FALSE)
-    file.copy(from = file.path(temp_path, "data.h5ad"),
-              to = file_simulated)
-  } else {
-    message(str_glue("Using existing simulated data to train model: {basename(file_simulated)}"))
-    simulated_h5 <- anndata::read_h5ad(file_simulated)
-  }
+  # Put the simulated data in the AnnData format expected by Scaden
+  adata <- anndata::AnnData(X = t(assay(data$reference, "counts")),
+                            obs = as.data.frame(colData(data$reference)),
+                            var = list(symbol = rownames(data$reference)))
+  adata$uns <- list(cell_types = colnames(adata$obs))
 
   # Train the model with this tissue's data set
-  processed <- omnideconv::scaden_process(h5ad = simulated_h5,
+  processed <- omnideconv::scaden_process(h5ad = adata,
                                           temp_dir = temp_path,
                                           bulk_gene_expression = data$test,
                                           verbose = TRUE)

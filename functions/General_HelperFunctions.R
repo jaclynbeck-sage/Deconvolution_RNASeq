@@ -86,6 +86,9 @@ Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
   } else if (reference_input_type == "cibersortx") {
     reference_obj <- Load_SignatureMatrix(reference_data_name, granularity,
                                           normalization = "cibersortx")
+  } else if (reference_input_type == "scaden") {
+    reference_obj <- Load_SimulatedScadenData(reference_data_name, granularity,
+                                              normalization)
   } else {
     stop("Invalid reference_input_type specified!")
   }
