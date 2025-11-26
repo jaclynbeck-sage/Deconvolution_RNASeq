@@ -171,7 +171,7 @@ qstats_all <- lapply(1:nrow(iter_vars), function(iter_row) {
 
     num_zeros <- est_pcts_step12 %>%
       group_by(tissue, param_id) %>%
-      summarize(across(where(is.numeric), ~ sum(.x == 0)),
+      summarize(across(where(is.numeric), ~ sum(.x < 1e-4)),
                 .groups = "drop") %>%
       as.data.frame()
 

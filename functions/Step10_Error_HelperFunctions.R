@@ -50,7 +50,7 @@ Get_FilteredSignatures <- function(signatures, common_genes) {
 
 # Quality control --------------------------------------------------------------
 
-Too_Many_Zeros <- function(est_pct, granularity, zero_thresh = 0.25) {
+Too_Many_Zeros <- function(est_pct, algorithm, granularity, zero_thresh = 0.25, tol = 1e-4) {
   # Major cell types are >10% of the population in the Cain dataset
   if (granularity == "broad_class") {
     major_celltypes <- c("Astrocyte", "Excitatory", "Inhibitory", "Oligodendrocyte")
@@ -58,10 +58,10 @@ Too_Many_Zeros <- function(est_pct, granularity, zero_thresh = 0.25) {
   } else {
     # sub_class uses cell types >5% of the population, plus the most abundant
     # excitatory and inhibitory subclasses
-    major_celltypes <- c("Astrocyte", "L2/3/6 IT", "L4/5 IT", "Pvalb", "Oligodendrocyte")
+    major_celltypes <- c("Astrocyte", "L2/3 IT", "L4 IT", "L5 IT", "Pvalb", "Oligodendrocyte")
   }
 
-  zeros <- colSums(est_pct == 0)[major_celltypes]
+  zeros <- colSums(est_pct < tol)[major_celltypes]
   zero_thresh <- zero_thresh * nrow(est_pct) # 25% can be zeros
 
   # Baseline never counts as having "too many zeros" because of having

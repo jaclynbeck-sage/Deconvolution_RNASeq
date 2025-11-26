@@ -15,12 +15,12 @@ source(file.path("functions", "General_HelperFunctions.R"))
 source(file.path("functions", "Step10_Error_HelperFunctions.R"))
 
 granularity <- "broad_class"
-bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
-singlecell_datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
+bulk_datasets <- all_bulk_datasets()
+singlecell_datasets <- all_singlecell_datasets()
 
 cores <- 12
-cl <- makeCluster(cores, type = "FORK", outfile = "errors_output.txt")
-registerDoParallel(cl)
+cluster_type <- "FORK"
+cluster_outfile <- "best_errors_output.txt"
 
 # Which algorithms to calculate errors for
 algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "Music",
@@ -106,7 +106,9 @@ for (bulk_dataset in bulk_datasets) {
 
       ## Calculate error for each parameter set --------------------------------
 
-      error_list <- foreach(deconv_result = deconv_list) %dopar% {
+      cl <- makeCluster(cores, type = cluster_type, outfile = cluster_outfile)
+
+      error_list <- parLapply(cl, deconv_list, function(deconv_result) {
         source(file.path("functions", "General_HelperFunctions.R"))
         source(file.path("functions", "Step10_Error_HelperFunctions.R"))
 
@@ -129,9 +131,9 @@ for (bulk_dataset in bulk_datasets) {
 
         # At least 75% of the samples need a non-zero estimate for the most
         # abundant cell types. We assume that if more than 25% of estimates for
-        # a supposedly-abundant cell type are *exactly* 0, that estimate is not
-        # reliable.
-        if (Too_Many_Zeros(est_pct, granularity, zero_thresh = 0.25)) {
+        # a supposedly-abundant cell type are approximately 0 (< 1e-4), that
+        # estimate is not reliable.
+        if (Too_Many_Zeros(est_pct, algorithm, granularity, zero_thresh = 0.25)) {
           return(NULL)
         }
 
@@ -161,7 +163,9 @@ for (bulk_dataset in bulk_datasets) {
 
         Save_ErrorIntermediate(errors)
         return(errors)
-      }
+      })
+
+      stopCluster(cl)
 
       # Remove NULL (skipped) entries
       error_list <- error_list[lengths(error_list) > 0]
@@ -190,5 +194,3 @@ for (bulk_dataset in bulk_datasets) {
     print(str_glue("{all_valid} of {all_possible}"))
   }
 }
-
-stopCluster(cl)

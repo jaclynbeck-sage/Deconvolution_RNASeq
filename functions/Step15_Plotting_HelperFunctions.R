@@ -310,7 +310,7 @@ Paper_Renames <- function(df) {
     df <- df %>%
       mutate(tissue = factor(tissue,
                              levels = c("CBE", "TCX", "FP", "IFG", "PHG",
-                                        "STG", "ACC", "DLPFC", "PCC"))
+                                        "STG", "ACC", "DLPFC_1", "DLPFC_2", "PCC"))
     )
 
     if ("test_data_name" %in% colnames(df)) {

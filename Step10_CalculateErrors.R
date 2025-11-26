@@ -127,9 +127,9 @@ for (bulk_dataset in bulk_datasets) {
 
         # At least 75% of the samples need a non-zero estimate for the most
         # abundant cell types. We assume that if more than 25% of estimates for
-        # a supposedly-abundant cell type are *exactly* 0, that estimate is not
-        # reliable.
-        if (Too_Many_Zeros(est_pct, granularity, zero_thresh = 0.25)) {
+        # a supposedly-abundant cell type are approximately 0 (< 1e-4), that
+        # estimate is not reliable.
+        if (Too_Many_Zeros(est_pct, algorithm, granularity, zero_thresh = 0.25)) {
           return(NULL)
         }
 
