@@ -67,34 +67,12 @@ for (dataset in datasets) {
     genes_keep <- edgeR::filterByExpr(expr, group = expr$samples$group)
     bulk_tissue <- bulk_tissue[genes_keep, ]
 
+    rm(expr)
+
     # I'm not sure if there is a random component to any of these algorithms,
     # but just in case, we set a seed specific to the data set / tissue
     seed <- sageRNAUtils::string_to_seed(paste(dataset, tissue, "regression"))
     set.seed(seed)
-
-    message("Winsorizing counts...")
-
-    # Winsorize -- Replace values above 99th percentile for each gene with the
-    # 99th percentile value
-
-    # Normalize to CPM
-    winsor <- sageRNAUtils::simple_cpm(assay(bulk_tissue, "counts"))
-
-    pcts <- apply(winsor, 1, quantile, probs = 0.99)
-    pcts <- matrix(rep(pcts, ncol(winsor)), nrow(winsor))
-
-    winsor[winsor > pcts] <- pcts[winsor > pcts]
-
-    # Convert back to counts
-    winsor <- sageRNAUtils::cpm_to_counts(winsor,
-                                          colSums(assay(bulk_tissue, "counts")))
-    assay(bulk_tissue, "counts") <- winsor
-
-    # Re-calculate norm factors
-    bulk_tissue$tmm_factors <- edgeR::normLibSizes(winsor)
-
-    rm(pcts, winsor, expr)
-
 
     # Load or calculate formulas for fixed/mixed models ------------------------
 

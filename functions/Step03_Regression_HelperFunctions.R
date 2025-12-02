@@ -7,6 +7,7 @@
 # (correlation ~ +/-0.7), the covariate with the higher mean R^2 with all other
 # remaining covariates was removed.
 
+
 # Runs stepwise regression, iteratively adding variables to the model until it
 # can't be improved any more. This is done to create both a fixed-effects-only
 # model and a mixed effect model.
@@ -37,33 +38,25 @@ Find_BestModel <- function(dataset, tissue, bulk_se, covariates, plot_var_explai
   plot_title <- paste(dataset, tissue)
   vars_keep <- remove_correlated_vars(covariates_clean, expr_norm, n_cores,
                                       plot_var_explained, plot_title)
-  print(paste(tissue, "- recommended variables:",
-              paste(vars_keep, collapse = ", ")))
+  cat(paste(tissue, "- recommended variables:",
+            paste(vars_keep, collapse = ", ")), "\n")
+  cat("\n", "\n")
 
   rand_vars <- intersect(vars_keep, "batch")
 
   # batch can't be in fixed effects, and diagnosis is already in the model
   fixed_vars <- setdiff(vars_keep, c(rand_vars, "diagnosis"))
 
-  base_form_fixed <- "~ diagnosis"
-  base_form_mixed <- base_form_fixed
-
-  # Special case: MSBB IFG needs "batch" added to the fixed formula in order for
-  # edgeR output to have minimal batch effects, but mvIC doesn't add it.
-  if (tissue == "IFG") {
-    base_form_fixed <- paste(base_form_fixed, "+ batch")
-  }
-
   # Fixed effect model: evaluate best model using "~ diagnosis" as the base
   # model and iteratively adding fixed effect variables.
   res_fixed <- mvIC::mvForwardStepwise(exprObj = expr_norm,
-                                       baseFormula = base_form_fixed,
+                                       baseFormula = "~ diagnosis",
                                        data = covariates_clean,
                                        variables = c(fixed_vars, rand_vars))
 
   rand_vars <- paste0("(1|", rand_vars, ")")
   res_mixed <- mvIC::mvForwardStepwise(exprObj = expr_norm,
-                                       baseFormula = base_form_mixed,
+                                       baseFormula = "~ diagnosis",
                                        data = covariates_clean,
                                        variables = c(fixed_vars, rand_vars))
 
@@ -85,6 +78,7 @@ Find_BestModel <- function(dataset, tissue, bulk_se, covariates, plot_var_explai
   formulas <- list("formula_fixed" = formula_fixed,
                    "formula_mixed" = formula_mixed)
   print(formulas)
+  cat("\n")
 
   sink()
 
@@ -195,54 +189,71 @@ remove_correlated_vars <- function(covariates_clean, expr_norm, n_cores,
   cc <- canCorPairs(form_cc, covariates_clean, showWarnings = FALSE)
   cc[upper.tri(cc, diag = TRUE)] <- NA
 
+  cat("Correlation:", "\n")
   print(cc)
+  cat("\n", "\n")
 
   # Use most variable genes only for extractVarPart
   var_genes <- rowVars(expr_norm) |> sort(decreasing = TRUE) |> names()
   var_genes <- var_genes[1:5000]
 
-  varpart <- fitExtractVarPartModel(
-    expr_norm[var_genes, ], form_cc, covariates_clean,
-    BPPARAM = MulticoreParam(n_cores)
-  ) |>
-    sortCols()
-
-  if (plot_var_explained) {
-    print(plotVarPart(varpart, main = plot_title))
-  }
-
-  print(colMeans(varpart))
-
-  vp <- vp_summary(varpart)
-  cor_pairs <- cc |>
-    as.data.frame() |>
-    tibble::rownames_to_column("var1") |>
-    tidyr::pivot_longer(-var1, names_to = "var2", values_to = "cor_value") |>
-    subset(cor_value > 0.7) |>
-    arrange(desc(cor_value)) |>
-    rowwise() |>
-    mutate(
-      var1_rank = vp$rank_mean[vp$covariate == var1],
-      var2_rank = vp$rank_mean[vp$covariate == var2],
-      lowest_pct = which.max(c(var1_rank, var2_rank)),
-      var_remove = c(var1, var2)[lowest_pct]
-    ) |>
-    ungroup()
-
-  print(cor_pairs)
+  n_pairs <- sum(cc > 0.7, na.rm = TRUE)
 
   to_remove <- c()
-  for (N in 1:nrow(cor_pairs)) {
-    pair <- c(cor_pairs$var1[N], cor_pairs$var2[N])
+  for (N in 1:n_pairs) {
+    vars_remaining <- setdiff(colnames(covariates_clean), to_remove)
+    form_iter <- paste("~", paste0(vars_remaining, collapse = " + "))
+
+    if (!any(cc[vars_remaining, vars_remaining] > 0.7, na.rm = TRUE)) {
+      break # We've removed all highly-correlated variables that can be removed, stop looping
+    }
+
+    varpart <- fitExtractVarPartModel(
+      expr_norm[var_genes, ], form_iter, covariates_clean,
+      BPPARAM = MulticoreParam(n_cores)
+    ) |>
+      sortCols()
+
+    if (plot_var_explained) {
+      print(plotVarPart(varpart, main = str_glue("{plot_title}: iteration {N}")))
+    }
+
+    cat("Mean variance:", "\n")
+    print(colMeans(varpart))
+    cat("\n", "\n")
+
+    vp <- vp_summary(varpart)
+    cor_pairs <- cc[vars_remaining, vars_remaining] |>
+      as.data.frame() |>
+      tibble::rownames_to_column("var1") |>
+      tidyr::pivot_longer(-var1, names_to = "var2", values_to = "cor_value") |>
+      subset(cor_value > 0.7) |>
+      arrange(desc(cor_value)) |>
+      rowwise() |>
+      mutate(
+        var1_rank = vp$rank_mean[vp$covariate == var1],
+        var2_rank = vp$rank_mean[vp$covariate == var2],
+        lowest_pct = which.max(c(var1_rank, var2_rank)),
+        var_remove = c(var1, var2)[lowest_pct]
+      ) |>
+      ungroup() |>
+      select(-lowest_pct)
+
+    cat(str_glue("Iteration {N} pairs:"), "\n")
+    print(as.data.frame(cor_pairs))
+    cat("\n", "\n")
+
+    pair <- c(cor_pairs$var1[1], cor_pairs$var2[1])
 
     # Only remove one of the two variables if neither has been removed yet
     if (!any(pair %in% to_remove)) {
-      to_remove <- c(to_remove, cor_pairs$var_remove[N])
+      to_remove <- c(to_remove, cor_pairs$var_remove[1])
     }
   }
 
-  print(paste("Removing", length(to_remove), "variables:",
-              paste(to_remove, collapse = ", ")))
+  cat(paste("Removing", length(to_remove), "variables:",
+            paste(to_remove, collapse = ", ")), "\n")
+  cat("\n", "\n")
 
   vars_keep <- vp |>
     arrange(desc(mean_pct)) |>
