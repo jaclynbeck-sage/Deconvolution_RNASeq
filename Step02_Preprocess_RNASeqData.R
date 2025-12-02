@@ -76,7 +76,7 @@ for (dataset in datasets) {
                                              y_expr_threshold = 3)
     print(str_glue("{length(mismatches)} sex-mismatched samples will be removed from {dataset}."))
     counts <- counts[, setdiff(colnames(counts), mismatches)]
-    metadata <- metadata[colnames(counts),]
+    metadata <- metadata[colnames(counts), ]
   }
 
 
@@ -94,13 +94,9 @@ for (dataset in datasets) {
   # Puts 'genes' in the same gene order as counts
   genes <- genes[intersect(rownames(counts), rownames(genes)), ]
 
-  # We shouldn't be removing more than a few genes, and genes are only getting
-  # removed from bulk data due to filtering out "_PAR_Y" genes.. If `genes` is
-  # significantly smaller than `counts`, something went wrong.
-  stopifnot(nrow(genes) >= 0.95 * nrow(counts))
-
-  # Adjust counts with the gene set we have left
-  counts <- counts[rownames(genes), ]
+  if (nrow(genes) != nrow(counts) || !all(rownames(genes) == rownames(counts))) {
+    stop(str_glue("Gene set mismatch for {dataset}"))
+  }
 
   # Save a metadata-free copy as an h5ad file for mapping, before any filtering.
   # seaRef is already mapped and doesn't need this step
@@ -136,18 +132,16 @@ for (dataset in datasets) {
   # Mitochondrial genes
   mt_genes <- grepl("^MT-", rownames(counts)) |
     (!is.na(genes$chromosome_name) & genes$chromosome_name == "chrM")
-  pct_mt <- colSums(counts[mt_genes, ]) / metadata$lib_size
-  metadata$percent_mito <- pct_mt
+  metadata$pct_mito <- colSums(counts[mt_genes, ]) / metadata$lib_size
 
-  # Non-coding genes -- grep pattern from Green et al 2023.
-  nc_genes <- grepl("^(AC\\d+{3}|AL\\d+{3}|AP\\d+{3}|LINC\\d+{3})", rownames(counts))
-  pct_nc <- colSums(counts[nc_genes, ]) / metadata$lib_size
-  metadata$percent_noncoding <- pct_nc
+  # Percent of counts mapped to protein coding genes
+  pc_genes <- !is.na(genes$gene_biotype) & genes$gene_biotype == "protein_coding"
+  metadata$pct_protein_coding <- colSums(counts[pc_genes, ]) / metadata$lib_size
 
   # Remove Y-chromosome genes
   y_genes <- !is.na(genes$chromosome_name) & genes$chromosome_name == "chrY"
 
-  genes$exclude <- mt_genes | nc_genes | y_genes
+  genes$exclude <- !pc_genes | mt_genes | y_genes
 
   if (is_singlecell(dataset)) {
     # Since all of these are single nucleus datasets, we expect the percent of
@@ -180,20 +174,12 @@ for (dataset in datasets) {
     # samples.
     mt_threshold <- 0.40
 
-    if (any(pct_mt > mt_threshold)) {
-      print(str_glue(paste("Removing {sum(pct_mt > mt_threshold)} samples from",
-                           "{dataset} due to high mitochondrial gene expression.")))
+    if (any(metadata$pct_mito > mt_threshold)) {
+      print(str_glue("Removing {sum(metadata$pct_mito > mt_threshold)} samples ",
+                     "from {dataset} due to high mitochondrial gene expression."))
     }
-    counts <- counts[, pct_mt <= mt_threshold] # Exclude samples with high mitochondrial genes
+    counts <- counts[, metadata$pct_mito <= mt_threshold]
   }
-
-  # Remove genes that are expressed in less than 10 cells (or samples) after
-  # filtering for outliers and high mitochondrial percentages
-  ok <- rowSums(counts > 0) >= 10
-  genes$exclude <- genes$exclude | !ok
-
-
-  ## Final modifications to metadata -------------------------------------------
 
   # Bulk data only -- after removing all low-quality samples, remove any samples
   # that are from single- or two-sample batches.
@@ -212,6 +198,14 @@ for (dataset in datasets) {
                          !(sample %in% remove))
     counts <- counts[, metadata$sample]
   }
+
+  # Remove genes that are expressed in less than 10 cells (or samples) after
+  # filtering out bad samples
+  ok <- rowSums(counts > 0) >= 10
+  genes$exclude <- genes$exclude | !ok
+
+
+  ## Final modifications to metadata -------------------------------------------
 
   # Make sure metadata has the same samples and is in the same order as counts
   metadata <- metadata[colnames(counts), ]

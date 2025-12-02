@@ -54,7 +54,7 @@ EnsemblIdToGeneSymbol <- function(gene_list) {
   genes <- read.csv(file_gene_list) |>
     dplyr::arrange(ensembl_gene_id) |>
     dplyr::mutate(hgnc_symbol = make.unique(canonical_symbol)) |>
-    dplyr::select(ensembl_gene_id, hgnc_symbol, gene_length, chromosome_name) |>
+    dplyr::select(ensembl_gene_id, hgnc_symbol, gene_biotype, gene_length, chromosome_name) |>
     subset(ensembl_gene_id %in% gene_list)
 
   rownames(genes) <- genes$ensembl_gene_id
@@ -74,7 +74,7 @@ UpdateGeneSymbols <- function(dataset, gene_list) {
     dplyr::arrange(ensembl_gene_id) |>
     dplyr::mutate(original_symbol = make.unique(.data[[version]]),
                   hgnc_symbol = make.unique(canonical_symbol)) |>
-    dplyr::select(ensembl_gene_id, hgnc_symbol, original_symbol, chromosome_name) |>
+    dplyr::select(ensembl_gene_id, hgnc_symbol, gene_biotype, original_symbol, chromosome_name) |>
     subset(original_symbol %in% gene_list)
 
   rownames(genes) <- genes$original_symbol
@@ -660,7 +660,7 @@ plot_pass_fail_scatter <- function(sce, y_var, group, cutoff, title) {
 
 QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n_cores = 2) {
   # The seaRef data set has already undergone extensive QC, including doublet
-  # removal and removal of cells with percent_mito > 0.05%. Therefore we do not
+  # removal and removal of cells with pct_mito > 0.05%. Therefore we do not
   # remove any additional cells here.
   if (dataset_name == "seaRef") {
     return(counts)
@@ -695,7 +695,7 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
 
   stats$low_expression <- ncol(counts) - ncol(sce)
 
-  # If any samples a median percent_mito > `mt_threshold`, remove them as
+  # If any samples a median pct_mito > `mt_threshold`, remove them as
   # potentially poor quality samples. This method assumes that a sample losing
   # over 50% of its cells to this threshold is an indicator of overall poor
   # sample quality. Examination of the violin plots of percent mitochondrial
@@ -703,7 +703,7 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
   stats$mito_stats <- colData(sce) |>
     as.data.frame() |>
     group_by(sample) |>
-    summarize(med_mt = median(percent_mito),
+    summarize(med_mt = median(pct_mito),
               remove = med_mt > mt_threshold) |>
     as.data.frame()
 
@@ -718,7 +718,7 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
   sce$removed_sample <- sce$sample %in% stats$removed_samples
 
   plt <- ggplot(as.data.frame(colData(sce)),
-                aes(x = sample, y = percent_mito,
+                aes(x = sample, y = pct_mito,
                     color = removed_sample)) +
     geom_violin(draw_quantiles = 0.5) +
     geom_hline(yintercept = mt_threshold, color = "red") +
@@ -732,38 +732,38 @@ QC_SingleCell <- function(metadata, counts, mt_threshold = 0.05, dataset_name, n
 
   plot_pass_fail_scatter(
     sce,
-    y_var = "percent_mito",
+    y_var = "pct_mito",
     group = "removed_sample",
     cutoff = mt_threshold,
     title = str_glue("{dataset_name}: percent mitochondrial genes")
   )
 
   plot_pass_fail_scatter(
-    sce[, sce$percent_mito < 0.20],
-    y_var = "percent_mito",
+    sce[, sce$pct_mito < 0.20],
+    y_var = "pct_mito",
     group = "removed_sample",
     cutoff = mt_threshold,
     title = str_glue("{dataset_name}: percent mitochondrial genes (zoomed)")
   )
 
   sce <- sce[, !(sce$sample %in% stats$removed_samples)]
-  sce$high_mito <- sce$percent_mito > mt_threshold
+  sce$high_mito <- sce$pct_mito > mt_threshold
 
   # Flag cells with no MALAT1 expression. Threshold is < 2 size-normalized counts,
   # where counts are adjusted by lib_size and scaled to mean lib_size. Mathys
   # is excluded because MALAT1 is not present in the data set.
   if (dataset_name != "mathys") {
-    sce$MALAT1 <- counts(sce)["MALAT1", ] / sce$lib_size * mean(sce$lib_size)
+    sce$MALAT1 <- counts(sce)["MALAT1 ENSG00000251562", ] / sce$lib_size * mean(sce$lib_size)
     sce$low_malat1 <- sce$MALAT1 < 2
 
     sce$lognorm_MALAT1 <- log2(sce$MALAT1 + 1) # Display only
 
     plot_pass_fail_scatter(
-      sce[, sce$percent_mito <= mt_threshold],
+      sce[, sce$pct_mito <= mt_threshold],
       y_var = "lognorm_MALAT1",
       group = "low_malat1",
       cutoff = log2(2 + 1),
-      title = str_glue("{dataset_name}: MALAT1 expression (for percent_mito <= {mt_threshold})")
+      title = str_glue("{dataset_name}: MALAT1 expression (for pct_mito <= {mt_threshold})")
     )
   } else {
     sce$low_malat1 <- FALSE # mathys: set everything to FALSE

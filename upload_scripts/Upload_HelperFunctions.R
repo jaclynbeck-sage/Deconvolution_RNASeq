@@ -40,15 +40,21 @@ ExtractDatasetName <- function(filename) {
   all_datasets <- c(all_singlecell_datasets(), all_bulk_datasets())
 
   # Can return multiple dataset names (i.e. bulk + single cell)
-  all_datasets[sapply(all_datasets, grepl, x = filename)]
+  names <- all_datasets[sapply(all_datasets, grepl, x = filename)]
+
+  if (length(names) == 0) {
+    return(NA)
+  }
+
+  return(names)
 }
 
-GetChildrenAsDf <- function(syn_id) {
-  syn_list <- as.list(synGetChildren(syn_id))
+GetChildrenAsDf <- function(syn_id, include_folders = FALSE) {
+  types <- ifelse(include_folders, list("folder", "file"), list("file"))
+  syn_list <- as.list(synGetChildren(syn_id, includeTypes = types))
   syn_df <- data.frame(do.call(rbind, syn_list)) |>
     select(name, id) |>
-    mutate(name = unlist(name),
-           id = unlist(id)) |>
+    mutate(across(everything(), unlist)) |>
     # Find which dataset and granularity (if applicable) this is
     rowwise() |>
     mutate(

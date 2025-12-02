@@ -72,9 +72,7 @@ gene_info <- sageRNAUtils::get_gc_content_gtf(
 gene_info$ensembl_gene_id <- str_replace(gene_info$ensembl_gene_id, "\\.[0-9]+", "")
 
 gene_info <- gene_info |>
-  dplyr::rename(symbol_bulkRNA = external_gene_name) |>
-  # Remove IDs that end in "_PAR_Y"
-  subset(!grepl("_PAR_Y", ensembl_gene_id))
+  dplyr::rename(symbol_bulkRNA = external_gene_name)
 
 
 ## Lau genes -------------------------------------------------------------------
@@ -127,6 +125,12 @@ gtf_genes <- lapply(names(files), function(version) {
 
 gtf_genes <- purrr::reduce(gtf_genes, dplyr::full_join, by = "ensembl_gene_id")
 
+# seaRef only -- duplicate gene names have the Ensembl ID pasted after them in
+# the rownames of the counts matrix
+dupes <- duplicated(gtf_genes$symbol_seaRef) & !is.na(gtf_genes$symbol_seaRef)
+gtf_genes$symbol_seaRef[dupes] <- paste(gtf_genes$symbol_seaRef[dupes],
+                                        gtf_genes$ensembl_gene_id[dupes])
+
 
 # Merge all gene sets together -------------------------------------------------
 
@@ -158,11 +162,14 @@ final_symbol <- all_genes |>
   dplyr::select(ensembl_gene_id, canonical_symbol) |>
   rbind(max_symbol)
 
-# Merge back in to the main data frame and set any NA symbols to the Ensembl ID
+# Merge back in to the main data frame and set any NA symbols to the Ensembl ID.
+# To make symbols unambiguous but still human-readable, paste the Ensembl ID
+# after the gene name.
 all_genes <- merge(all_genes, final_symbol, all = TRUE) |>
   dplyr::arrange(ensembl_gene_id) |>
   dplyr::mutate(canonical_symbol = ifelse(is.na(canonical_symbol),
-                                          ensembl_gene_id, canonical_symbol))
+                                          ensembl_gene_id,
+                                          paste(canonical_symbol, ensembl_gene_id)))
 
 write.csv(all_genes, file_gene_list, quote = FALSE, row.names = FALSE)
 
