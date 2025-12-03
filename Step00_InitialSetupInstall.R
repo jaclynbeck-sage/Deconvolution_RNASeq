@@ -40,20 +40,16 @@ BiocManager::install(
 #BiocManager::install("preprocessCore", configure.args="--disable-threading")
 
 # install presto for faster marker finding in Seurat
-remotes::install_github("immunogenomics/presto",
-                        clean = TRUE)
+remotes::install_github("immunogenomics/presto", clean = TRUE)
 
 # install my utility package
-remotes::install_github("jaclynbeck-sage/sageRNAUtils",
-                        clean = TRUE)
+remotes::install_github("jaclynbeck-sage/sageRNAUtils", clean = TRUE)
 
 # install mvIC for regression
-remotes::install_github("GabrielHoffman/mvIC",
-                        clean = TRUE)
+remotes::install_github("GabrielHoffman/mvIC", clean = TRUE)
 
 # install the MuSiC package from my fork, which has a few fixes and speedups
-remotes::install_github("jaclynbeck-sage/MuSiC",
-                        clean = TRUE)
+remotes::install_github("jaclynbeck-sage/MuSiC", clean = TRUE)
 
 # install Dtangle and HSPE from my forks, which have a few fixes
 remotes::install_github("jaclynbeck-sage/dtangle", subdir = "lib_dtangle",
