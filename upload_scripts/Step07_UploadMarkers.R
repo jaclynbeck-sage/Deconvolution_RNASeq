@@ -49,7 +49,7 @@ for (dset in datasets) {
   # Excluded genes go in the metadata folder
   filename <- file.path(dir_metadata, str_glue("{dset}_excluded_genes.rds"))
   if (file.exists(filename)) {
-    provenance <- sce_df$id[sce_df$dataset == dset]
+    provenance <- sce_df$sce_id[sce_df$dataset == dset]
 
     UploadFile(filename, meta_folder,
                list("used" = provenance,

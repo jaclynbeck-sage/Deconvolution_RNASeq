@@ -147,7 +147,8 @@ for (dataset in datasets) {
       data <- Load_BulkData(params$test_data_name, params$normalization,
                             params$regression_method)
       data <- as.matrix(assay(data, "counts"))
-      marker_name <- paste(params, collapse = "_")
+      marker_name <- paste(params, collapse = "_") |>
+        str_replace("log_", "")
       cat(marker_name, "\n")
 
       markers_all_ordered <- OrderMarkers_ByCorrelation(markers$all, data)
