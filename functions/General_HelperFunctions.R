@@ -603,29 +603,19 @@ ConvertToROSMAPCelltypes <- function(df, remove_unused = TRUE) {
 # types. However this doesn't guarantee that the top markers are at all
 # correlated, or that the markers are the most informative for the data set
 # being tested. This function filters the marker list and re-orders it such
-# that for each cell type, the marker list is now the largest possible set of
-# marker genes that are all positively correlated with each other in the test
-# data set. The remaining markers are then ordered from highest to lowest
-# average correlation with each other.
-# NOTE: This problem can be solved exactly by treating the correlation matrix
-#       as an adjacency graph and using igraph::largest_cliques(), however the
-#       run-time increases exponentially with number of genes and isn't
-#       realistic for our needs. The code below is a greedy approximation.
+# that for each cell type, the marker list is now the set of marker genes with
+# a positive average correlation with all other marker genes. These markers are
+# then ordered from highest to lowest average correlation with each other.
 #
 # Arguments:
 #   marker_list = a list of marker gene names, one list entry per cell type
 #   data = a gene x sample expression matrix (or data.frame) for calculating
-#          correlation. This is usually the test data set.
+#          correlation. This is usually the test data set. The data should be
+#          log-normalized.
 #
 # Returns:
 #   an updated list of marker genes, one list entry per cell type
 OrderMarkers_ByCorrelation <- function(marker_list, data) {
-  # Assumption that if the values in data aren't very large, this is log-scale
-  # data that needs to be put into linear scale
-  if (max(data) < 100) {
-    data <- 2^data - 1
-  }
-
   # For each cell type, update the marker list
   new_list <- sapply(names(marker_list), function(N) {
     markers <- marker_list[[N]]
@@ -644,25 +634,25 @@ OrderMarkers_ByCorrelation <- function(marker_list, data) {
     }
 
     corr_mat <- cor(as.matrix(t(data[markers, ])))
+    diag(corr_mat) <- NA
 
     # Re-order genes by average correlation, highest first
-    corr_means <- rowMeans(corr_mat)
+    corr_means <- rowMeans(corr_mat, na.rm = TRUE)
     corr_means <- sort(corr_means, decreasing = TRUE)
 
-    # Start at the most positively correlated genes, iteratively add genes that
-    # have only positive correlations with the existing set of genes
-    new_markers <- c(names(corr_means)[1])
-    for (m in 2:length(corr_means)) {
-      marker <- names(corr_means)[m]
-      tmp <- corr_mat[marker, new_markers]
-      if (all(tmp >= 0)) {
-        new_markers <- c(new_markers, marker)
-      }
+    new_markers <- names(corr_means)[corr_means >= 0]
+
+    # If there aren't enough markers that are positively correlated with each
+    # other, just return all markers sorted by average correlation
+    if (length(new_markers) < 3) {
+      return(names(corr_means))
     }
 
-    # Sort by average correlation within this group of markers
-    new_means <- rowMeans(corr_mat[new_markers, new_markers])
-    return(new_markers[order(new_means, decreasing = TRUE)])
+    # Sort by average correlation within this group of markers now that negative
+    # markers have been removed
+    new_means <- rowMeans(corr_mat[new_markers, new_markers], na.rm = TRUE) |>
+      sort(decreasing = TRUE)
+    return(names(new_means))
   })
 
   return(new_list)

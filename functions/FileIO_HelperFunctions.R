@@ -17,13 +17,20 @@ source("Filenames.R")
 #
 # Arguments:
 #   filename = the name of of the file to read in, including file path
-#   normalization = one of "counts", "cpm", "tpm", "tmm",
+#   normalization = one of "counts", "counts_tpm", "cpm", "tpm", "tmm",
 #                   "log_cpm", "log_tpm", or "log_tmm":
 #                     "counts" will return raw, unaltered counts
+#                     "counts_tpm" will return the TPM matrix for bulk data,
+#                         scaled to the same order of magnitude as the counts
+#                         matrix. Single cell data will default to "counts"
+#                         since UMI data is similar to TPM already.
 #                     "cpm" will normalize the counts to counts per million
-#                     "tpm" will normalize the counts to transcripts per million
-#                         for bulk data only. Single cell data will default to
-#                         cpm since UMI data is similar to tpm already.
+#                     "tpm" will use the transcripts per million matrix for bulk
+#                         data only, normalized to CPM. The extra CPM
+#                         normalization is done because the TPM matrix values no
+#                         longer add up to 1e6 due to the large number of genes
+#                         removed from the data. Single cell data will default
+#                         to "cpm".
 #                     "tmm" will normalize using TMM factors from edgeR
 #                     "log_cpm" will take the log2(cpm+1)
 #                     "log_tpm" will take the log2(tpm+1)
@@ -56,12 +63,14 @@ Load_CountsFile <- function(filename, normalization, regression_method = "none")
   }
 
   norm_opts <- expand.grid(norm = c("cpm", "tpm", "tmm"),
-                             log = c("", "log_"))
-  norm_opts <- c("counts",
+                           log = c("", "log_"))
+  norm_opts <- c("counts", "counts_tpm",
                  paste0(norm_opts$log, norm_opts$norm))
 
   if (!(normalization %in% norm_opts)) {
-    stop(paste0("Error! 'normalization' should be one of ", norm_opts, "."))
+    stop(paste0("Error! 'normalization' should be one of ",
+                paste(norm_opts, collapse = ", "),
+                "."))
   }
 
   if (!(regression_method %in% c("none", "edger", "lme", "combat"))) {
@@ -70,28 +79,42 @@ Load_CountsFile <- function(filename, normalization, regression_method = "none")
 
   se_obj <- readRDS(filename)
 
+  # Bulk data only -- if TPM is part of the normalization, replace the "counts"
+  # assay with the TPM assay and remove tmm factors.
+  if (grepl("tpm", normalization) && "tpm" %in% names(assays(se_obj))) {
+    # The TPM matrices go to two decimal places, so we multiply by 100 to get
+    # count-like data. This has the advantage of putting the TPM data on
+    # roughly the same scale as the actual count data as well.
+    assay(se_obj, "counts") <- assay(se_obj, "tpm") * 100
+    se_obj$tmm_factors <- 1
+  }
+
   # If using regressed counts, replace the 'counts' matrix with those counts,
   # and replace the tmm_factors field with the TMM factors for the regressed
   # data
   if (regression_method != "none") {
-    assay(se_obj, "counts") <- assay(se_obj, paste0("corrected_", regression_method))
-    se_obj$tmm_factors <- colData(se_obj)[, paste0("tmm_factors_", regression_method)]
+    field_name <- regression_method
+    tmm_factors <- colData(se_obj)[, paste0("tmm_factors_", regression_method)]
+
+    if (grepl("tpm", normalization)) {
+      field_name <- str_glue("{regression_method}_tpm")
+      tmm_factors <- 1 # TMM factors ignored for TPM data
+    }
+
+    assay(se_obj, "counts") <- assay(se_obj, paste0("corrected_", field_name))
+    se_obj$tmm_factors <- tmm_factors
   }
 
-  if (normalization == "counts") {
+  if (normalization == "counts" || normalization == "counts_tpm") {
     return(se_obj)
   }
 
-  # The remaining normalizations all need CPM, TPM, or TMM
+  # The remaining normalizations all need normalization by CPM, TPM, or TMM
 
-  # TPM for bulk data only
-  if (grepl("tpm", normalization) && "tpm" %in% names(assays(se_obj))) {
-    norm_counts <- scuttle::calculateCPM(assay(se_obj, "tpm"))
-  }
-  # CPM for single cell, and for bulk if TPM is not specified
-  else {
-    norm_counts <- scuttle::calculateCPM(se_obj)
-  }
+  # If normalization is TPM, the appropriate TPM data for the regression method
+  # will be in the "counts" assay and get normalized to sum to 1e6. Otherwise,
+  # this acts on raw counts.
+  norm_counts <- scuttle::calculateCPM(se_obj)
 
   if (grepl("tmm", normalization)) {
     # This is equivalent to counts * 1e6 / (libSize * tmm).
@@ -128,8 +151,9 @@ Load_CountsFile <- function(filename, normalization, regression_method = "none")
 #   dataset = the name of the data set to load in
 #   granularity = either "broad_class" or "sub_class", for which level of cell
 #                 types to use in the metadata
-#   normalization = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm",
-#                   or "log_tpm". See Load_CountsFile for description.
+#   normalization = one of "counts", "counts_tpm", "cpm", "tmm", "tpm",
+#                   "log_cpm", "log_tmm", or "log_tpm". See Load_CountsFile for
+#                   description.
 #
 # Returns:
 #   a SingleCellExperiment object that is the exact same as what was read from
@@ -139,11 +163,6 @@ Load_CountsFile <- function(filename, normalization, regression_method = "none")
 #   assignments based on granularity.
 Load_SingleCell <- function(dataset, granularity, normalization = "counts") {
   sc_file <- file.path(dir_singlecell, str_glue("{dataset}_sce.rds"))
-
-  # Single cell data doesn't use TPM normalization
-  if (grepl("tpm", normalization)) {
-    normalization <- str_replace(normalization, "tpm", "cpm")
-  }
 
   singlecell <- Load_CountsFile(sc_file, normalization, regression_method = "none")
   metadata <- colData(singlecell)
@@ -184,8 +203,9 @@ Save_SingleCell <- function(dataset, sce) {
 #   dataset = the name of the data set to load in
 #   granularity = either "broad_class" or "sub_class", for which level of cell
 #                 types to load in.
-#   normalization = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm",
-#                   or "log_tpm". See Load_CountsFile for description.
+#   normalization = one of "counts", "counts_tpm", "cpm", "tmm", "tpm",
+#                   "log_cpm", "log_tmm", or "log_tpm". See Load_CountsFile for
+#                   description.
 #
 # Returns:
 #   a SummarizedExperiment object that is the exact same as what was read from
@@ -194,11 +214,6 @@ Save_SingleCell <- function(dataset, sce) {
 Load_PseudobulkPureSamples <- function(dataset, granularity, normalization = "counts") {
   pb_file <- str_glue("pseudobulk_{dataset}_puresamples_{granularity}.rds")
   pb_file <- file.path(dir_pseudobulk, pb_file)
-
-  # Pseudobulk data doesn't use TPM normalization
-  if (grepl("tpm", normalization)) {
-    normalization <- str_replace(normalization, "tpm", "cpm")
-  }
 
   pseudobulk <- Load_CountsFile(pb_file, normalization, regression_method = "none")
   return(pseudobulk)
@@ -233,8 +248,9 @@ Save_PseudobulkPureSamples <- function(se, dataset, granularity) {
 #               to load in.
 #   granularity = either "broad_class" or "sub_class", for which level of cell
 #                 types to load in.
-#   normalization = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm",
-#                   or "log_tpm". See Load_CountsFile for description.
+#   normalization = one of "counts", "counts_tpm", "cpm", "tmm", "tpm",
+#                   "log_cpm", "log_tmm", or "log_tpm". See Load_CountsFile for
+#                   description.
 #
 # Returns:
 #   a SummarizedExperiment object that is the exact same as what was read from
@@ -297,8 +313,9 @@ save_SimulatedScadenData <- function(se, dataset, granularity, normalization) {
 #
 # Arguments:
 #   dataset = the name of the dataset ("ROSMAP", "Mayo", or "MSBB")
-#   normalization = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm",
-#                   or "log_tpm". See Load_CountsFile for description.
+#   normalization = one of "counts", "counts_tpm", "cpm", "tmm", "tpm",
+#                   "log_cpm", "log_tmm", or "log_tpm". See Load_CountsFile for
+#                   description.
 #   regression_method = "none", if raw uncorrected counts should be used for
 #                       bulk data, or one of "edger", "lme", or "combat", to
 #                       use batch-corrected counts from one of those methods.

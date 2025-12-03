@@ -25,7 +25,7 @@ params_loop1 <- tidyr::expand_grid(
   reference_input_type = alg_config$reference_input_type,
   normalization = alg_config$normalization,
   regression_method = c("none", "edger", "lme", "combat")
-) %>%
+) |>
   arrange(normalization)
 
 # Algorithm-specific parameters -- marker types, number of markers, plus any

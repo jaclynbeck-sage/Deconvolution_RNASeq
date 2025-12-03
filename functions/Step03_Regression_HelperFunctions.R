@@ -17,10 +17,9 @@
 #   bulk_se - a SummarizedExperiment object containing an assay called "counts"
 #   covariates - a samples x variables data frame with covariates to consider.
 #                Must contain only factors or numerical values.
-Find_BestModel <- function(dataset, tissue, bulk_se, covariates, plot_var_explained = FALSE) {
+Find_BestModel <- function(dataset, tissue, bulk_se, covariates, n_cores, plot_var_explained = FALSE) {
   expr_norm <- sageRNAUtils::simple_log2norm(
     as.matrix(assay(bulk_se, "counts")),
-    size_factors = bulk_se$tmm_factors,
     pseudocount = 0.5
   )
 

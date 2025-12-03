@@ -123,7 +123,7 @@ for (dataset in datasets) {
 # regression, and granularity
 
 params_loop <- expand_grid(test_data_name = all_bulk_datasets(),
-                           normalization = c("cpm", "tmm", "tpm"),
+                           normalization = c("log_cpm", "log_tmm", "log_tpm"),
                            regression_method = c("none", "edger", "lme", "combat"))
 
 for (dataset in datasets) {

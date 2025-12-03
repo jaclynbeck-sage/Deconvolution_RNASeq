@@ -61,7 +61,6 @@ for (dataset in datasets) {
                                          scale_numerical = TRUE)
 
     expr <- DGEList(assay(bulk_tissue, "counts"), samples = colData(bulk_tissue))
-    expr$samples$norm.factors <- expr$samples$tmm_factors
     expr$samples$group <- expr$samples$diagnosis
 
     genes_keep <- edgeR::filterByExpr(expr, group = expr$samples$group)
@@ -83,101 +82,116 @@ for (dataset in datasets) {
     if (is.null(formulas)) {
       message("Determining best models...")
       formulas <- Find_BestModel(dataset, tissue, bulk_tissue,
-                                 covar_tissue, plot_var_explained = TRUE)
+                                 covar_tissue, n_cores, plot_var_explained = TRUE)
     }
 
     formula_fixed <- as.formula(formulas$formula_fixed)
     formula_mixed <- as.formula(formulas$formula_mixed)
 
+    # The TPM matrices have precision to the 100ths place, so we convert to
+    # count-like data by multiplying the values x 100. This puts the values on
+    # roughly the same scale as the counts matrix.
+    tpm_as_counts <- round(assay(bulk_tissue, "tpm") * 100)
+
+
     # edgeR glmQLfit -----------------------------------------------------------
 
     message("Performing edgeR glmQLfit...")
-    expr <- DGEList(assay(bulk_tissue, "counts"), samples = colData(bulk_tissue))
-    expr$samples$norm.factors <- expr$samples$tmm_factors
 
-    mod <- model.matrix(formula_fixed, data = covar_tissue)
+    edger_fit <- function(data_mat) {
+      expr <- DGEList(data_mat, samples = colData(bulk_tissue))
 
-    expr <- estimateDisp(expr, mod)
-    fit_edger <- glmQLFit(expr, mod)
+      mod <- model.matrix(formula_fixed, data = covar_tissue)
 
-    # edgeR uses unshrunk coefficients to calculate fitted values, so we use them too
-    coefs_edger <- fit_edger$unshrunk.coefficients
-    coefs_bio <- grepl("Intercept|diagnosis|sex|ageDeath", colnames(coefs_edger))
-    coefs_tech <- !coefs_bio
+      expr <- estimateDisp(expr, mod)
+      fit_edger <- glmQLFit(expr, mod)
 
-    # Since we don't have residuals from edgeR, we are subtracting technical
-    # confounds from the data rather than adding the intercept back to the
-    # residuals.
-    adjust <- tcrossprod(coefs_edger[, coefs_tech], mod[, coefs_tech])
+      # edgeR uses unshrunk coefficients to calculate fitted values, so we use them too
+      coefs_edger <- fit_edger$unshrunk.coefficients
+      coefs_bio <- grepl("Intercept|diagnosis|sex|ageDeath", colnames(coefs_edger))
+      coefs_tech <- !coefs_bio
 
-    # Note: There are multiple ways this value could be corrected. For a linear
-    # model, it would just be exp(log(expr$counts) - adjust). For a GLM, it could
-    # also be corrected on a linear scale by adjusting the pearson residuals:
-    #   pearson = (expr$counts - mu_orig)/sqrt(variance_orig)
-    #   y = mu_new + pearson * sqrt(variance_new)
-    # where 'mu_orig' is the original fitted values (linear scale) and 'mu_new' is
-    # exp(tcrossprod(coefs[,coefs_bio], mod[,coefs_bio]) + offset). Variance
-    # is (mu + dispersion * mu^2) for edgeR. Since I'm not sure whether correcting
-    # on the linear or log scale is "better" and the two methods produce very
-    # similar results, I use log scale, because it's more intuitive and makes it
-    # similar to how I correct with variancePartition output.
-    # [expr$counts / exp(adjust)] is functionally equivalent to
-    # exp(log(expr$counts) - adjust) but avoids using pseudocount
-    corrected_edger <- expr$counts / exp(adjust)
+      # Since we don't have residuals from edgeR, we are subtracting technical
+      # confounds from the data rather than adding the intercept back to the
+      # residuals.
+      adjust <- tcrossprod(coefs_edger[, coefs_tech], mod[, coefs_tech])
 
-    # There shouldn't be any negative numbers but just in case
-    corrected_edger[corrected_edger < 0] <- 0
+      # Note: There are multiple ways this value could be corrected. For a
+      # linear model, it would just be exp(log(expr$counts) - adjust). For a
+      # GLM, it could also be corrected on a linear scale by adjusting the
+      # pearson residuals:
+      #   pearson = (expr$counts - mu_orig)/sqrt(variance_orig)
+      #   y = mu_new + pearson * sqrt(variance_new)
+      # where 'mu_orig' is the original fitted values (linear scale) and
+      # 'mu_new' is exp(tcrossprod(coefs[,coefs_bio], mod[,coefs_bio]) +
+      # offset). Variance is (mu + dispersion * mu^2) for edgeR. Since I'm not
+      # sure whether correcting on the linear or log scale is "better" and the
+      # two methods produce very similar results, I use log scale, because it's
+      # more intuitive and makes it similar to how I correct with
+      # variancePartition output.
+      # [expr$counts / exp(adjust)] is functionally equivalent to
+      # exp(log(expr$counts) - adjust) but avoids using pseudocount
+      corrected_edger <- expr$counts / exp(adjust)
 
-    rm(expr, fit_edger, adjust)
+      # There shouldn't be any negative numbers but just in case
+      corrected_edger[corrected_edger < 0] <- 0
+      return(corrected_edger)
+    }
+
+    corrected_edger <- edger_fit(assay(bulk_tissue, "counts"))
+    corrected_edger_tpm <- edger_fit(tpm_as_counts)
 
 
     # Basic LM or LME fit ------------------------------------------------------
 
     message("Performing LME fit...")
-    expr_norm <- sageRNAUtils::simple_log2norm(
-      as.matrix(assay(bulk_tissue, "counts")),
-      size_factors = bulk_tissue$tmm_factors,
-      pseudocount = 0.5
-    )
 
-    # For Mayo TCX: No mixed effects in model, run a linear fixed-effects model
-    if (formulas$formula_mixed == formulas$formula_fixed) {
-      formula_lm <- paste("t(expr_norm)", formulas$formula_mixed)
-      fits_lme <- lm(formula_lm, data = covar_tissue)
+    lme_fit <- function(data_mat) {
+      expr_norm <- sageRNAUtils::simple_log2norm(
+        as.matrix(data_mat),
+        pseudocount = 0.5
+      )
 
-      coefs_lme <- t(coef(fits_lme))
-      mod_lme <- model.matrix(formula_mixed, data = covar_tissue)
+      # For Mayo TCX: No mixed effects in model, run a linear fixed-effects model
+      if (formulas$formula_mixed == formulas$formula_fixed) {
+        formula_lm <- paste("t(expr_norm)", formulas$formula_mixed)
+        fits_lme <- lm(as.formula(formula_lm), data = covar_tissue)
 
-      resid_lme <- t(residuals(fits_lme))
-    } else {
-      fits_lme <- fitVarPartModel(expr_norm, formula_mixed, covar_tissue,
-                                  BPPARAM = MulticoreParam(n_cores))
+        coefs_lme <- t(coef(fits_lme))
+        mod_lme <- model.matrix(formula_mixed, data = covar_tissue)
 
-      coefs_lme <- t(sapply(fits_lme, fixef))
-      coefs_lme <- coefs_lme[rownames(expr_norm), ] # Ensure rows are in the original order
+        resid_lme <- t(residuals(fits_lme))
+      } else {
+        fits_lme <- fitVarPartModel(expr_norm, formula_mixed, covar_tissue,
+                                    BPPARAM = MulticoreParam(n_cores))
 
-      # Fixed-effects model matrix should be the same for all fits so just grab
-      # the first one. "X" corresponds to fixed effects in this object.
-      mod_lme <- getME(fits_lme[[1]], name = "X")
+        coefs_lme <- t(sapply(fits_lme, fixef))
+        coefs_lme <- coefs_lme[rownames(expr_norm), ] # Ensure rows are in the original order
 
-      resid_lme <- t(sapply(fits_lme, residuals))
-      resid_lme <- resid_lme[rownames(expr_norm), ] # Ensure rows are in the original order
+        # Fixed-effects model matrix should be the same for all fits so just grab
+        # the first one. "X" corresponds to fixed effects in this object.
+        mod_lme <- getME(fits_lme[[1]], name = "X")
+
+        resid_lme <- t(sapply(fits_lme, residuals))
+        resid_lme <- resid_lme[rownames(expr_norm), ] # Ensure rows are in the original order
+      }
+
+      # Add biological covariates back to residuals
+      coefs_bio <- grepl("Intercept|diagnosis|sex|ageDeath", colnames(coefs_lme))
+      adjust <- tcrossprod(coefs_lme[, coefs_bio], mod_lme[, coefs_bio])
+
+      # Convert back to counts
+      corrected_lme <- sageRNAUtils::log2_cpm_to_counts(
+        data = resid_lme + adjust,
+        library_size = colSums(data_mat),
+        pseudocount = 0.5
+      )
+      corrected_lme[corrected_lme < 0] <- 0
+      return(corrected_lme)
     }
 
-    # Add biological covariates back to residuals
-    coefs_bio <- grepl("Intercept|diagnosis|sex|ageDeath", colnames(coefs_lme))
-    adjust <- tcrossprod(coefs_lme[, coefs_bio], mod_lme[, coefs_bio])
-
-    # Convert back to counts
-    corrected_lme <- sageRNAUtils::log2_cpm_to_counts(
-      data = resid_lme + adjust,
-      library_size = colSums(assay(bulk_tissue, "counts")),
-      size_factors = bulk_tissue$tmm_factors,
-      pseudocount = 0.5
-    )
-    corrected_lme[corrected_lme < 0] <- 0
-
-    rm(adjust, resid_lme, expr_norm, fits_lme)
+    corrected_lme <- lme_fit(assay(bulk_tissue, "counts"))
+    corrected_lme_tpm <- lme_fit(tpm_as_counts)
 
 
     # ComBat batch adjustment --------------------------------------------------
@@ -191,11 +205,21 @@ for (dataset in datasets) {
     c_form <- paste("~", paste(c_vars, collapse = " + "))
     c_mod <- model.matrix(as.formula(c_form), data = covar_tissue)
 
-    corrected_combat <- sva::ComBat_seq(as.matrix(assay(bulk_tissue, "counts")),
-                                        batch = covar_tissue$batch,
-                                        group = NULL,
-                                        covar_mod = c_mod,
-                                        full_mod = TRUE)
+    corrected_combat <- sva::ComBat_seq(
+      as.matrix(assay(bulk_tissue, "counts")),
+      batch = covar_tissue$batch,
+      group = NULL,
+      covar_mod = c_mod,
+      full_mod = TRUE
+    )
+
+    corrected_combat_tpm <- sva::ComBat_seq(
+      as.matrix(tpm_as_counts),
+      batch = covar_tissue$batch,
+      group = NULL,
+      covar_mod = c_mod,
+      full_mod = TRUE
+    )
 
 
     # Create final bulk data object --------------------------------------------
@@ -205,10 +229,14 @@ for (dataset in datasets) {
     assay(bulk_tissue, "corrected_edger") <- round(corrected_edger)
     assay(bulk_tissue, "corrected_lme") <- round(corrected_lme)
     assay(bulk_tissue, "corrected_combat") <- round(corrected_combat)
+    assay(bulk_tissue, "corrected_edger_tpm") <- round(corrected_edger_tpm)
+    assay(bulk_tissue, "corrected_lme_tpm") <- round(corrected_lme_tpm)
+    assay(bulk_tissue, "corrected_combat_tpm") <- round(corrected_combat_tpm)
 
     bulk_tissue$tmm_factors_edger <- normLibSizes(round(corrected_edger))
     bulk_tissue$tmm_factors_lme <- normLibSizes(round(corrected_lme))
     bulk_tissue$tmm_factors_combat <- normLibSizes(round(corrected_combat))
+    # TPM matrices currently don't get TMM normalized
 
     Save_BulkData(str_glue("{dataset}_{tissue}"), bulk_tissue)
 
@@ -218,7 +246,8 @@ for (dataset in datasets) {
     var_genes <- var_genes[1:5000]
 
     plts <- lapply(
-      list("counts", "corrected_edger", "corrected_lme", "corrected_combat"),
+      list("counts", "corrected_edger", "corrected_lme", "corrected_combat",
+           "tpm", "corrected_edger_tpm", "corrected_lme_tpm", "corrected_combat_tpm"),
       function(data) {
         expr_norm <- simple_log2norm(assay(bulk_tissue, data))
         pc <- prcomp(t(expr_norm[var_genes, ]))$x[, 1:2] |>
@@ -231,7 +260,8 @@ for (dataset in datasets) {
       }
     )
 
-    print(patchwork::wrap_plots(plts))
+    print(patchwork::wrap_plots(plts[1:4]))
+    print(patchwork::wrap_plots(plts[5:8]))
     dev.off()
 
     rm(bulk_tissue, corrected_edger, corrected_lme, corrected_combat)
