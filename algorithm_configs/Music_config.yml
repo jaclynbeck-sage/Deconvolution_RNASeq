@@ -1,7 +1,7 @@
 default:
   # Used to create params_loop1 (data-specific arguments) in main function
   reference_input_type: "singlecell"
-  normalization: "counts" # MuSiC works on linear-scale data
+  normalization: ["counts", "counts_tpm"] # MuSiC works on linear-scale data
 
   # For params_loop2 (algorithm-specific arguments) in main function.
   # MuSiC was designed to use the whole set of genes, but I am testing whether

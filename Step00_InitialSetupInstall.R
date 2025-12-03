@@ -79,5 +79,5 @@ remotes::install_github("omnideconv/DWLS",
 # environment works, I used `pip freeze > omnideconv_requirements.txt` to get a
 # requirements file. This will ensure that the exact package versions used are
 # always installed in the docker container.
-reticulate::virtualenv_create("r-omnideconv",
+reticulate::virtualenv_create("r-omnideconv", version = "3.11.12", force = TRUE,
                               requirements = file.path("docker", "omnideconv_requirements.txt"))
