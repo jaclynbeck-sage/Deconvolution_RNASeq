@@ -15,7 +15,7 @@ RUN cd /home/rstudio && sh install-docker.sh
 USER rstudio
 
 RUN cd /home/rstudio && git clone https://github.com/jaclynbeck-sage/Deconvolution_RNASeq.git \
-  && git checkout sc_qc
+  && cd Deconvolution_RNASeq && git checkout sc_qc
 RUN cd /home/rstudio/Deconvolution_RNASeq && R -e "source('Step00_InitialSetupInstall.R')" \
   && /home/rstudio/.virtualenvs/r-omnideconv/bin/pip cache purge
 
