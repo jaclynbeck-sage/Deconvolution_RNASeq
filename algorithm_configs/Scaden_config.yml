@@ -1,7 +1,7 @@
 default:
   # Used to create params_loop1 (data-specific arguments) in main function
   reference_input_type: "scaden"
-  normalization: ["cpm", "tmm"] #tpm # Scaden works on linear-scale data
+  normalization: ["cpm", "tmm", "tpm"] # Scaden works on linear-scale data
 
   # For params_loop2 (algorithm-specific arguments) in main function
   marker_function: "CreateParams_FilterableSignature"
