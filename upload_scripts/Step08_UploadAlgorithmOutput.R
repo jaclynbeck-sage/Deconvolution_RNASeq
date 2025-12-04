@@ -17,17 +17,23 @@ input_ids <- list(sce = main_folders[[basename(dir_singlecell)]]$id,
                   signatures = main_folders[[basename(dir_signatures)]]$id,
                   bulk = main_folders[[basename(dir_bulk)]]$id)
 
+# Scaden pseudobulk files are a sub-folder of the main pseudobulk folder
+input_ids$scaden <- GetChildrenAsDf(input_ids$pseudobulk, types = list("folder")) |>
+  pull(id)
+
 dfs <- lapply(input_ids, GetChildrenAsDf)
 
 dfs$pseudobulk <- subset(dfs$pseudobulk, grepl("puresamples", name))
 dfs$signatures <- subset(dfs$signatures, grepl("signature", name))
+dfs$scaden$norm <- str_replace(dfs$scaden$name, ".*_", "") |>
+  str_replace("\\.rds", "")
 
-colnames(dfs$sce) <- c("sc_name", "sc_id", "dataset")
-colnames(dfs$pseudobulk) <- c("pb_name", "pb_id", "dataset", "granularity")
-colnames(dfs$signatures) <- c("sig_name", "sig_id", "dataset")
+colnames(dfs$sce)[1:2] <- c("sc_name", "sc_id")
+colnames(dfs$pseudobulk)[1:2] <- c("pb_name", "pb_id")
+colnames(dfs$signatures)[1:2] <- c("sig_name", "sig_id")
 
-provenance_df <- merge(dfs$sce, dfs$pseudobulk)
-provenance_df <- merge(provenance_df, dfs$signatures)
+provenance_df <- purrr::reduce(dfs[c("sce", "pseudobulk", "signatures")],
+                               merge)
 
 reference_datasets <- unique(provenance_df$dataset)
 test_datasets <- unique(dfs$bulk$dataset)
@@ -68,11 +74,20 @@ for (bulk in test_datasets) {
 
           if (alg == "CibersortX") {
             used_ids <- c(provenance$sig_id, provenance$sc_id)
+
           } else if (alg %in% c("DeconRNASeq", "DWLS")) {
             used_ids <- provenance$sig_id
+
           } else if (alg == "Dtangle") {
             used_ids <- provenance$pb_id
-          } else { # Baseline, Music, and Scaden
+
+          } else if (alg == "Scaden") {
+            prov_scaden <- subset(dfs$scaden, dataset == ref &
+                                    granularity == broadfine)
+            norm <- ifelse(grepl("tmm", filename), "tmm", "cpm")
+            used_ids <- prov_scaden$id[prov_scaden$norm == norm]
+
+          } else { # Baseline, Music
             used_ids <- provenance$sc_id
           }
 

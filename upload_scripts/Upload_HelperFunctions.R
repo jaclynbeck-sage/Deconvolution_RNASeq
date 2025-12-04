@@ -49,8 +49,7 @@ ExtractDatasetName <- function(filename) {
   return(names)
 }
 
-GetChildrenAsDf <- function(syn_id, include_folders = FALSE) {
-  types <- ifelse(include_folders, list("folder", "file"), list("file"))
+GetChildrenAsDf <- function(syn_id, types = list("file")) {
   syn_list <- as.list(synGetChildren(syn_id, includeTypes = types))
   syn_df <- data.frame(do.call(rbind, syn_list)) |>
     select(name, id) |>
