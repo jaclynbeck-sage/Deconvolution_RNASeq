@@ -469,8 +469,9 @@ FilterMarkers <- function(reference_data_name, granularity, n_markers,
   if (marker_order == "correlation") {
     data_name <- paste(test_data_name, normalization, regression_method,
                        sep = "_")
-    data_name <- str_replace(data_name, "log_", "")
-    data_name <- str_replace(data_name, "counts", "cpm")
+    data_name <- str_replace(data_name, "log_", "") |>
+      str_replace("counts_tpm", "tpm") |>
+      str_replace("counts", "cpm")
 
     markers_out <- markers$ordered_by_correlation[[marker_category]][[data_name]]
   } else {

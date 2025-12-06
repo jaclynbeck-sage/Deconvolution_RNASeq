@@ -23,8 +23,8 @@ library(stringr)
 
 source(file.path("functions", "General_HelperFunctions.R"))
 
-reference_datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
-bulk_datasets <- c("Mayo", "MSBB", "ROSMAP")
+reference_datasets <- all_singlecell_datasets()
+bulk_datasets <- all_bulk_datasets()
 
 # For direct comparison with the algorithm errors, we need to calculate errors
 # on the randomly-generated estimates for each combination of
@@ -41,23 +41,23 @@ params_permute <- expand.grid(algorithm = "Baseline",
 # Main loop --------------------------------------------------------------------
 
 for (granularity in c("broad_class", "sub_class")) {
-  # Get which celltypes are present by looking at the metadata from the Cain
-  # dataset, which was used to map cell type labels on to all other single cell
-  # datasets
+  # Get which celltypes are present by looking at the celltypes present in the
+  # Cain signature matrix
   signature <- Load_SignatureMatrix("cain", granularity, "cpm")
   celltypes <- colnames(signature)
 
-  # Loop over all 3 bulk datasets
+  # Loop over all bulk datasets
   for (bulk_dataset in bulk_datasets) {
     set.seed(sageRNAUtils::string_to_seed(paste(bulk_dataset, "Baseline")))
 
+    # Get the sample names in the bulk data
     se <- Load_BulkData(bulk_dataset, "counts", "none")
     samples <- colnames(se)
 
 
     ## Random uniform dataset --------------------------------------------------
-    # Generate 100 'parameter sets' of random estimates to mimic the structure
-    # of algorithm output
+    # Generate 100 'parameter sets' of random estimates drawn from a uniform
+    # distribution. Mimics the structure of algorithm output.
 
     params <- data.frame("reference_data_name" = "random_uniform",
                          "test_data_name" = bulk_dataset,
@@ -80,7 +80,7 @@ for (granularity in c("broad_class", "sub_class")) {
 
 
     ### Educated guesses -------------------------------------------------------
-    # 20 per reference data set = 100 total
+    # 20 per reference data set = 80 total
 
     params <- data.frame("reference_data_name" = "random_educated",
                          "test_data_name" = bulk_dataset,
@@ -122,7 +122,7 @@ for (granularity in c("broad_class", "sub_class")) {
 
 
     ## Bias toward one cell type -----------------------------------------------
-    # 10 per cell type = 70 total for broad cell types, 240 for fine cell types
+    # 10 per cell type = 70 total for broad cell types, 190 for fine cell types
     params <- data.frame("reference_data_name" = "random_biased",
                          "test_data_name" = bulk_dataset,
                          "granularity" = granularity)
@@ -131,8 +131,9 @@ for (granularity in c("broad_class", "sub_class")) {
     for (ct in 1:length(celltypes)) {
       list_tmp <- lapply(1:10, function(N) {
         # Generate a matrix with all low values, then replace the target cell type
-        # column with high values
-        mean_sd <- 0.05 / length(celltypes)
+        # column with high values. We want to aim for one cell type = 80% of the
+        # sample and all other cell types combined = 20% of the sample
+        mean_sd <- 0.2 / (length(celltypes)-1)
         ests <- rnorm(length(samples) * length(celltypes),
                       mean = mean_sd,
                       sd = mean_sd)
@@ -140,7 +141,7 @@ for (granularity in c("broad_class", "sub_class")) {
                        nrow = length(samples),
                        dimnames = list(samples, celltypes))
 
-        bias_vals <- rnorm(length(samples), mean = 0.95, sd = 0.05)
+        bias_vals <- rnorm(length(samples), mean = 0.8, sd = 0.05)
         ests[, ct] <- bias_vals
 
         ests[ests < 0] <- 0
