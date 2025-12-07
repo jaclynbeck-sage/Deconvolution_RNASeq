@@ -290,7 +290,7 @@ Load_SimulatedScadenData <- function(dataset, granularity, normalization) {
 
   # Always use the CPM file if normalization is "tpm", since TPM doesn't apply
   # to single cell data.
-  sim_file <- str_replace(sim_file, "_tpm_", "_cpm_")
+  sim_file <- str_replace(sim_file, "_tpm", "_cpm")
 
   # Simulated scaden data is always normalized to CPM. If the normalization was
   # TMM, the adjustment was already accounted for in the simulated data and it
