@@ -63,10 +63,16 @@ SignatureBased_InnerLoop <- function(data, params) {
         # DWLS-specific argument
         solver_type <- params$solver_type
 
-        res_pcts <- omnideconv::deconvolute_dwls(bulk_mat_filt,
-                                                 signature_filt,
-                                                 dwls_submethod = solver_type,
-                                                 verbose = FALSE)
+        res_pcts <- R.utils::withTimeout(
+          {
+            omnideconv::deconvolute_dwls(bulk_mat_filt,
+                                         signature_filt,
+                                         dwls_submethod = solver_type,
+                                         verbose = FALSE)
+          },
+          timeout = 600, cpu = 600 * parallel::detectCores(), elapsed = 600,
+          onTimeout = "error"
+        )
 
         if (any(is.na(res_pcts))) {
           message(paste("NA values in", paste(params, collapse = "_")))
@@ -97,7 +103,7 @@ SignatureBased_InnerLoop <- function(data, params) {
       msg <- paste("*** Error running param set: ", param_set,
                    "/  *** skipping ***")
       print(msg)
-      print(err)
+      print(err$message)
 
       return(NULL)
     }

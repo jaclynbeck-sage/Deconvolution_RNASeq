@@ -57,16 +57,22 @@ Music_InnerLoop <- function(data, params, verbose = FALSE) {
       cs <- data.frame(cells = names(data$sc_basis$M.S),
                        sizes = data$sc_basis$M.S)
 
-      result <- MuSiC::music_prop(bulk.mtx = data$test,
-                                  sc.sce = data$reference,
-                                  markers = markers_use,
-                                  clusters = "celltype",
-                                  samples = "sample",
-                                  verbose = verbose,
-                                  cell_size = cs,
-                                  centered = centered,
-                                  normalize = normalize,
-                                  sc.basis = sc_basis_precomputed)
+      result <- R.utils::withTimeout(
+        {
+          MuSiC::music_prop(bulk.mtx = data$test,
+                            sc.sce = data$reference,
+                            markers = markers_use,
+                            clusters = "celltype",
+                            samples = "sample",
+                            verbose = verbose,
+                            cell_size = cs,
+                            centered = centered,
+                            normalize = normalize,
+                            sc.basis = sc_basis_precomputed)
+        },
+        timeout = 600, cpu = 600 * parallel::detectCores(), elapsed = 600,
+        onTimeout = "error"
+      )
 
       # Remove "Weight.gene", "r.squared.full", and "Var.prop". "Weight.gene"
       # especially is a very large array and is unneeded, so this reduces
@@ -101,7 +107,7 @@ Music_InnerLoop <- function(data, params, verbose = FALSE) {
     error = function(err) {
       param_set <- paste(params, collapse = "  ")
       print(paste("*** Error running param set", param_set))
-      print(err)
+      print(err$message)
       print("*** skipping ***")
 
       return(NULL)
