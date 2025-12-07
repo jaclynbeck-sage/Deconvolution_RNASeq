@@ -36,7 +36,8 @@ marker_args <- do.call(alg_config$marker_function, args = alg_config$params_mark
 if (length(alg_config$additional_args) == 0) {
   params_loop2 <- marker_args
 } else {
-  addl_args <- expand.grid(alg_config$additional_args)
+  addl_args <- expand.grid(alg_config$additional_args,
+                           stringsAsFactors = FALSE)
   params_loop2 <- tidyr::expand_grid(marker_args,
                                      addl_args)
 }
