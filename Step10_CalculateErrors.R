@@ -15,7 +15,7 @@ granularity <- "broad_class"
 bulk_datasets <- all_bulk_datasets()
 singlecell_datasets <- all_singlecell_datasets()
 
-cores <- 12
+cores <- round(parallel::detectCores() * 0.75)
 cluster_type <- "FORK"
 cluster_outfile <- "errors_output.txt"
 

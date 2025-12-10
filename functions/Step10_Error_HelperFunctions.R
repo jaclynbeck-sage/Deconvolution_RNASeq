@@ -21,7 +21,7 @@ Get_Signatures <- function(singlecell_datasets, granularity) {
 
 Get_CommonGenes <- function(bulk_datasets, signatures) {
   common_genes <- lapply(bulk_datasets, function(X) {
-    bulk_se <- Load_BulkData(X, normalization = "log_cpm", regression_method = "none")
+    bulk_se <- Load_BulkData(X, normalization = "counts", regression_method = "none")
     rownames(bulk_se)
   })
   common_genes <- append(common_genes, lapply(signatures$all_signatures_cpm, rownames))
@@ -50,17 +50,18 @@ Get_FilteredSignatures <- function(signatures, common_genes) {
 
 # Quality control --------------------------------------------------------------
 
-Too_Many_Zeros <- function(est_pct, algorithm, granularity, zero_thresh = 0.25, tol = 1e-4) {
-  # Major cell types are >10% of the population in the Cain dataset
+Too_Many_Zeros <- function(est_pct, algorithm, granularity, zero_thresh = 0.25, tol = 1e-3) {
+  # Major cell types are >5% of RNA contribution in the Cain dataset
   if (granularity == "broad_class") {
     major_celltypes <- c("Astrocyte", "Excitatory", "Inhibitory", "Oligodendrocyte")
 
   } else {
-    # sub_class uses cell types >5% of the population, plus the most abundant
-    # excitatory and inhibitory subclasses
-    major_celltypes <- c("Astrocyte", "L2/3 IT", "L4 IT", "L5 IT", "Pvalb", "Oligodendrocyte")
+    major_celltypes <- c("Astrocyte", "L2/3 IT", "L4 IT", "L5 IT", "L6 IT",
+                         "Pvalb", "Oligodendrocyte")
   }
 
+  # Flag any estimates that are < 0.001 for major cell types, which we expect to
+  # be > 0.05.
   zeros <- colSums(est_pct < tol)[major_celltypes]
   zero_thresh <- zero_thresh * nrow(est_pct) # 25% can be zeros
 
@@ -80,8 +81,8 @@ Too_Many_Zeros <- function(est_pct, algorithm, granularity, zero_thresh = 0.25, 
 # root mean squared error, and mean absolute percent error).
 #
 # Arguments:
-#   meas_expr_cpm - the observed bulk data matrix, on the linear scale (CPM-,
-#                   TMM-, or TPM-normalized values depending on the parameters)
+#   meas_expr - the observed bulk data matrix, on the linear scale (CPM-,
+#               TMM-, or TPM-normalized values depending on the parameters)
 #   est_expr - the estimated expression matrix calculated from multiplying a
 #              signature matrix by the estimated cell type percentages, on the
 #              linear scale
@@ -90,27 +91,45 @@ Too_Many_Zeros <- function(est_pct, algorithm, granularity, zero_thresh = 0.25, 
 # Returns:
 #   a data frame where rows are samples and columns are the error metrics plus
 #   some metadata
-CalcGOF_BySample <- function(meas_expr_cpm, est_expr, param_id) {
-  meas_expr_cpm <- as.matrix(meas_expr_cpm)
+CalcGOF_BySample <- function(meas_expr, est_expr, param_id) {
+  # log-transform the data so distributions are more gaussian
+  meas_expr <- as.matrix(meas_expr)
+  meas_expr_log <- log2(meas_expr + 1)
+  est_expr_log <- log2(est_expr + 1)
 
-  # Using log2 transformation for correlation so distributions are more gaussian
-  cor_sample <- sapply(colnames(meas_expr_cpm), function(sample) {
-    cor(log2(meas_expr_cpm[, sample] + 1), log2(est_expr[, sample] + 1),
-        use = "na.or.complete")
+  cor_sample <- sapply(colnames(meas_expr), function(sample) {
+    cor(meas_expr_log[, sample], est_expr_log[, sample], use = "na.or.complete")
   })
 
-  rmse_sample <- sapply(colnames(meas_expr_cpm), function(sample) {
-    rmse(meas_expr_cpm[, sample], est_expr[, sample])
+  spear_sample <- sapply(colnames(meas_expr), function(sample) {
+    cor(meas_expr[, sample], est_expr[, sample],
+        use = "na.or.complete", method = "spearman")
   })
 
-  mape_sample <- sapply(colnames(meas_expr_cpm), function(sample) {
-    ok <- meas_expr_cpm[, sample] != 0 | est_expr[, sample] != 0
-    smape(meas_expr_cpm[ok, sample], est_expr[ok, sample]) / 2
+  rmse_sample <- sapply(colnames(meas_expr), function(sample) {
+    rmse(meas_expr[, sample], est_expr[, sample])
+  })
+
+  rmse_log_sample <- sapply(colnames(meas_expr), function(sample) {
+    rmse(meas_expr_log[, sample], est_expr_log[, sample])
+  })
+
+  mape_sample <- sapply(colnames(meas_expr), function(sample) {
+    ok <- meas_expr[, sample] != 0 | est_expr[, sample] != 0
+    smape(meas_expr[ok, sample], est_expr[ok, sample]) / 2
+  })
+
+  mape_log_sample <- sapply(colnames(meas_expr), function(sample) {
+    ok <- meas_expr_log[, sample] != 0 | est_expr_log[, sample] != 0
+    smape(meas_expr_log[ok, sample], est_expr_log[ok, sample]) / 2
   })
 
   gof_by_sample <- data.frame(cor = cor_sample,
+                              spearman = spear_sample,
                               rMSE = rmse_sample,
+                              rMSE_log = rmse_log_sample,
                               mAPE = mape_sample,
+                              mAPE_log = mape_log_sample,
                               param_id = param_id,
                               sample = names(cor_sample),
                               row.names = names(cor_sample))
@@ -136,13 +155,13 @@ CalcGOF_Means <- function(gof_by_sample, bulk_metadata, param_id) {
   # Add the tissue variable for easier downstream analysis
   gof_by_sample <- merge(gof_by_sample,
                          select(bulk_metadata, sample, tissue),
-                         by = "sample") %>%
+                         by = "sample") |>
     mutate(tissue = as.character(tissue))
 
-  gof_means <- gof_by_sample %>%
-    group_by(param_id, tissue, signature) %>%
+  gof_means <- gof_by_sample |>
+    group_by(param_id, tissue, signature) |>
     summarize(across(where(is.numeric), mean),
-              .groups = "drop") %>%
+              .groups = "drop") |>
     as.data.frame()
 
   return(gof_means)
