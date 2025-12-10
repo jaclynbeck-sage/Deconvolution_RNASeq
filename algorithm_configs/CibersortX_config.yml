@@ -11,7 +11,8 @@ default:
     filter_levels: [0, 3] # All other args are default
 
   # Use rmbatchSmode to correct signature or not
-  additional_args: !expr expand_grid(batch_correct = c(TRUE, FALSE))
+  additional_args:
+    batch_correct: [true, false]
 
   # Define the function that runs each param set
   inner_loop_file: !expr file.path("functions", "Step08_CibersortX_InnerLoop.R")
