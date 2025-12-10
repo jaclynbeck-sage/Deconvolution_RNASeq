@@ -478,6 +478,10 @@ FilterMarkers <- function(reference_data_name, granularity, n_markers,
     markers_out <- markers[[marker_category]]
   }
 
+  markers_out <- lapply(markers_out, function(X) {
+    markers$genes[X]
+  })
+
   # Remove genes that change in AD for this data set if applicable
   if (filter_ad_genes) {
     markers_out <- lapply(markers_out, function(mkrs) {
@@ -485,26 +489,24 @@ FilterMarkers <- function(reference_data_name, granularity, n_markers,
     })
   }
 
-  markers <- markers_out
-
   # Remove genes that don't exist in the data
-  markers <- lapply(markers, function(X) {
+  markers_out <- lapply(markers_out, function(X) {
     intersect(X, available_genes)
   })
 
   # Get the minimum of n_markers and the actual number of markers for each cell type
-  n_markers <- sapply(lengths(markers), min, n_markers)
+  n_markers <- sapply(lengths(markers_out), min, n_markers)
 
   # We can't use these markers if any cell type has < 3 markers after filtering
   if (any(n_markers < 3)) {
     return(NULL)
   }
 
-  markers_filt <- lapply(names(markers), function(N) {
-    markers[[N]][1:n_markers[N]]
+  markers_filt <- lapply(names(markers_out), function(N) {
+    markers_out[[N]][1:n_markers[N]]
   })
 
-  names(markers_filt) <- names(markers)
+  names(markers_filt) <- names(markers_out)
 
   return(markers_filt)
 }

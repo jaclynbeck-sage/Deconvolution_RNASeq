@@ -65,8 +65,13 @@ FindMarkers_AutogeneS <- function(datasets, granularities) {
         print(str_glue("Markers for {dataset} / {granularity} cell types ({key}):"))
         print(lengths(marker_results$filtered))
 
-        list_final <- list("all" = marker_results$all,
-                           "filtered" = marker_results$filtered)
+        all_genes <- as.character(unlist(marker_results$all))
+
+        list_final <- list(
+          "genes" = all_genes,
+          "all" = lapply(marker_results$all, match, all_genes), # index into all_genes
+          "filtered" = lapply(marker_results$filtered, match, all_genes) # index into all_genes
+        )
 
         Save_Markers(list_final, dataset, granularity,
                      marker_type = "autogenes",

@@ -77,9 +77,14 @@ FindMarkers_DESeq2 <- function(datasets, granularities, n_cores) {
       print(str_glue("Markers for {dataset} / {granularity} cell types:"))
       print(lengths(marker_results$filtered))
 
-      markers_list <- list("deseq_results" = dds_res,
-                           "all" = marker_results$all,
-                           "filtered" = marker_results$filtered)
+      all_genes <- as.character(unlist(marker_results$all))
+
+      markers_list <- list(
+        "genes" = all_genes,
+        "deseq_results" = dds_res,
+        "all" = lapply(marker_results$all, match, all_genes), # index into all_genes
+        "filtered" = lapply(marker_results$filtered, match, all_genes) # index into all_genes
+      )
 
       Save_Markers(markers_list, dataset, granularity, marker_type = "deseq2")
     }

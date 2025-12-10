@@ -106,9 +106,11 @@ for (dataset in datasets) {
 
     saveRDS(markers, file)
 
-    loss1 <- (1 - length(setdiff(unlist(markers$all), markers$ad_gene_exclusions)) /
+    loss1 <- (1 - length(setdiff(markers$genes[unlist(markers$all)],
+                                 markers$ad_gene_exclusions)) /
                 sum(lengths(markers$all))) * 100
-    loss2 <- (1 - length(setdiff(unlist(markers$filtered), markers$ad_gene_exclusions)) /
+    loss2 <- (1 - length(setdiff(markers$genes[unlist(markers$filtered)],
+                                 markers$ad_gene_exclusions)) /
                 sum(lengths(markers$filtered))) * 100
     print(str_glue("{basename(file)}: removed {round(loss1)}% of ",
                    "non-logfc-filtered and {round(loss2)}% of logfc-filtered ",
@@ -151,8 +153,14 @@ for (dataset in datasets) {
         str_replace("log_", "")
       cat(marker_name, "\n")
 
-      markers_all_ordered <- OrderMarkers_ByCorrelation(markers$all, data)
-      markers_filt_ordered <- OrderMarkers_ByCorrelation(markers$filtered, data)
+      all_markers <- lapply(markers$all, function(X) { markers$genes[X] })
+      filtered_markers <- lapply(markers$filtered, function(X) { markers$genes[X] })
+
+      markers_all_ordered <- OrderMarkers_ByCorrelation(all_markers, data)
+      markers_filt_ordered <- OrderMarkers_ByCorrelation(filtered_markers, data)
+
+      markers_all_ordered <- lapply(markers_all_ordered, match, markers$genes)
+      markers_filt_ordered <- lapply(markers_filt_ordered, match, markers$genes)
 
       markers$ordered_by_correlation$all[[marker_name]] <- markers_all_ordered
       markers$ordered_by_correlation$filtered[[marker_name]] <- markers_filt_ordered

@@ -60,9 +60,14 @@ FindMarkers_DtangleHSPE <- function(datasets, granularities, cl = NULL) {
 
       # Format like the other marker finding algorithms
       markers$L <- lapply(markers$L, names)
-      markers_final <- list("all" = markers$L,
-                            "filtered" = markers$filtered,
-                            "V" = markers$V)
+      all_genes <- as.character(unlist(markers$L))
+
+      markers_final <- list(
+        "genes" = all_genes,
+        "all" = lapply(markers$L, match, all_genes), # index into all_genes
+        "filtered" = lapply(markers$filtered, match, all_genes), # index into all_genes
+        "V" = markers$V
+      )
 
       Save_Markers(markers_final, dataset, granularity,
                    marker_type = "dtangle",

@@ -49,9 +49,14 @@ FindMarkers_Seurat <- function(datasets, granularities) {
       print(str_glue("Markers for {dataset} / {granularity} cell types:"))
       print(lengths(marker_results$filtered))
 
-      markers_list <- list("seurat_results" = markers,
-                           "all" = marker_results$all,
-                           "filtered" = marker_results$filtered)
+      all_genes <- as.character(unlist(marker_results$all))
+
+      markers_list <- list(
+        "genes" = all_genes,
+        "seurat_results" = markers,
+        "all" = lapply(marker_results$all, match, all_genes), # index into all_genes
+        "filtered" = lapply(marker_results$filtered, match, all_genes) # index into all_genes
+      )
 
       Save_Markers(markers_list, dataset, granularity, marker_type = "seurat")
 
