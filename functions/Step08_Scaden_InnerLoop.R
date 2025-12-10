@@ -65,7 +65,7 @@ Scaden_InnerLoop <- function(data, params) {
               "markers" = intersect(rownames(data$reference), rownames(data$test)))
 
   # Put the samples back in their original order
-  res$estimates <- res$estimates[colnames(data$test), levels(data$reference$celltype)]
+  res$estimates <- res$estimates[colnames(data$test), ]
 
   return(res)
 }
