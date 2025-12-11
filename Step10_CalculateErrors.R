@@ -22,6 +22,7 @@ cluster_outfile <- "errors_output.txt"
 # Which algorithms to calculate errors for
 algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "Music",
                 "Scaden", "Baseline")
+algorithms <- c("Music")
 
 # Pre-load all signature matrices
 signatures <- Get_Signatures(singlecell_datasets, granularity)
@@ -77,9 +78,10 @@ for (bulk_dataset in bulk_datasets) {
       # Input data needs to be normalized by depth (cpm, tmm, or tpm). If the
       # original input was 'counts', normalize to CPM. If the original input was
       # on the log scale, normalize to linear scale.
-      params_mod <- file_params %>%
-        mutate(normalization = str_replace(normalization, "counts", "cpm"),
-               normalization = str_replace(normalization, "log_", ""))
+      params_mod <- file_params |>
+        mutate(normalization = str_replace(normalization, "counts_tpm", "tpm") |>
+                 str_replace("counts", "cpm") |>
+                 str_replace("log_", ""))
 
       # The data that was used to generate the estimates
       data <- Load_BulkData(params_mod$test_data_name,
