@@ -753,9 +753,11 @@ Get_ErrorFiles <- function(bulk_dataset, algorithm, granularity, reference_datas
 #   nothing
 Save_ErrorIntermediate <- function(error_obj) {
   params <- error_obj$params %>% select(-total_markers_used)
-  filename <- paste(params, collapse = "_")
-  saveRDS(error_obj,
-          file.path(dir_errors_tmp, paste0(filename, ".rds")))
+  filename <- paste(params, collapse = "_") |>
+    str_replace_all(" |/", "_") # Get rid of spaces and slashes
+  filename <- file.path(dir_errors_tmp, paste0(filename, ".rds"))
+
+  saveRDS(error_obj, filename)
 }
 
 
@@ -773,7 +775,8 @@ Save_ErrorIntermediate <- function(error_obj) {
 #   algorithms plus the error calculations if a file matching the input
 #   parameters exists, or NULL if not
 Load_ErrorIntermediate <- function(params) {
-  filename <- paste(params, collapse = "_")
+  filename <- paste(params, collapse = "_") |>
+    str_replace_all(" |/", "_") # Get rid of spaces and slashes
   filename <- file.path(dir_errors_tmp, paste0(filename, ".rds"))
 
   if (file.exists(filename)) {
