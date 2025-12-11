@@ -921,14 +921,13 @@ Load_Markers <- function(dataset, granularity, marker_type,
 #
 # Arguments:
 #   sce - a SingleCellExperiment object, which must have a column for "celltype"
-#   dataset_name - the name of this dataset
-#   granularity - either 'broad_class' or 'sub_class'
+#   output_dir - the path to the directory where the data should be stored
 #
 # Returns:
 #   f_name - the filename of the newly-created file
-Save_SingleCellToCibersort <- function(sce, dataset_name, granularity) {
+Save_SingleCellToCibersort <- function(sce, output_dir) {
   # omnideconv requires that the file be named this way
-  f_name <- file.path(dir_cibersort, "sample_file_for_cibersort.tsv")
+  f_name <- file.path(output_dir, "sample_file_for_cibersort.tsv")
 
   # Header (column names) is "GeneSymbol" followed by the cell type labels for
   # each cell

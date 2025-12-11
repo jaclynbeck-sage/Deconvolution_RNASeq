@@ -45,7 +45,10 @@ for (dataset in datasets) {
     sce$celltype <- str_replace(as.character(sce$celltype), "\\.", "_")
     sce$celltype <- str_to_lower(sce$celltype)
 
-    f_name <- Save_SingleCellToCibersort(sce, dataset, granularity)
+    sig_dir <- file.path(dir_cibersort, str_glue("{dataset}_{granularity}"))
+    dir.create(sig_dir, showWarnings = FALSE, mode = "777")
+
+    f_name <- Save_SingleCellToCibersort(sce, sig_dir)
     celltypes <- sce$celltype
     rm(sce)
     gc()
@@ -58,8 +61,8 @@ for (dataset in datasets) {
     sig <- build_model_cibersortx(f_name,
                                   cell_type_annotations = as.character(celltypes),
                                   container = "docker",
-                                  input_dir = dir_cibersort,
-                                  output_dir = dir_cibersort,
+                                  input_dir = sig_dir,
+                                  output_dir = sig_dir,
                                   verbose = TRUE)
 
     # Cell types are out of order and lower-case. Putting them in sorted
@@ -68,8 +71,9 @@ for (dataset in datasets) {
     sig <- sig[, sort(colnames(sig))]
     colnames(sig) <- colnames(signatures$cpm[[granularity]])
 
-    # CibersortX changes "-" characters to ".". This undoes that without
+    # CibersortX changes "-" and " " characters to ".". This undoes that without
     # modifying gene names that already had "." in them.
+    rownames(sig) <- str_replace(rownames(sig), "\\.ENSG", " ENSG")
     orig_names <- rownames(signatures$cpm[[granularity]])
     mismatches <- !(rownames(sig) %in% orig_names)
 
