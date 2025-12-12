@@ -54,8 +54,17 @@ Scaden_InnerLoop <- function(data, params) {
                                          bulk_gene_expression = data$test,
                                          temp_dir = temp_path,
                                          verbose = TRUE)
-  # Change Microglia.PVM back to Microlia-PVM
-  colnames(ests) <- str_replace(colnames(ests), "\\.", "-")
+
+  # Cell type names get changed with make.names() when making the reference
+  # data, so we undo that change here
+  stopifnot("celltype_names" %in% names(metadata(data$reference)))
+
+  orig_celltypes <- metadata(data$reference)$celltype_names
+  mn <- make.names(orig_celltypes)
+
+  stopifnot(all(colnames(ests) %in% mn))
+  ests <- ests[, mn]
+  colnames(ests) <- orig_celltypes
 
   # Remove temp directory with dense matrix files
   unlink(temp_path, recursive = TRUE)

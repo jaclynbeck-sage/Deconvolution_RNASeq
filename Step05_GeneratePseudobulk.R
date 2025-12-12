@@ -164,8 +164,12 @@ for (dataset in datasets) {
 
     fractions_real <- as.data.frame(fractions_real)
 
+    # Turn this into a SummarizedExperiment. Preserve the original cell type
+    # names as a metadata variable, because they get modified with make.names()
+    # when fractions_real is converted to a DataFrame.
     pb_se <- SummarizedExperiment(list(counts = pb_cpm),
-                                  colData = DataFrame(fractions_real))
+                                  colData = DataFrame(fractions_real),
+                                  metadata = list(celltype_names = colnames(fractions)))
 
     save_SimulatedScadenData(pb_se, dataset, granularity, "cpm")
 
