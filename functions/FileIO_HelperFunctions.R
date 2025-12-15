@@ -932,6 +932,8 @@ Save_SingleCellToCibersort <- function(sce, output_dir) {
   # omnideconv requires that the file be named this way
   f_name <- file.path(output_dir, "sample_file_for_cibersort.tsv")
 
+  sce <- Dimnames_To_Cibersort(sce)
+
   # Header (column names) is "GeneSymbol" followed by the cell type labels for
   # each cell
   cts <- as.data.frame(t(c("GeneSymbol", as.character(sce$celltype))))
@@ -957,6 +959,69 @@ Save_SingleCellToCibersort <- function(sce, output_dir) {
   gc()
 
   return(f_name)
+}
+
+Genes_To_Cibersort <- function(genes) {
+  str_replace_all(as.character(genes), " ENSG", "_ENSG") |> make.names()
+}
+
+Cells_To_Cibersort <- function(celltypes, lowercase = FALSE) {
+  res <- str_replace_all(as.character(celltypes), "[-/ \\.]", "_") |> make.names()
+  if (lowercase) {
+    res <- str_to_lower(res)
+  }
+  return(res)
+}
+
+Dimnames_To_Cibersort <- function(obj, col_lower_case = FALSE) {
+  # Remove special characters from colnames, remove the space from gene names
+  colnames(obj) <- Cells_To_Cibersort(colnames(obj), lowercase = col_lower_case)
+  rownames(obj) <- Genes_To_Cibersort(rownames(obj))
+
+  if (is(obj, "SingleCellExperiment")) {
+    # Remove special characters from cell type names, and convert them to all
+    # lowercase to avoid string sorting issues between R and C.
+    obj$celltype <- Cells_To_Cibersort(obj$celltype, lowercase = TRUE)
+  }
+
+  return(obj)
+}
+
+# Assumes this is a signature matrix where column names are cell types
+Cibersort_Celltypes_To_Default <- function(obj, correct_celltype_names) {
+  # Cell types come out of CibersortX out of order and lower-case. We put them
+  # back in the right order and replace with the correct names.
+  cx_names <- Cells_To_Cibersort(correct_celltype_names, lowercase = TRUE)
+
+  stopifnot(all(colnames(obj) %in% cx_names))
+
+  obj <- obj[, cx_names]
+  colnames(obj) <- correct_celltype_names
+  return(obj)
+}
+
+Cibersort_Genes_To_Default <- function(obj, correct_gene_names) {
+  cx_genes <- Genes_To_Cibersort(correct_gene_names)
+
+  # There may be fewer than the full number of genes so we have to keep track of
+  # the real names of the genes that are kept
+  names(cx_genes) <- correct_gene_names
+  cx_genes <- cx_genes[cx_genes %in% rownames(obj)]
+
+  stopifnot(length(cx_genes) == nrow(obj))
+
+  obj <- obj[cx_genes, ]
+  rownames(obj) <- names(cx_genes)
+  return(obj)
+}
+
+Cleanup_Cibersort_Docker <- function() {
+  find_cmd <- paste0(
+    "$(docker ps -a -q --filter ancestor=cibersortx/fractions ",
+    "--filter status=exited)"
+  )
+  system(paste("docker rm", find_cmd))
+  gc()
 }
 
 

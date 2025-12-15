@@ -33,9 +33,9 @@ CibersortX_InnerLoop <- function(data, params) {
     signature <- FilterSignature_FromParams(data$reference, params)
 
     if (Check_MissingMarkers(signature, params) ||
-      Check_TooFewMarkers(signature, params, 3) ||
-      Check_NotEnoughNewMarkers(signature, params) ||
-      Check_TooManyMarkers(signature, params, high_threshold = 8000)) {
+        Check_TooFewMarkers(signature, params, 3) ||
+        Check_NotEnoughNewMarkers(signature, params) ||
+        Check_TooManyMarkers(signature, params, high_threshold = 8000)) {
       return(NULL)
     }
   } else {
@@ -52,7 +52,7 @@ CibersortX_InnerLoop <- function(data, params) {
   params_orig <- params # Save original state because params might get edited below
 
   # Input/output goes in its own directory
-  out_dir <- file.path(dir_cibersort, paste(params_orig, collapse="_"))
+  out_dir <- file.path(dir_cibersort, file_label, paste(params_orig, collapse="_"))
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
   # If batch_correct = TRUE, check if there's already a batch-corrected
@@ -65,7 +65,7 @@ CibersortX_InnerLoop <- function(data, params) {
                             paste0("_", params$reference_input_type),
                             "")
 
-    adjusted_sig <- list.files(path = dir_cibersort,
+    adjusted_sig <- list.files(path = dir_cibersort_corrected_signatures,
                                pattern = paste0(sig_file, ".*sigmatrix_Adjusted.txt"),
                                full.names = TRUE)
 
@@ -84,7 +84,7 @@ CibersortX_InnerLoop <- function(data, params) {
                             sep = "\t", row.names = 1)
 
       # Use the filtered gene list
-      sig_obj <- sig_obj[rownames(signature), ]
+      sig_obj <- sig_obj[Genes_To_Cibersort(rownames(signature)), ]
       sig_obj <- sig_obj[sort(rownames(sig_obj)), ]
     } else {
       # Otherwise we need to put the single cell data file in the input/output directory
@@ -93,42 +93,61 @@ CibersortX_InnerLoop <- function(data, params) {
     }
   }
 
-  # Convert cell types to lower case to avoid string sorting issues
-  orig_cell_names <- colnames(signature)
-  colnames(sig_obj) <- str_to_lower(colnames(signature))
+  # Ensure signature is a matrix with special characters removed from rows/cols
+  sig_obj <- Dimnames_To_Cibersort(sig_obj, col_lower_case = TRUE) |>
+    as.matrix()
 
-  # Ensure signature is a matrix.
-  sig_obj <- as.matrix(sig_obj)
+  tryCatch(
+    {
+      res_pcts <- R.utils::withTimeout(
+        {
+          omnideconv::deconvolute_cibersortx(
+            data$test, sig_obj,
+            single_cell_object = sc_obj, # filename or NULL
+            cell_type_annotations = colnames(sig_obj), # dummy variable, not used but has to have a non-null value
+            rmbatch_S_mode = params$batch_correct,
+            verbose = FALSE,
+            container = "docker",
+            input_dir = out_dir,
+            output_dir = out_dir,
+            qn = FALSE,
+            absolute = FALSE,
+            label = file_label
+          )
+        },
+        timeout = 7200, cpu = 7200 * parallel::detectCores(), elapsed = 7200,
+        onTimeout = "error"
+      )
+    },
+    error = function(err) {
+      param_set <- paste(params, collapse = "  ")
+      print(paste("*** Error running param set", param_set))
+      print(err$message)
+      print("*** skipping ***")
 
-  res_pcts <- omnideconv::deconvolute_cibersortx(
-    data$test, sig_obj,
-    single_cell_object = sc_obj, # filename or NULL
-    cell_type_annotations = colnames(sig_obj), # dummy variable, not used but has to have a non-null value
-    rmbatch_S_mode = params$batch_correct,
-    verbose = TRUE,
-    container = "docker",
-    input_dir = out_dir,
-    output_dir = out_dir,
-    qn = FALSE,
-    absolute = FALSE,
-    label = file_label
+      # Ideally we'd find and kill the running docker container but if this is
+      # running in multiple threads it seems difficult to single out the right
+      # one.
+
+      return(NULL)
+    }
   )
 
   # Cleanup finished docker container and unneeded files
-  system("docker rm $(docker ps -a -q --filter ancestor=cibersortx/fractions --filter status=exited)")
+  Cleanup_Cibersort_Docker()
   file.remove(file.path(out_dir, "mixture_file_for_cibersort.txt"))
   file.remove(file.path(out_dir, "signature_matrix.txt"))
 
-  if (file.exists(file.path(out_dir, basename(data$singlecell_filename)))) {
+  if (nchar(data$singlecell_filename) > 0 &&
+      file.exists(file.path(out_dir, basename(data$singlecell_filename)))) {
     file.remove(file.path(out_dir, basename(data$singlecell_filename)))
   }
   gc()
 
-  # Undo replacement of "." in the cell type names that was needed for CibersortX.
-  # res_pcts may or may not have column names already, depending on whether batch
-  # correct is true or false.
-  colnames(res_pcts) <- orig_cell_names
-  colnames(res_pcts) <- str_replace(colnames(res_pcts), "_", ".")
+  # Undo replacement of special characters in the cell type names that was
+  # needed for CibersortX. res_pcts may or may not have column names already,
+  # depending on whether batch correct is true or false.
+  res_pcts <- Cibersort_Celltypes_To_Default(res_pcts, colnames(signature))
 
   res <- list("estimates" = res_pcts,
               "params" = params_orig,

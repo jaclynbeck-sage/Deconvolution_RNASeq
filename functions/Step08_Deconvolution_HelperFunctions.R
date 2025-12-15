@@ -77,9 +77,6 @@ Modify_CibersortX_Input <- function(data, params) {
                              full.names = TRUE)
 
   if (length(sig_filename) == 1) {
-    file.copy(from = sig_filename,
-              to = file.path(dir_cibersort, basename(sig_filename)),
-              overwrite = TRUE)
     data$singlecell_filename <- ""
   } else {
     # Otherwise CibersortX needs the original single cell data to compute an
@@ -88,20 +85,19 @@ Modify_CibersortX_Input <- function(data, params) {
     sce <- Load_SingleCell(dataset = params$reference_data_name,
                            granularity = params$granularity,
                            normalization = params$normalization)
-    sce$celltype <- str_replace(as.character(sce$celltype), "\\.", "_")
-    sce$celltype <- str_to_lower(sce$celltype)
 
-    f_name <- Save_SingleCellToCibersort(sce = sce,
-                                         dataset_name = params$reference_data_name,
-                                         granularity = params$granularity)
+    out_dir <- file.path(dir_cibersort,
+                         str_glue("{params$reference_data_name}_{params$granularity}"))
+
+    f_name <- Save_SingleCellToCibersort(sce = sce, out_dir)
     data$singlecell_filename <- f_name
     rm(sce)
     gc()
   }
 
-  # Lower-casing the reference signature has to be handled in the inner loop
-  # so the inner loop can convert back to the original names
-  colnames(data$reference) <- str_replace(colnames(data$reference), "\\.", "_")
+  # Remove special characters from row and colnames for CibersortX. We don't
+  # modify the reference object yet, it is modified in the inner loop instead.
+  data$test <- Dimnames_To_Cibersort(data$test)
 
   return(data)
 }

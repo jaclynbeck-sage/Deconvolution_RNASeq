@@ -21,4 +21,4 @@ default:
   ct_ad_only: false
 
   # How many cores to use in parallel
-  cores: 1 # Only use more than one core if batch-adjusted signature matrices are pre-computed
+  cores: !expr round(parallel::detectCores() * 0.75) # Only use more than one core if batch-adjusted signature matrices are pre-computed
