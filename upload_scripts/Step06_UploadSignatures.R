@@ -11,7 +11,10 @@ provenance <- GetChildrenAsDf(main_folders[[basename(dir_singlecell)]]$id)
 github <- paste0(config::get("github_repo_url"), "Step06_CalculateSignatures.R")
 
 for (dataset in provenance$dataset) {
-  files <- list.files(dir_signatures, pattern = dataset, full.names = TRUE)
+  files <- list.files(dir_signatures,
+                      pattern = str_glue("{dataset}.*rds"),
+                      full.names = TRUE)
+
   for (filename in files) {
     UploadFile(filename, sig_folder,
                list("used" = provenance$id[provenance$dataset == dataset],
