@@ -932,7 +932,7 @@ Save_SingleCellToCibersort <- function(sce, output_dir) {
   # omnideconv requires that the file be named this way
   f_name <- file.path(output_dir, "sample_file_for_cibersort.tsv")
 
-  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
   sce <- Dimnames_To_Cibersort(sce)
 
