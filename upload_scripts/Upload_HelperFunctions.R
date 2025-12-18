@@ -37,13 +37,16 @@ RecursiveUpload <- function(folder_name, parent_folder, provenance) {
 }
 
 ExtractDatasetName <- function(filename) {
-  all_datasets <- c(all_singlecell_datasets(), all_bulk_datasets())
+  all_datasets <- c(all_singlecell_datasets(), all_bulk_datasets(),
+                    "random_biased", "random_educated", "random_uniform", "zeros")
 
   # Can return multiple dataset names (i.e. bulk + single cell)
   names <- all_datasets[sapply(all_datasets, grepl, x = filename)]
 
   if (length(names) == 0) {
     return(NA)
+  } else if (length(names) > 1) {
+    return(list(names))
   }
 
   return(names)
@@ -51,6 +54,10 @@ ExtractDatasetName <- function(filename) {
 
 GetChildrenAsDf <- function(syn_id, types = list("file")) {
   syn_list <- as.list(synGetChildren(syn_id, includeTypes = types))
+  if (length(syn_list) == 0) {
+    return(NULL)
+  }
+
   syn_df <- data.frame(do.call(rbind, syn_list)) |>
     select(name, id) |>
     mutate(across(everything(), unlist)) |>

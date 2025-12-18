@@ -4,63 +4,82 @@ source("Filenames.R")
 source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
 # Deconvolution WG Synapse space
-errors_folder <- Folder("10_error_calculations", parent = "syn68238853")
+errors_folder <- Folder(basename(dir_errors), parent = config::get("upload_synid"))
 errors_folder <- synStore(errors_folder, forceVersion = FALSE)
 
-# Get provenance IDs from algorithm output folder TODO
-bulk_folders <- as.list(synGetChildren("syn59489760"))
+github <- paste0(config::get("github_repo_url"), "Step10_CalculateErrors.R")
+
+# Get provenance IDs
+main_folders <- GetMainFolderIds()
+
+input_ids <- list(estimates = main_folders[[basename(dir_estimates)]]$id,
+                  bulk = main_folders[[basename(dir_bulk)]]$id)
+
+bulk_datasets <- GetChildrenAsDf(input_ids$bulk) |>
+  dplyr::rename(data_id = id) |>
+  select(-name)
+bulk_folders <- GetChildrenAsDf(input_ids$estimates, types = list("folder")) |>
+  merge(bulk_datasets)
 
 # Folder structure on Synapse is <bulk_dataset>/<algorithm>/<params_file>
-params_list_df <- lapply(bulk_folders, function(B) {
-  algorithms <- as.list(synGetChildren(B$id))
+for (B in 1:nrow(bulk_folders)) {
+  b_folder <- bulk_folders[B, ]
+  algorithms <- as.list(synGetChildren(b_folder$id))
 
-  # Get the files under each algorithm folder
-  params_files <- lapply(algorithms, function(A) {
-    params_lists <- as.list(synGetChildren(A$id))
-    if (length(params_lists) == 0) {
-      return(NULL)
+  provenance_df <- lapply(algorithms, function(A) {
+    # Helper function to figure out which of the two dataset names in each
+    # "dataset" column entry belongs to reference or test
+    split_dataset_names <- function(d_names, d_type) {
+      if (d_type == "reference") {
+        possible_datasets <- c(all_singlecell_datasets(), "random_biased",
+                               "random_educated", "random_uniform", "zeros")
+      } else {
+        possible_datasets <- all_bulk_datasets()
+      }
+
+      d_names[which(d_names %in% possible_datasets)]
     }
-    df <- data.frame(do.call(rbind, params_lists)) %>% select(name, id)
-    df$test_dataset <- B$name
+
+    df <- GetChildrenAsDf(A$id)
+    if (!is.null(df)) {
+      df <- df |>
+        mutate(reference_dataset = sapply(dataset, split_dataset_names, d_type = "reference"),
+               test_dataset = sapply(dataset, split_dataset_names, d_type = "test")) |>
+        select(-dataset)
+    }
     return(df)
   })
 
-  params_files <- do.call(rbind, params_files)
-})
+  provenance_df <- do.call(rbind, provenance_df)
 
-params_list_df <- do.call(rbind, params_list_df)
+  provenance_df$name_base <- str_replace(provenance_df$name, "estimates_", "") |>
+    str_replace(".rds", "")
 
-params_list_df$name_base <- str_replace(unlist(params_list_df$name), "estimates_", "")
-params_list_df$name_base <- str_replace(params_list_df$name_base, ".rds", "")
-
-github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step10_CalculateErrors.R"
-
-# Loop over each data set and algorithm
-for (test_dataset in c("Mayo", "MSBB", "ROSMAP")) { #unique(params_list_df$test_dataset)) {
-  bulk_errors_folder <- Folder(test_dataset, parent = errors_folder)
+  bulk_errors_folder <- Folder(b_folder$name, parent = errors_folder)
   bulk_errors_folder <- synStore(bulk_errors_folder)
 
-  algorithms <- list.files(file.path(dir_errors, test_dataset))
+  algorithms <- list.files(file.path(dir_errors, b_folder$dataset))
 
   for (algorithm in algorithms) {
     algorithm_errors_folder <- Folder(algorithm, parent = bulk_errors_folder)
     algorithm_errors_folder <- synStore(algorithm_errors_folder)
 
-    dir_alg <- file.path(dir_errors, test_dataset, algorithm)
+    dir_alg <- file.path(dir_errors, b_folder$name, algorithm)
 
     files <- list.files(dir_alg, full.names = TRUE)
 
     # Parameter output lists
     for (filename in files) {
       # The name of the error file should match the name of the algorithm output file
-      #error_name_base <- str_replace(filename, "errors_", "")
-      #error_name_base <- str_replace(error_name_base, ".rds", "")
+      error_name_base <- str_replace(basename(filename), "errors_", "") |>
+        str_replace(".rds", "")
 
-      #provenance <- subset(params_list_df, name_base == error_name_base)
+      provenance <- subset(provenance_df, name_base == error_name_base)
 
       UploadFile(filename,
                  parent_folder = algorithm_errors_folder,
-                 provenance = list("used" = c(), "executed" = github))
+                 provenance = list("used" = c(provenance$id, b_folder$data_id),
+                                   "executed" = github))
     }
   }
 }
