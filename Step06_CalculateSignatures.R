@@ -123,12 +123,18 @@ if (run_cibersort_batch_correct) {
     sig_dir <- file.path(dir_cibersort, str_glue("{dataset}_batch"))
     dir.create(sig_dir, showWarnings = FALSE, mode = "777")
 
-    # See if the file is already there from a previous run. If it is, we don't
-    # need to re-aggregate the data, as it will be identical.
-    metacell_f_name <- list.files(sig_dir, pattern = "sample_file_for_cibersort", full.names = TRUE)
+    # See if broad and sub class files are already there from a previous run. If
+    # they are, we don't need to re-aggregate the data, as it will be identical.
+    metacell_files <- list(broad_class = c(), sub_class = c())
+    metacell_files$broad_class <- list.files(sig_dir,
+                                             pattern = "broad_class_sample",
+                                             full.names = TRUE)
+    metacell_files$sub_class <- list.files(sig_dir,
+                                           pattern = "sub_class_sample",
+                                           full.names = TRUE)
 
     # Otherwise, aggregate cells into metacells based on sub_class
-    if (length(metacell_f_name) != 1) {
+    if (!all(lengths(metacell_files) == 1)) {
       set.seed(sageRNAUtils::string_to_seed(str_glue("{dataset}_batch")))
 
       # CibersortX converts everything to CPM and adds re-sampled cells together
@@ -141,6 +147,7 @@ if (run_cibersort_batch_correct) {
 
       # How many cells to combine per metacell
       batch_size <- ceiling(ncol(sce) / sum(fracs))
+      print(paste(dataset, "batch size:", batch_size))
 
       agg <- lapply(names(fracs), function(ct) {
         print(paste0(ct, ": ", fracs[ct], " metacells"))
@@ -163,7 +170,22 @@ if (run_cibersort_batch_correct) {
 
       agg <- do.call(cbind, agg) # Combine everything into a single SCE object
 
+      # This file will be for sub_class resolution
       metacell_f_name <- Save_SingleCellToCibersort(agg, sig_dir)
+      sub_filename <- file.path(sig_dir, paste0("sub_class_", basename(metacell_f_name)))
+      file.rename(metacell_f_name, sub_filename)
+
+      metacell_files$sub_class <- sub_filename
+
+      # Change the column names to broad class cell types
+      agg$celltype <- agg$broad_class
+      colnames(agg) <- agg$broad_class
+
+      metacell_f_name <- Save_SingleCellToCibersort(agg, sig_dir)
+      broad_filename <- file.path(sig_dir, paste0("broad_class_", basename(metacell_f_name)))
+      file.rename(metacell_f_name, broad_filename)
+
+      metacell_files$broad_class <- broad_filename
 
       rm(sce, agg)
       gc()
@@ -180,10 +202,10 @@ if (run_cibersort_batch_correct) {
       print(file_id)
 
       # See if the signature file already exists
-      sig_file <- list.files(dir_cibersort_corrected_signatures, pattern = file_id)
+      adj_sig_file <- list.files(dir_cibersort_corrected_signatures, pattern = file_id)
 
       # File already exists, no need to re-run
-      if (length(sig_file) == 1) {
+      if (length(adj_sig_file) == 1) {
         message(str_glue("Found signature file for {file_id}. Skipping..."))
         return(NULL)
       }
@@ -191,7 +213,10 @@ if (run_cibersort_batch_correct) {
       out_dir <- file.path(sig_dir, file_id)
       dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-      metacell_file_copy <- file.path(out_dir, basename(metacell_f_name))
+      metacell_f_name <- metacell_files[[params$granularity]]
+
+      # omnideconv expects the file to be named this way
+      metacell_file_copy <- file.path(out_dir, "sample_file_for_cibersort.tsv")
       file.copy(metacell_f_name, metacell_file_copy)
 
       # Read bulk data
@@ -240,10 +265,10 @@ if (run_cibersort_batch_correct) {
       n_iter <- 0
 
       while (!file_found & n_iter < 120) {
-        sig_file <- list.files(out_dir,
-                               pattern = str_glue("{file_id}.*sigmatrix_Adjusted.txt"),
-                               full.names = TRUE)
-        if (length(sig_file) != 0) {
+        adj_sig_file <- list.files(out_dir,
+                                   pattern = str_glue("{file_id}.*sigmatrix_Adjusted.txt"),
+                                   full.names = TRUE)
+        if (length(adj_sig_file) != 0) {
           file_found <- TRUE
         }
 
@@ -255,23 +280,24 @@ if (run_cibersort_batch_correct) {
         Sys.sleep(60)
       }
 
-      if (length(sig_file) != 0) {
+      if (length(adj_sig_file) != 0) {
         new_filename <- file.path(dir_cibersort_corrected_signatures,
                                   str_glue("CIBERSORTx_{file_id}_sigmatrix_Adjusted.txt"))
 
         # We are keeping the adjusted signature exactly as output by CibersortX,
         # without fixing the column or row names. Otherwise we'd just have to
         # convert them again when we run the full algorithm.
-        file.copy(sig_file[1], new_filename)
+        file.copy(adj_sig_file[1], new_filename)
 
       } else {
         message(str_glue("No signature matrix found for {file_id} in {out_dir}"))
       }
 
-      # Remove the copy of the single cell reference file
-      if (file.exists(metacell_file_copy)) {
-        file.remove(metacell_file_copy)
-      }
+      # Remove the copy of the single cell reference file and the signature/bulk
+      # files
+      file.remove(metacell_file_copy)
+      file.remove(sig_file)
+      file.remove(bulk_file)
 
       # The docker container is likely still running on its own but we try
       # cleaning up anyway. Since there's no way to tell which docker
