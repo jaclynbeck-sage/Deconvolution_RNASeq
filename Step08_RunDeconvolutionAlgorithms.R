@@ -5,6 +5,7 @@ library(stringr)
 
 source(file.path("functions", "General_HelperFunctions.R"))
 source(file.path("functions", "Step08_Deconvolution_HelperFunctions.R"))
+source(file.path("functions", "CibersortX_HelperFunctions.R"))
 
 # Parameter setup --------------------------------------------------------------
 
@@ -20,7 +21,7 @@ ct_ad_only <- alg_config$ct_ad_only
 params_loop1 <- tidyr::expand_grid(
   algorithm = algorithm,
   reference_data_name = all_singlecell_datasets(),
-  test_data_name = all_bulk_datasets(),
+  test_data_name = setdiff(all_bulk_datasets(), "Mayo_CBE"),
   granularity = c("broad_class", "sub_class"),
   reference_input_type = alg_config$reference_input_type,
   normalization = alg_config$normalization,
@@ -81,7 +82,9 @@ for (P in 1:nrow(params_loop1)) {
   # Extra processing for CibersortX: Some re-formatting of the input, plus
   # re-use of batch-corrected signature if it exists
   if (algorithm == "CibersortX") {
-    data <- Modify_CibersortX_Input(data, params_loop1[P, ])
+    # Remove special characters from row and colnames for CibersortX. We don't
+    # modify the reference object yet, it is modified in the inner loop instead.
+    data$test <- Dimnames_To_Cibersort(data$test)
 
   } else if (algorithm %in% c("Dtangle", "HSPE")) {
     # Extra pre-processing needed for Dtangle/HSPE -- reformat the input

@@ -4,8 +4,10 @@
 # use with error comparison.
 library(SingleCellExperiment)
 library(omnideconv)
+library(parallel)
 
 source(file.path("functions", "General_HelperFunctions.R"))
+source(file.path("functions", "CibersortX_HelperFunctions.R"))
 
 datasets <- all_singlecell_datasets()
 
@@ -89,95 +91,198 @@ for (dataset in datasets) {
           file = file.path(dir_signatures, str_glue("{dataset}_signature.rds")))
 }
 
+
+# Calculate batch-corrected signatures for CibersortX --------------------------
+
+# This is *extremely* time- and memory-intensive. Takes over a day to run with 8
+# cores and 64 GB of RAM.
+#
+# CibersortX treats the data like a dense matrix, which takes a lot of time and
+# memory to load and process. To avoid this, we create a smaller data set by
+# combining multiple cells of the same type into "metacells" to get about 10K
+# cells total, maintaining the overall proportion of different cell types. The
+# result has >0.99 correlation with the results from running on the full
+# single-cell matrix, which is good given that there is a random element to
+# Cibersort's algorithm and the outputs are never exactly the same.
 if (run_cibersort_batch_correct) {
-  # Calculate batch-corrected signatures for CibersortX -- *extremely* time- and
-  # memory-intensive
+  cores <- round(parallel::detectCores() / 4) # Assumes 8 GB RAM per core
+  cluster_type <- "FORK"
+  cluster_outfile <- "cibersort_batch_correct.txt"
 
-  # Only use more than one core if there is a lot of memory available. Assumes
-  # 8 GB RAM per CPU
-  #n_cores <- min(parallel::detectCores() / 8, 1) # TODO multi-thread
-
-  params_singlecell <- expand.grid(
-    reference_data_name = all_singlecell_datasets(),
-    granularity = c("broad_class", "sub_class"),
-    stringsAsFactors = FALSE
-  )
+  singlecell_datasets <- all_singlecell_datasets()
 
   params_bulk <- expand.grid(
     test_data_name = setdiff(all_bulk_datasets(), "Mayo_CBE"), # Skip Mayo CBE
+    granularity = c("broad_class", "sub_class"),
     normalization = c("cpm", "tpm"),
     regression_method = c("none", "edger", "lme", "combat"),
     stringsAsFactors = FALSE
   )
 
-  set_cibersortx_credentials(email = Sys.getenv("CIBERSORT_EMAIL"),
-                             token = Sys.getenv("CIBERSORT_TOKEN"))
-
-  for (S in 1:nrow(params_singlecell)) {
-    dataset <- params_singlecell$reference_data_name[S]
-    granularity <- params_singlecell$granularity[S]
-
-    # doesn't matter if it's CPM or counts so we just use CPM
-    sce <- Load_SingleCell(dataset, granularity, "cpm")
-
-    sig_dir <- file.path(dir_cibersort, str_glue("{dataset}_{granularity}_batch"))
+  for (dataset in singlecell_datasets) {
+    sig_dir <- file.path(dir_cibersort, str_glue("{dataset}_batch"))
     dir.create(sig_dir, showWarnings = FALSE, mode = "777")
 
-    f_name <- Save_SingleCellToCibersort(sce, sig_dir)
+    # See if the file is already there from a previous run. If it is, we don't
+    # need to re-aggregate the data, as it will be identical.
+    metacell_f_name <- list.files(sig_dir, pattern = "sample_file_for_cibersort", full.names = TRUE)
 
-    signature <- Load_SignatureMatrix(dataset, granularity, "cpm")
+    # Otherwise, aggregate cells into metacells based on sub_class
+    if (length(metacell_f_name) != 1) {
+      set.seed(sageRNAUtils::string_to_seed(str_glue("{dataset}_batch")))
 
-    # Save original row and column names for replacement afterward
-    orig_celltypes <- colnames(signature)
-    orig_genes <- rownames(signature)
+      # CibersortX converts everything to CPM and adds re-sampled cells together
+      # after CPM conversion, so we will use CPM too
+      sce <- Load_SingleCell(dataset, "sub_class", "cpm")
 
-    signature <- Dimnames_To_Cibersort(signature)
+      # How many of each cell type we need to end up with to get ~10K cells
+      fracs <- table(sce$celltype)
+      fracs <- round(fracs / sum(fracs) * 10000)
 
-    for (B in 1:nrow(params_bulk)) {
-      params <- cbind(params_singlecell[S,], params_bulk[B, ])
+      # How many cells to combine per metacell
+      batch_size <- ceiling(ncol(sce) / sum(fracs))
+
+      agg <- lapply(names(fracs), function(ct) {
+        print(paste0(ct, ": ", fracs[ct], " metacells"))
+        sce_sub <- sce[, sce$celltype == ct]
+
+        batches <- rep(1:fracs[ct], times = batch_size)
+        batches <- batches[1:ncol(sce_sub)]
+
+        # Shuffle the cells before grouping them just in case there's some pattern
+        # in the original order
+        shuffled <- sample(colnames(sce_sub), ncol(sce_sub), replace = FALSE)
+        colData(sce_sub)[shuffled, "batch"] <- batches
+
+        metacells <- scuttle::aggregateAcrossCells(sce_sub, ids = sce_sub$batch,
+                                                   statistics = "sum")
+        colnames(metacells) <- as.character(metacells$celltype)
+        counts(metacells) <- scuttle::calculateCPM(metacells) # Converts to matrix
+        return(metacells)
+      })
+
+      agg <- do.call(cbind, agg) # Combine everything into a single SCE object
+
+      metacell_f_name <- Save_SingleCellToCibersort(agg, sig_dir)
+
+      rm(sce, agg)
+      gc()
+    }
+
+    # Loop over each bulk data set, using the same set of 10K metacells as input
+    # for each one
+    cl <- makeCluster(cores, type = cluster_type, outfile = cluster_outfile)
+
+    parLapply(cl, 1:nrow(params_bulk), function(B) {
+      params <- cbind("reference_data_name" = dataset, params_bulk[B, ])
+
       file_id <- paste(params, collapse="_")
+      print(file_id)
+
+      # See if the signature file already exists
+      sig_file <- list.files(dir_cibersort_corrected_signatures, pattern = file_id)
+
+      # File already exists, no need to re-run
+      if (length(sig_file) == 1) {
+        message(str_glue("Found signature file for {file_id}. Skipping..."))
+        return(NULL)
+      }
 
       out_dir <- file.path(sig_dir, file_id)
       dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-      new_f_name <- file.path(out_dir, basename(f_name))
-      file.copy(f_name, new_f_name)
+      metacell_file_copy <- file.path(out_dir, basename(metacell_f_name))
+      file.copy(metacell_f_name, metacell_file_copy)
 
+      # Read bulk data
       bulk <- Load_BulkData(params$test_data_name,
                             normalization = params$normalization,
                             regression_method = params$regression_method)
       bulk <- as.matrix(assay(bulk, "counts"))
       bulk <- Dimnames_To_Cibersort(bulk)
 
-      out <- omnideconv::deconvolute_cibersortx(
-        bulk, as.matrix(signature),
-        single_cell_object = basename(new_f_name), # filename or NULL
-        cell_type_annotations = colnames(signature), # dummy variable, not used but has to have a non-null value
-        rmbatch_S_mode = TRUE,
-        verbose = TRUE,
-        container = "docker",
-        input_dir = out_dir,
-        output_dir = out_dir,
-        qn = FALSE,
-        absolute = FALSE,
-        label = file_id
-      )
+      # Read the default signature for this granularity
+      signature <- Load_SignatureMatrix(dataset, params$granularity, "cpm")
+      signature <- Dimnames_To_Cibersort(signature, TRUE)
 
-      sig_file <- list.files(out_dir,
-                             pattern = str_glue("{file_id}.*sigmatrix_Adjusted.txt"),
-                             full.names = TRUE)
+      # We need to run the CibersortX docker container but need to stop waiting
+      # for it to finish after about 10 minutes. We do this because it takes
+      # between 10-30 minutes to generate the signature matrix file but can take
+      # several hours afterward to deconvolute the bulk data, and we don't need
+      # the deconvoluted data and don't need to wait for that long. However,
+      # omnideconv does not have a setting for calling the docker command with a
+      # timeout and R.utils::withTimeout() can't interrupt system() commands, so
+      # I have replicated some of the omnideconv::deconvolute_cibersort()
+      # function here in order to call the docker command with a 10 minute
+      # timeout. Then, this script polls the output folder once per minute until
+      # it finds a completed signature matrix file.
+
+      sig_file <- file.path(out_dir, "signature_matrix.txt")
+      readr::write_tsv(data.frame(NAME = rownames(signature), signature),
+                       sig_file)
+
+      bulk_file <- file.path(out_dir, "mixture_file_for_cibersort.txt")
+      readr::write_tsv(data.frame(Gene = rownames(bulk), bulk),
+                       bulk_file)
+
+      cmd <- Cibersort_Batch_Correct_Command(file_id, out_dir, bulk_file,
+                                             sig_file, metacell_file_copy)
+
+      # Start the docker container, wait for 10 minutes, and return to R. The
+      # container will keep running but this script can continue polling below.
+      code <- system(cmd, timeout = 600)
+      print(code)
+
+      # Poll for the signature matrix file and wait until it exists. Loop until
+      # we find the file, or until we've been checking for over 2 hours (120
+      # times x 1 minute each poll)
+      file_found <- FALSE
+      n_iter <- 0
+
+      while (!file_found & n_iter < 120) {
+        sig_file <- list.files(out_dir,
+                               pattern = str_glue("{file_id}.*sigmatrix_Adjusted.txt"),
+                               full.names = TRUE)
+        if (length(sig_file) != 0) {
+          file_found <- TRUE
+        }
+
+        n_iter <- n_iter + 1
+        print(n_iter)
+
+        # Poll once a minute. Even if we found the file, we still wait another
+        # minute just to make sure the whole file is written out to disk
+        Sys.sleep(60)
+      }
 
       if (length(sig_file) != 0) {
         new_filename <- file.path(dir_cibersort_corrected_signatures,
                                   str_glue("CIBERSORTx_{file_id}_sigmatrix_Adjusted.txt"))
 
+        # We are keeping the adjusted signature exactly as output by CibersortX,
+        # without fixing the column or row names. Otherwise we'd just have to
+        # convert them again when we run the full algorithm.
         file.copy(sig_file[1], new_filename)
 
-        # Cleanup finished docker container
-        Cleanup_Cibersort_Docker()
       } else {
         message(str_glue("No signature matrix found for {file_id} in {out_dir}"))
       }
-    }
+
+      # Remove the copy of the single cell reference file
+      if (file.exists(metacell_file_copy)) {
+        file.remove(metacell_file_copy)
+      }
+
+      # The docker container is likely still running on its own but we try
+      # cleaning up anyway. Since there's no way to tell which docker
+      # container was spawned by this process, we stop and remove any
+      # container that has been running for over 2 hours, which is the limit
+      # we've set above for polling for the signature file. If it's been
+      # shorter than that, some future iteration of this loop will catch the
+      # container once it's been long enough.
+      Cleanup_Cibersort_Docker(timeout = 2, timeout_units = "hours")
+    })
+
+    stopCluster(cl)
   }
 }

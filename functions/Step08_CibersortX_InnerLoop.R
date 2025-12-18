@@ -99,25 +99,25 @@ CibersortX_InnerLoop <- function(data, params) {
 
   tryCatch(
     {
-      res_pcts <- R.utils::withTimeout(
-        {
-          omnideconv::deconvolute_cibersortx(
-            data$test, sig_obj,
-            single_cell_object = sc_obj, # filename or NULL
-            cell_type_annotations = colnames(sig_obj), # dummy variable, not used but has to have a non-null value
-            rmbatch_S_mode = params$batch_correct,
-            verbose = FALSE,
-            container = "docker",
-            input_dir = out_dir,
-            output_dir = out_dir,
-            qn = FALSE,
-            absolute = FALSE,
-            label = file_label
-          )
-        },
-        timeout = 7200, cpu = 7200 * parallel::detectCores(), elapsed = 7200,
-        onTimeout = "error"
+      t1 <- Sys.time()
+      res_pcts <- omnideconv::deconvolute_cibersortx(
+        data$test, sig_obj,
+        single_cell_object = sc_obj, # filename or NULL
+        cell_type_annotations = colnames(sig_obj), # dummy variable, not used but has to have a non-null value
+        rmbatch_S_mode = params$batch_correct,
+        verbose = FALSE,
+        container = "docker",
+        input_dir = out_dir,
+        output_dir = out_dir,
+        qn = FALSE,
+        absolute = FALSE,
+        label = file_label
       )
+
+      t2 <- Sys.time()
+      print(paste(round(difftime(t2, t1, units = "secs")), "s, ",
+                  paste(params, collapse = "_")))
+
     },
     error = function(err) {
       param_set <- paste(params, collapse = "  ")
