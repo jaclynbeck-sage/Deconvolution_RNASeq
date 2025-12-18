@@ -55,8 +55,10 @@ for (dataset in datasets) {
     sig_dir <- file.path(dir_cibersort, str_glue("{dataset}_{granularity}"))
     dir.create(sig_dir, showWarnings = FALSE, mode = "777")
 
+    # Column and rownames of sce get changed to Cibersort-compatible values in
+    # the save function
     f_name <- Save_SingleCellToCibersort(sce, sig_dir)
-    celltype_anno <- Cells_To_Cibersort(sce$celltype)
+    celltype_anno <- Cells_To_Cibersort(sce$celltype) # Make sure this field is compatible
     rm(sce)
     gc()
 
@@ -77,6 +79,12 @@ for (dataset in datasets) {
     # maintain that ordering.
     sig <- Cibersort_Celltypes_To_Default(sig, colnames(signatures$cpm[[granularity]]))
     sig <- Cibersort_Genes_To_Default(sig, sort(rownames(signatures$cpm[[granularity]])))
+
+    # CibersortX doesn't subtract the "1" pseudocount after projecting back to
+    # linear space, so we do that here
+    if (min(sig) == 1) {
+      sig <- sig - 1
+    }
 
     # Cleanup finished docker container
     Cleanup_Cibersort_Docker()
