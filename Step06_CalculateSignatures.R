@@ -103,7 +103,7 @@ for (dataset in datasets) {
 # Calculate batch-corrected signatures for CibersortX --------------------------
 
 # This is *extremely* time- and memory-intensive. Takes over a day to run with 8
-# cores and 64 GB of RAM.
+# cores and 256 GB of RAM.
 #
 # CibersortX treats the data like a dense matrix, which takes a lot of time and
 # memory to load and process. To avoid this, we create a smaller data set by
@@ -307,6 +307,10 @@ if (run_cibersort_batch_correct) {
       file.remove(sig_file)
       file.remove(bulk_file)
 
+      # Remove the temp files CibersortX makes
+      temp_files <- list.files(out_dir, pattern = "temp", full.names = TRUE)
+      file.remove(temp_files)
+
       # The docker container is likely still running on its own but we try
       # cleaning up anyway. Since there's no way to tell which docker
       # container was spawned by this process, we stop and remove any
@@ -314,6 +318,23 @@ if (run_cibersort_batch_correct) {
       # we've set above for polling for the signature file. If it's been
       # shorter than that, some future iteration of this loop will catch the
       # container once it's been long enough.
+
+      # I used the commented-out code to push the number of cores up to 16 of
+      # 32, instead of 8, which required more frequent clearing of old docker
+      # containers without specifying a time limit. This code isn't perfect and
+      # will occasionally remove a container that is still processing the
+      # signatue if it is taking significantly longer than the other threads.
+      # Containers may also die if the machine runs out of memory, so it is
+      # necessary to run the batch correction code again to pick up any data set
+      # combinations that got missed the first time.
+      #all_docker <- system("docker ps -a -q --filter ancestor=cibersortx/fractions", intern = TRUE)
+      #if (length(all_docker) > cores * 2 + 1) {
+      #  start <- cores * 2 + 1
+      #  end <- length(all_docker)
+      #  oldest <- all_docker[start:end] |> paste(collapse = " ") # Get rid of the oldest containers
+      #  system(paste("docker stop", oldest))
+      #}
+
       Cleanup_Cibersort_Docker(timeout = 2, timeout_units = "hours")
     })
 

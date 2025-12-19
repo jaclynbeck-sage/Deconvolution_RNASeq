@@ -47,8 +47,8 @@ CibersortX_InnerLoop <- function(data, params) {
                       params$normalization, params$regression_method,
                       sep = "_")
 
-  sc_obj <- NULL
-  sig_obj <- signature
+  # Remove special characters from row and column names
+  sig_obj <- Dimnames_To_Cibersort(signature, TRUE)
   params_orig <- params # Save original state because params might get edited below
 
   # Input/output goes in its own directory
@@ -59,8 +59,6 @@ CibersortX_InnerLoop <- function(data, params) {
   # signature. If so, we can skip having CibersortX calculate it and just use
   # the pre-calculated one.
   if (params$batch_correct) {
-    sc_obj <- basename(data$singlecell_filename)
-
     sig_file <- str_replace(file_label,
                             paste0("_", params$reference_input_type),
                             "")
@@ -69,11 +67,12 @@ CibersortX_InnerLoop <- function(data, params) {
                                pattern = paste0(sig_file, ".*sigmatrix_Adjusted.txt"),
                                full.names = TRUE)
 
-    # If an adjusted signature is found, there is no need to re-calculate batch
-    # correction, so the adjusted signature is passed in instead of the single
-    # cell object.
+    # If an adjusted signature is found, the adjusted signature is passed in
+    # instead of the default signature. Then set the "batch_correct" param to
+    # FALSE. CibersortX on the adjusted signature plus the bulk data with no
+    # batch correction is equivalent to CibersortX w/ batch correction on raw
+    # single cell input and the bulk data.
     if (length(adjusted_sig) > 0) {
-      sc_obj <- NULL
       params$batch_correct <- FALSE
 
       if (length(adjusted_sig) > 1) {
@@ -83,26 +82,26 @@ CibersortX_InnerLoop <- function(data, params) {
       sig_obj <- read.table(adjusted_sig[1], header = TRUE,
                             sep = "\t", row.names = 1)
 
-      # Use the filtered gene list
+      # Use the filtered gene list. The row and colnames of the adjusted
+      # signature are already CibersortX-compatible
       sig_obj <- sig_obj[Genes_To_Cibersort(rownames(signature)), ]
       sig_obj <- sig_obj[sort(rownames(sig_obj)), ]
     } else {
-      # Otherwise we need to put the single cell data file in the input/output directory
-      file.copy(data$singlecell_filename,
-                file.path(out_dir, basename(data$singlecell_filename)))
+      # Otherwise we have to skip this set of params
+      message(str_glue("No batch-corrected signature for {sig_file} found! Skipping..."))
+      return(NULL)
     }
   }
 
-  # Ensure signature is a matrix with special characters removed from rows/cols
-  sig_obj <- Dimnames_To_Cibersort(sig_obj, col_lower_case = TRUE) |>
-    as.matrix()
+  # Ensure signature is a matrix
+  sig_obj <- as.matrix(sig_obj)
 
   tryCatch(
     {
       t1 <- Sys.time()
       res_pcts <- omnideconv::deconvolute_cibersortx(
         data$test, sig_obj,
-        single_cell_object = sc_obj, # filename or NULL
+        single_cell_object = NULL,
         cell_type_annotations = colnames(sig_obj), # dummy variable, not used but has to have a non-null value
         rmbatch_S_mode = params$batch_correct,
         verbose = FALSE,
@@ -138,10 +137,6 @@ CibersortX_InnerLoop <- function(data, params) {
   file.remove(file.path(out_dir, "mixture_file_for_cibersort.txt"))
   file.remove(file.path(out_dir, "signature_matrix.txt"))
 
-  if (nchar(data$singlecell_filename) > 0 &&
-      file.exists(file.path(out_dir, basename(data$singlecell_filename)))) {
-    file.remove(file.path(out_dir, basename(data$singlecell_filename)))
-  }
   gc()
 
   # Undo replacement of special characters in the cell type names that was
