@@ -6,7 +6,7 @@ source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 # TODO add markers to provenance?
 
 # Deconvolution WG Synapse space
-output_folder <- Folder("08_estimates", parent = config::get("upload_synid"))
+output_folder <- Folder(basename(dir_estimates), parent = config::get("upload_synid"))
 output_folder <- synStore(output_folder, forceVersion = FALSE)
 
 # Get provenance IDs

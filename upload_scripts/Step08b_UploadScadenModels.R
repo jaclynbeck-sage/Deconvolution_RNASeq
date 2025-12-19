@@ -3,10 +3,10 @@ library(dplyr)
 source("Filenames.R")
 source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
-models_folder <- Folder("08_algorithm_models", parent = config::get("upload_synid"))
+models_folder <- Folder(basename(dir_algorithm_models), parent = config::get("upload_synid"))
 models_folder <- synStore(models_folder, forceVersion = FALSE)
 
-scaden_folder <- Folder("scaden_models", parent = models_folder)
+scaden_folder <- Folder(basename(dir_scaden_models), parent = models_folder)
 scaden_folder <- synStore(scaden_folder, forceVersion = FALSE)
 
 # Provenance
