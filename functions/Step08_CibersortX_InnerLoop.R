@@ -115,7 +115,7 @@ CibersortX_InnerLoop <- function(data, params) {
 
       t2 <- Sys.time()
       print(paste(round(difftime(t2, t1, units = "secs")), "s, ",
-                  paste(params, collapse = "_")))
+                  paste(params_orig, collapse = "_")))
 
     },
     error = function(err) {
