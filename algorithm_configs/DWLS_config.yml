@@ -1,7 +1,7 @@
 default:
   # Used to create params_loop1 (data-specific arguments) in main function
   reference_input_type: "signature" # DWLS uses a signature matrix
-  normalization: ["log_cpm", "log_tmm", "log_tpm"] # DWLS works on log-scale data
+  normalization: ["cpm", "tmm", "tpm"] # DWLS works on linear data
 
   # For params_loop2 (algorithm-specific arguments) in main function
   marker_function: "CreateParams_FilterableSignature"
@@ -18,4 +18,4 @@ default:
   ct_ad_only: false
 
   # How many cores to use in parallel -- DWLS multi-threads a little so we don't use all cores
-  cores: !expr round(parallel::detectCores() * 0.75)
+  cores: !expr round(parallel::detectCores() * 0.5)

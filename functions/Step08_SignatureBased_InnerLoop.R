@@ -63,6 +63,7 @@ SignatureBased_InnerLoop <- function(data, params) {
         # DWLS-specific argument
         solver_type <- params$solver_type
 
+        t1 <- Sys.time()
         res_pcts <- R.utils::withTimeout(
           {
             omnideconv::deconvolute_dwls(bulk_mat_filt,
@@ -73,6 +74,9 @@ SignatureBased_InnerLoop <- function(data, params) {
           timeout = 600, cpu = 600 * parallel::detectCores(), elapsed = 600,
           onTimeout = "error"
         )
+        t2 <- Sys.time()
+        print(paste(round(difftime(t2, t1, units = "secs")), "s, ",
+                    paste(params, collapse = "_")))
 
         if (any(is.na(res_pcts))) {
           message(paste("NA values in", paste(params, collapse = "_")))
