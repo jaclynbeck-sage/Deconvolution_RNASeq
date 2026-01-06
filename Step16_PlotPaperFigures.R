@@ -4,7 +4,6 @@ library(viridis)
 library(RColorBrewer)
 library(dplyr)
 library(stringr)
-library(reshape2)
 library(patchwork)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
@@ -149,6 +148,28 @@ plt1Bv3 <- ggplot(subset(errs_box_noalg,
         strip.placement.y = "outside")
 print(plt1Bv3 / plot_spacer() + plot_layout(heights = c(3, 1)))
 
+# One tissue where regression helps, one where it doesn't
+plt1B_final <- ggplot(subset(errs_box_noalg,
+                             tissue_full %in% c("MSBB PHG", "ROSMAP ACC")),
+                      aes(x = normalization, fill = regression_method,
+                          y = median_val, ymin = min_val, ymax = max_val)) +
+  geom_hline(aes(yintercept = best_val, color = "Baseline"),
+             data = subset(baselines_plot_tissue,
+                           tissue_full %in% c("MSBB PHG", "ROSMAP ACC")),
+             linetype = "twodash") +
+  geom_crossbar(position = position_dodge2(padding = 0),
+                fatten = 1.5, width = 0.75) +
+  theme_bw() +
+  scale_fill_manual(values = regression_colors) +
+  scale_color_manual(values = "slategray") +
+  facet_grid(error_metric ~ tissue_full, scales = "free", switch = "y") +
+  labs(fill = "Regression Method", color = "") +
+  xlab("Normalization Strategy") +
+  ylab(NULL) +
+  ggtitle("Figure 1B: Error metrics: normalization vs regression") +
+  theme(strip.background.y = element_blank(),
+        strip.placement.y = "outside")
+
 
 # Figure 1C --------------------------------------------------------------------
 
@@ -212,6 +233,8 @@ plt1Cv2 <- ggplot(Count_Grouped(top3_by_tissue, c("tissue", "normalization", "re
 
 print(plt1Cv1 / plt1Cv2 / plot_spacer() + plot_layout(heights = c(1, 1, 1, 1)))
 
+plt1C_final <- (plt1Cav1 + ggtitle("C")) / (plt1Cbv1) + labs(caption = NULL)
+
 
 # Figure 1D --------------------------------------------------------------------
 
@@ -263,6 +286,9 @@ plt1Dv2 <- ggplot(Count_Grouped(top3_by_tissue, c("tissue", "reference_data_name
 
 print((plt1Dv1a + plt1Dv1b) / (plt1Dv2 + plot_spacer()))
 
+plt1D_final <- (plt1Dv1a + ggtitle("D")) /
+  (plt1Dv1b) + labs(caption = NULL)
+
 
 # Figure 1E --------------------------------------------------------------------
 
@@ -312,17 +338,23 @@ plt1Ev2 <- ggplot(rbind(total_valid_broad, total_valid_sub),
 
 print(plt1Ev1 / (plt1Ev2 + plot_spacer()) / plot_spacer() + plot_layout(heights = c(1, 1, 3)))
 
+plt1E_final <- plt1Ev2 + labs(caption = NULL)
+
 dev.off()
 
 
 # Draft Main Figure 1 ----------------------------------------------------------
 
 row1 <- ggplot() + ggtitle("A: Placeholder for diagram of process")
-row2 <- plt1Bv3 + ggtitle("B") + labs(caption = NULL) +
-  theme(legend.title = element_text(size = 10))
-row3 <- plt1Cv2 + ggtitle("C", subtitle = NULL) + labs(caption = NULL)
-row4 <- (plt1Dv2 + ggtitle("D", subtitle = NULL) + labs(caption = NULL)) +
-  (plt1Ev2 + ggtitle("E") + labs(caption = NULL))
+#row2 <- plt1B_final + ggtitle("B") +
+#  theme(legend.title = element_text(size = 10))
+#row3 <- plt1C_final + ggtitle("C", subtitle = NULL)
+#row4 <- (plt1D_final + ggtitle("D", subtitle = NULL)) +
+#  (plt1E_final + ggtitle("E"))
+row2 <- (plt1B_final + ggtitle("B") + theme(legend.title = element_text(size = 10))) +
+  (plt1D_final) + plot_layout(widths = c(1.5, 1))
+row3 <- (plt1C_final) + (plt1E_final + ggtitle("E")) + plot_layout(heights = c(1, 1, 2))
+
 
 cap <- paste(
   "Figure 1. Deconvolution performance across all tests. A) Diagram of our",

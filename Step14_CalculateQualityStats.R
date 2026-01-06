@@ -444,11 +444,13 @@ sig_stats <- lapply(granularities, function(granularity) {
                                   n_cores,
                                   with_mean_rank = FALSE)
 
+  avg_ests <- List_to_DF(avg_list, "avg_estimates")
+
   significance <- Get_MeanProps_Significance(avg_list,
                                               group_cols_toplevel,
                                               n_cores = n_cores)
 
-  return(significance)
+  return(list("significance" = significance, "avg_ests" = avg_ests))
 })
 
 
@@ -463,6 +465,7 @@ results <- list("n_valid_results" = n_valid,
                 "parameter_frequency" = param_frequency,
                 "better_than_baseline_by_tissue" = better_than_baseline_by_tissue,
                 "better_than_baseline_by_algorithm" = better_than_baseline_by_algorithm,
-                "significance" = List_to_DF(sig_stats))
+                "significance" = List_to_DF(sig_stats, "significance"),
+                "avg_estimates_by_algorithm" = List_to_DF(sig_stats, "avg_ests"))
 
 saveRDS(results, file.path(dir_analysis, str_glue("quality_stats_all.rds")))

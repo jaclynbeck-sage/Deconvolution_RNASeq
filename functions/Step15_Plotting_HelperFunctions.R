@@ -303,7 +303,8 @@ Paper_Renames <- function(df) {
 
   if ("algorithm" %in% colnames(df)) {
     df <- df %>%
-      mutate(algorithm = str_replace(algorithm, "Music", "MuSiC"))
+      mutate(algorithm = str_replace(algorithm, "Music", "MuSiC"),
+             algorithm = str_replace(algorithm, "CibersortX", "CIBERSORTx"))
   }
 
   if ("tissue" %in% colnames(df)) {
