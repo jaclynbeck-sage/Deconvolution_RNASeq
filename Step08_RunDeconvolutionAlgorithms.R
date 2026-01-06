@@ -100,8 +100,9 @@ for (P in 1:nrow(params_loop1)) {
   # the algorithm with specific parameters like which markers to use, how many
   # from each cell type, and any changes to arguments in the function call.
   cl <- makeCluster(cores, type = cluster_type, outfile = cluster_outfile)
+  chunk_size <- 1
 
-  results_list <- parLapply(cl, 1:nrow(params_loop2), function(R) {
+  results_list <- parLapplyLB(cl, 1:nrow(params_loop2), function(R) {
     source(file.path("functions", "General_HelperFunctions.R"))
     source(file.path("functions", "Step08_ArgumentChecking_HelperFunctions.R"))
     source(alg_config$inner_loop_file) # defined in the config
@@ -147,7 +148,7 @@ for (P in 1:nrow(params_loop1)) {
     # Save each result in case of crashing
     Save_AlgorithmIntermediate(res)
     return(res)
-  }) # end parLapply loop
+  }, chunk.size = chunk_size) # end parLapply loop
 
   stopCluster(cl)
 
