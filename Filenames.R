@@ -18,7 +18,7 @@ dir_algorithm_models <- file.path(dir_data, "08_algorithm_models")
 dir_errors <- file.path(dir_data, "10_errors")
 dir_top_parameters <- file.path(dir_data, "11_top_parameters")
 dir_top_estimates <- file.path(dir_data, "11_top_estimates")
-dir_best_errors <- file.path(dir_data, "11_top_errors")
+dir_top_errors <- file.path(dir_data, "11_top_errors")
 
 dir_tmp <- file.path(dir_data, "tmp")
 dir_estimates_tmp <- file.path(dir_estimates, "tmp")

@@ -15,8 +15,8 @@ source(file.path("functions", "General_HelperFunctions.R"))
 #   a data frame with all errors from all files concatenated together
 Get_AllBestErrorsAsDf <- function(bulk_datasets, granularities, n_cores = 2) {
   # List of "best errors" files matching the bulk data set names and granularity
-  file_list <- list.files(dir_best_errors,
-                          pattern = paste0("(",
+  file_list <- list.files(dir_top_errors,
+                          pattern = paste0("errors_.*(",
                                            paste(bulk_datasets, collapse = "|"),
                                            ").*",
                                            "(",

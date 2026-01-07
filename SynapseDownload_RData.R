@@ -12,7 +12,7 @@ synLogin(silent = TRUE)
 # locally.
 download_folders <- c(dir_metadata, dir_bulk, dir_singlecell, dir_pseudobulk,
                       dir_signatures, dir_markers, dir_estimates, dir_errors,
-                      dir_top_parameters, dir_top_estimates, dir_best_errors)
+                      dir_top_parameters, dir_top_estimates, dir_top_errors)
 # uncomment only if these files are needed, they take a lot of disk space
 #dir_music_basis, dir_scaden_models)
 names(download_folders) <- basename(download_folders)

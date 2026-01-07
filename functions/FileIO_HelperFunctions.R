@@ -671,7 +671,7 @@ Save_ErrorList <- function(dataset_name, error_list, algorithm, params_data,
   error_file_name <- str_glue("errors_{name_base}.rds")
 
   if (top_params) {
-    dir_errors_alg <- file.path(dir_best_errors, dataset_name, algorithm)
+    dir_errors_alg <- file.path(dir_top_errors, dataset_name, algorithm)
   } else {
     dir_errors_alg <- file.path(dir_errors, dataset_name, algorithm)
   }
@@ -701,7 +701,7 @@ Load_ErrorList <- function(params, top_params = FALSE) {
   error_file_name <- str_glue("errors_{name_base}.rds")
 
   if (top_params) {
-    error_file <- file.path(dir_best_errors, params$test_data_name,
+    error_file <- file.path(dir_top_errors, params$test_data_name,
                             params$algorithm, error_file_name)
   } else {
     error_file <- file.path(dir_errors, params$test_data_name, params$algorithm,

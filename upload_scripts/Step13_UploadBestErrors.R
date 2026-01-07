@@ -20,7 +20,7 @@ for (test_dataset in c("Mayo", "MSBB", "ROSMAP")) {
     algorithm_errors_folder <- Folder(algorithm, parent = bulk_errors_folder)
     algorithm_errors_folder <- synStore(algorithm_errors_folder)
 
-    dir_alg <- file.path(dir_best_errors, test_dataset, algorithm)
+    dir_alg <- file.path(dir_top_errors, test_dataset, algorithm)
 
     files <- list.files(dir_alg, full.names = TRUE)
 
