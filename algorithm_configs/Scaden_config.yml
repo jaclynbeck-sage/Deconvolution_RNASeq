@@ -13,8 +13,5 @@ default:
   inner_loop_file: !expr file.path("functions", "Step08_Scaden_InnerLoop.R")
   inner_loop_func: "Scaden_InnerLoop" # must be a string
 
-  # Whether to run only Control and AD samples, or run all samples.
-  ct_ad_only: false
-
   # How many cores to use in parallel
   cores: 1 # Scaden only has one parameter set per data input type so threading doesn't matter

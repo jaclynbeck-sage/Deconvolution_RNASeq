@@ -17,8 +17,5 @@ default:
   inner_loop_file: !expr file.path("functions", "Step08_CibersortX_InnerLoop.R")
   inner_loop_func: "CibersortX_InnerLoop" # must be a string
 
-  # Whether to run only Control and AD samples, or run all samples.
-  ct_ad_only: false
-
   # How many cores to use in parallel
   cores: !expr round(parallel::detectCores() * 0.75) # Only use more than one core if batch-adjusted signature matrices are pre-computed

@@ -15,8 +15,6 @@ algorithm <- "CibersortX"
 alg_config <- config::get(file = file.path("algorithm_configs",
                                            str_glue("{algorithm}_config.yml")))
 
-ct_ad_only <- alg_config$ct_ad_only
-
 # datasets and normalization parameters
 params_loop1 <- tidyr::expand_grid(
   algorithm = algorithm,
@@ -68,13 +66,6 @@ cluster_outfile <- str_glue("{algorithm}_output.txt")
 
 for (P in 1:nrow(params_loop1)) {
   data <- Load_AlgorithmInputData_FromParams(params_loop1[P, ])
-
-  if (ct_ad_only) {
-    message("Running CT and AD cases only.")
-    data$test <- data$test[, data$test$diagnosis %in% c("CT", "AD")]
-  } else {
-    message("Running with all samples.")
-  }
 
   bulk_metadata <- colData(data$test)
   data$test <- as.matrix(assay(data$test, "counts"))

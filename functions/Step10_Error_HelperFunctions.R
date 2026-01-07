@@ -68,6 +68,8 @@ Too_Many_Zeros <- function(est_pct, algorithm, granularity, zero_thresh = 0.25, 
   # Baseline never counts as having "too many zeros" because of having
   # deliberately added zeros in some of the estimates.
   if (algorithm != "Baseline" && any(zeros > zero_thresh)) {
+    print(paste(algorithm, granularity, "[",
+                paste(names(zeros)[zeros > zero_thresh], collapse = ", "), "]"))
     return(TRUE)
   }
 

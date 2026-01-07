@@ -1,13 +1,10 @@
 library(dplyr)
 library(stringr)
-library(reshape2)
 library(parallel)
 
 source(file.path("functions", "Analysis_HelperFunctions.R"))
 
-options(scipen = 999)
-
-cores <- 12
+cores <- max(parallel::detectCores() - 1, 1)
 cluster_type <- "FORK"
 cluster_outfile <- "top_params_output.txt"
 
@@ -23,7 +20,7 @@ for (granularity in granularities) {
       err_files <- Get_ErrorFiles(bulk_dataset, algorithm, granularity,
                                   reference_dataset = NULL) # get all error files
 
-      print(c(bulk_dataset, algorithm, granularity))
+      print(paste(bulk_dataset, algorithm, granularity))
 
       if (length(err_files) == 0) {
         message(str_glue("No data found for {bulk_dataset}/{algorithm}/{granularity}. Skipping..."))
@@ -51,12 +48,45 @@ for (granularity in granularities) {
 
         print(basename(EF))
 
+        # Save the list of top parameters
         dir_top_params_alg <- file.path(dir_top_parameters, bulk_dataset, algorithm)
         dir.create(dir_top_params_alg, recursive = TRUE, showWarnings = FALSE)
 
         saveRDS(best_errors,
                 file.path(dir_top_params_alg,
                           str_glue("top_parameters_{file_id}.rds")))
+
+        # Save the top errors and top estimates into new files to avoid having
+        # to open many large files to get a few items
+
+        # Errors
+        best_error_list <- err_list
+        best_error_list$means <- subset(best_error_list$means, param_id %in% best_param_ids)
+        best_error_list$by_sample <- best_error_list$by_sample[best_param_ids]
+        best_error_list$params <- best_error_list$params[best_param_ids, ]
+        best_error_list$param_ids <- best_param_ids
+
+        file_params <- FileParams_FromParams(best_error_list$params) |>
+          mutate(mode = "best_estimates")
+
+        Save_ErrorList(bulk_dataset, best_error_list, algorithm, file_params,
+                       top_params = TRUE)
+
+        # Estimates
+        ests_list <- Load_AlgorithmOutputList(algorithm,
+                                              file_params$reference_data_name,
+                                              file_params$test_data_name,
+                                              file_params$granularity,
+                                              file_params$reference_input_type,
+                                              file_params$normalization,
+                                              file_params$regression_method)
+
+        ests_list <- ests_list[best_param_ids]
+
+        Save_AlgorithmOutputList(ests_list, algorithm,
+                                 test_dataset = file_params$test_data_name,
+                                 name_base = paste(file_params, collapse = "_"),
+                                 top_params = TRUE)
       })
 
       stopCluster(cl)

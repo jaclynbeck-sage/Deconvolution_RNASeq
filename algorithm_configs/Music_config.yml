@@ -21,9 +21,6 @@ default:
   inner_loop_file: !expr file.path("functions", "Step08_Music_InnerLoop.R")
   inner_loop_func: "Music_InnerLoop" # must be a string
 
-  # Whether to run only Control and AD samples, or run all samples.
-  ct_ad_only: false
-
   # How many cores to use in parallel -- Music multi-threads a little bit and
   # requires a lot of memory. cores/2 works for broad class but needs to be
   # reduced to ~ cores/3 for sub class.

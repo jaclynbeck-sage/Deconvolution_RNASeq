@@ -200,10 +200,14 @@ Rank_Errors <- function(errs_df, group_cols) {
   ranks <- errs_df %>%
     dplyr::group_by_at(group_cols) %>%
     dplyr::mutate(cor_rank = rank(-cor),
+                  spearman_rank = rank(-spearman),
                   rMSE_rank = rank(rMSE),
-                  mAPE_rank = rank(mAPE)) %>%
+                  rMSE_log_rank = rank(rMSE_log),
+                  mAPE_rank = rank(mAPE),
+                  mAPE_log_rank = rank(mAPE_log)) %>%
     dplyr::ungroup()
-  ranks$mean_rank <- rowMeans(ranks[, c("cor_rank", "rMSE_rank", "mAPE_rank")])
+  ranks$mean_rank <- rowMeans(ranks[, c("cor_rank", "spearman_rank", "rMSE_rank", "mAPE_rank")])
+  ranks$mean_rank_log <- rowMeans(ranks[, c("cor_rank", "spearman_rank", "rMSE_log_rank", "mAPE_log_rank")])
   return(ranks)
 }
 
@@ -215,17 +219,25 @@ Get_TopRanked <- function(df, group_cols, n_top = 1, with_mean_rank = TRUE) {
   top_ranked <- do.call(rbind, list(
     mutate(dplyr::slice_min(df_ranked, order_by = cor_rank, n = n_top, with_ties = FALSE),
            type = "best_cor"),
+    mutate(dplyr::slice_min(df_ranked, order_by = spearman_rank, n = n_top, with_ties = FALSE),
+           type = "best_spearman"),
     mutate(dplyr::slice_min(df_ranked, order_by = rMSE_rank, n = n_top, with_ties = FALSE),
            type = "best_rMSE"),
+    mutate(dplyr::slice_min(df_ranked, order_by = rMSE_log_rank, n = n_top, with_ties = FALSE),
+           type = "best_rMSE_log"),
     mutate(dplyr::slice_min(df_ranked, order_by = mAPE_rank, n = n_top, with_ties = FALSE),
-           type = "best_mAPE")
+           type = "best_mAPE"),
+    mutate(dplyr::slice_min(df_ranked, order_by = mAPE_log_rank, n = n_top, with_ties = FALSE),
+           type = "best_mAPE_log")
   ))
 
   if (with_mean_rank) {
     top_ranked <- rbind(
       top_ranked,
       mutate(dplyr::slice_min(df_ranked, order_by = mean_rank, n = n_top, with_ties = FALSE),
-             type = "best_mean"))
+             type = "best_mean"),
+      mutate(dplyr::slice_min(df_ranked, order_by = mean_rank_log, n = n_top, with_ties = FALSE),
+             type = "best_mean_log"))
   }
 
   top_ranked %>%

@@ -14,8 +14,5 @@ default:
   inner_loop_file: !expr file.path("functions", "Step08_SignatureBased_InnerLoop.R")
   inner_loop_func: "SignatureBased_InnerLoop" # must be a string
 
-  # Whether to run only Control and AD samples, or run all samples.
-  ct_ad_only: false
-
   # How many cores to use in parallel -- DWLS multi-threads a little so we don't use all cores
   cores: !expr round(parallel::detectCores() * 0.5)

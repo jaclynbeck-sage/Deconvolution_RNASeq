@@ -44,8 +44,5 @@ default:
   inner_loop_file: !expr file.path("functions", "Step08_DtangleHSPE_InnerLoop.R")
   inner_loop_func: "DtangleHSPE_InnerLoop" # must be a string
 
-  # Whether to run only Control and AD samples, or run all samples.
-  ct_ad_only: false
-
   # How many cores to use in parallel
   cores: !expr parallel::detectCores() - 1 # Machine this was set up for has 16 cores
