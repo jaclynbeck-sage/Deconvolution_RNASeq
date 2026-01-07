@@ -20,7 +20,7 @@ source(file.path("functions", "Analysis_HelperFunctions.R"))
 granularities <- c("broad_class", "sub_class")
 bulk_datasets <- all_bulk_datasets()
 
-n_cores <- 12
+n_cores <- 4
 
 # Which algorithms to calculate stats for
 algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "Music",
@@ -31,19 +31,18 @@ algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "Music",
 # Get the full set of all errors from Step 13. Subset to errors where the
 # signature used to calculate the error matches the reference data used to
 # generate the estimate, except for Baseline data which doesn't use reference
-# data. Keep only errors for individual tissues.
-best_errors_step13 <- Get_AllBestErrorsAsDf(bulk_datasets, granularities, n_cores) %>%
-  subset(signature == reference_data_name | algorithm == "Baseline") %>%
-  subset(tissue != "All")
+# data.
+best_errors_step11 <- Get_AllBestErrorsAsDf(bulk_datasets, granularities, n_cores) |>
+  subset(signature == reference_data_name | algorithm == "Baseline")
 
-top3_by_tissue <- best_errors_step13 %>%
-  subset(algorithm != "Baseline") %>%
+top3_by_tissue <- best_errors_step11 |>
+  subset(algorithm != "Baseline") |>
   Get_TopRanked(group_cols = c("tissue", "granularity"),
                 n_top = 3,
                 with_mean_rank = TRUE)
 
-top3_by_algorithm <- best_errors_step13 %>%
-  subset(algorithm != "Baseline") %>%
+top3_by_algorithm <- best_errors_step11 |>
+  subset(algorithm != "Baseline") |>
   Get_TopRanked(group_cols = c("tissue", "granularity", "algorithm"),
                 n_top = 3,
                 with_mean_rank = TRUE)
@@ -54,13 +53,13 @@ best_dt <- Get_BestDataTransform(Standardize_DataTransform(top3_by_tissue),
 # Group by all parameters common to all algorithms (ignoring input type), and
 # then create a top-level grouping that also ignores which single cell reference
 # was used.
-group_cols <- c("tissue", Get_ParameterColumnNames())  %>%
+group_cols <- c("tissue", Get_ParameterColumnNames())  |>
   setdiff("reference_input_type") # Ignore input type
 group_cols_toplevel <- setdiff(group_cols, "reference_data_name")
 
 top_errors <- list(
-  "by_reference" = Get_TopErrors(best_errors_step13, group_cols, n_cores, with_mean_rank = FALSE),
-  "by_algorithm" = Get_TopErrors(best_errors_step13, group_cols_toplevel, n_cores, with_mean_rank = FALSE),
+  "by_reference" = Get_TopErrors(best_errors_step11, group_cols, n_cores, with_mean_rank = FALSE),
+  "by_algorithm" = Get_TopErrors(best_errors_step11, group_cols_toplevel, n_cores, with_mean_rank = FALSE),
   "top3_by_tissue" = top3_by_tissue,
   "top3_by_algorithm" = top3_by_algorithm,
   "best_data_transform" = best_dt
@@ -82,7 +81,7 @@ iter_vars <- expand.grid(bulk_dataset = bulk_datasets,
                          stringsAsFactors = FALSE)
 
 combined_metadata <- lapply(bulk_datasets, Get_BulkMetadata,
-                            columns = c("sample", "tissue", "diagnosis")) %>%
+                            columns = c("sample", "tissue", "diagnosis")) |>
   List_to_DF()
 
 qstats_all <- lapply(1:nrow(iter_vars), function(iter_row) {
@@ -109,7 +108,7 @@ qstats_all <- lapply(1:nrow(iter_vars), function(iter_row) {
   file_qstats <- mclapply(est_files_step08, function(est_f) {
 
     ## Load all error and estimate files related to est_f --------------------
-    file_id <- str_replace(basename(est_f), "estimates_", "") %>%
+    file_id <- str_replace(basename(est_f), "estimates_", "") |>
       str_replace(".rds", "")
 
     est_list_step08 <- readRDS(est_f)
@@ -156,9 +155,9 @@ qstats_all <- lapply(1:nrow(iter_vars), function(iter_row) {
       return(list("n_valid_results" = n_valid_results))
     }
 
-    best_params <- List_to_DF(best_est_list_step12, "params") %>%
-      mutate(param_id = rownames(.)) %>%
-      subset(param_id %in% best_param_ids) %>%
+    best_params <- List_to_DF(best_est_list_step12, "params") |>
+      mutate(param_id = rownames(.)) |>
+      subset(param_id %in% best_param_ids) |>
       tibble::remove_rownames()
 
     est_pcts_step12 <- Subset_BestEstimates(best_param_ids,
@@ -169,10 +168,10 @@ qstats_all <- lapply(1:nrow(iter_vars), function(iter_row) {
     ## Number of 0 guesses for each cell type --------------------------------
     # For best estimates
 
-    num_zeros <- est_pcts_step12 %>%
-      group_by(tissue, param_id) %>%
+    num_zeros <- est_pcts_step12 |>
+      group_by(tissue, param_id) |>
       summarize(across(where(is.numeric), ~ sum(.x < 1e-4)),
-                .groups = "drop") %>%
+                .groups = "drop") |>
       as.data.frame()
 
     return(list("n_valid_results" = n_valid_results,
@@ -203,9 +202,9 @@ qstats_all <- lapply(1:nrow(iter_vars), function(iter_row) {
 
   # Limit to combinations of parameters/tissues that appear in the top-level
   # best errors list
-  valid <- top_errors$by_algorithm$errors %>%
-    subset(param_id %in% best_ests_all$param_id) %>%
-    select(param_id, tissue) %>%
+  valid <- top_errors$by_algorithm$errors |>
+    subset(param_id %in% best_ests_all$param_id) |>
+    select(param_id, tissue) |>
     distinct()
 
   ests_filt <- merge(best_ests_all, valid)
@@ -256,50 +255,50 @@ qstats_all <- lapply(1:nrow(iter_vars), function(iter_row) {
 
 qstats_info <- List_to_DF(qstats_all, "info")
 
-n_valid <- List_to_DF(qstats_all, "n_valid_results") %>%
+n_valid <- List_to_DF(qstats_all, "n_valid_results") |>
   subset(algorithm != "Baseline")
 
-n_valid_by_norm <- n_valid %>%
+n_valid_by_norm <- n_valid |>
   group_by(algorithm, granularity, normalization,
-           regression_method) %>%
+           regression_method) |>
   summarize(n_valid = sum(n_valid),
             n_possible = sum(n_possible),
             pct_valid = n_valid / n_possible,
-            .groups = "drop") %>%
+            .groups = "drop") |>
   as.data.frame()
 
-n_valid_by_algorithm <- n_valid %>%
-  group_by(algorithm, granularity) %>%
+n_valid_by_algorithm <- n_valid |>
+  group_by(algorithm, granularity) |>
   summarize(n_valid = sum(n_valid),
             n_possible = sum(n_possible),
             pct_valid = n_valid / n_possible,
-            .groups = "drop") %>%
+            .groups = "drop") |>
   as.data.frame()
 
 n_zeros <- lapply(qstats_all, function(qstat) {
   if ("n_zero_guesses" %in% names(qstat)) {
-    qstat$n_zero_guesses %>%
-      subset(param_id %in% top_errors$by_algorithm$param_ids) %>%
-      merge(select(top_errors$by_algorithm$errors, tissue, param_id, algorithm)) %>%
-      distinct() %>%
+    qstat$n_zero_guesses |>
+      subset(param_id %in% top_errors$by_algorithm$param_ids) |>
+      merge(select(top_errors$by_algorithm$errors, tissue, param_id, algorithm)) |>
+      distinct() |>
       pivot_longer(cols = where(is.numeric),
                    names_to = "celltype",
                    values_to = "count")
   } else {
     NULL
   }
-}) %>%
-  List_to_DF() %>%
+}) |>
+  List_to_DF() |>
   as.data.frame()
 
-exc_inh_ratio <- List_to_DF(qstats_all, "exc_inh_ratio") %>%
-  subset(algorithm != "Baseline") %>%
+exc_inh_ratio <- List_to_DF(qstats_all, "exc_inh_ratio") |>
+  subset(algorithm != "Baseline") |>
   # Best data transforms only
-  Standardize_DataTransform() %>%
-  merge(top_errors$best_data_transform) %>%
+  Standardize_DataTransform() |>
+  merge(top_errors$best_data_transform) |>
   # Weight by number of apperances
-  merge(top_errors$by_algorithm$ranks) %>%
-  group_by(tissue, algorithm, granularity) %>%
+  merge(top_errors$by_algorithm$ranks) |>
+  group_by(tissue, algorithm, granularity) |>
   summarize(median_exc_inh_ratio = median(mean_exc_inh_ratio),
             mean_exc_inh_ratio = mean(mean_exc_inh_ratio),
             .groups = "drop")
@@ -323,14 +322,14 @@ best_params <- lapply(qstats_all, "[[", "best_params")
 # valid. Also remove baseline data.
 ok <- (lengths(best_params) > 0) & (qstats_info$algorithm != "Baseline")
 
-best_params <- best_params[ok] %>%
-  lapply(select_at, cols_keep) %>%  # subset to only cols_keep columns
-  List_to_DF() %>%
+best_params <- best_params[ok] |>
+  lapply(select_at, cols_keep) |>  # subset to only cols_keep columns
+  List_to_DF() |>
   subset(algorithm != "Baseline")
 
 # Limit to only parameter sets that appear in the top 3 errors
-params_top3 <- top_errors$top3_by_tissue %>%
-  merge(best_params) %>%
+params_top3 <- top_errors$top3_by_tissue |>
+  merge(best_params) |>
   # These three marker specifications are not independent of each other so we
   # combine them into one variable
   mutate(marker_algorithm = paste(marker_type, marker_subtype),
@@ -349,57 +348,57 @@ param_frequency_list <- lapply(param_cols, function(p_col) {
 })
 
 # Combine this list with any algorithm-specific data frames
-param_frequency <- List_to_DF(param_frequency_list) %>%
-  rbind(List_to_DF(qstats_all, "param_frequency")) %>%
+param_frequency <- List_to_DF(param_frequency_list) |>
+  rbind(List_to_DF(qstats_all, "param_frequency")) |>
   as.data.frame()
 
 
 # Percent of errors better than baseline ---------------------------------------
 # Using top-level data
 
-baseline_bests <- top_errors$by_algorithm$errors %>%
-  subset(algorithm == "Baseline" & reference_data_name != "zeros") %>%
-  Standardize_DataTransform() %>%
-  group_by(tissue, granularity, test_data_name, normalization, regression_method) %>%
+baseline_bests <- top_errors$by_algorithm$errors |>
+  subset(algorithm == "Baseline" & reference_data_name != "zeros") |>
+  Standardize_DataTransform() |>
+  group_by(tissue, granularity, test_data_name, normalization, regression_method) |>
   summarize(cor = max(cor),
             rMSE = min(rMSE),
             mAPE = min(mAPE),
-            .groups = "drop") %>%
+            .groups = "drop") |>
   pivot_longer(cols = c(cor, rMSE, mAPE), names_to = "error_metric",
                values_to = "baseline_value")
 
 # Sub class is missing some algorithms, this fills them in
-alg_info <- expand.grid(tissue = unique(best_errors_step13$tissue),
-                        algorithm = unique(best_errors_step13$algorithm),
-                        granularity = unique(best_errors_step13$granularity),
-                        error_metric = unique(baseline_bests$error_metric)) %>%
+alg_info <- expand.grid(tissue = unique(best_errors_step11$tissue),
+                        algorithm = unique(best_errors_step11$algorithm),
+                        granularity = unique(best_errors_step11$granularity),
+                        error_metric = unique(baseline_bests$error_metric)) |>
   subset(algorithm != "Baseline")
 
-better_than_baseline <- top_errors$by_algorithm$errors %>%
-  subset(algorithm != "Baseline") %>%
-  Standardize_DataTransform() %>%
+better_than_baseline <- top_errors$by_algorithm$errors |>
+  subset(algorithm != "Baseline") |>
+  Standardize_DataTransform() |>
   pivot_longer(cols = c(cor, rMSE, mAPE), names_to = "error_metric",
-               values_to = "value") %>%
-  merge(baseline_bests) %>%
-  distinct() %>%
-  merge(top_errors$best_data_transform) %>%
-  merge(alg_info, all = TRUE) %>%
+               values_to = "value") |>
+  merge(baseline_bests) |>
+  distinct() |>
+  merge(top_errors$best_data_transform) |>
+  merge(alg_info, all = TRUE) |>
   mutate(better = case_when(is.na(value) ~ FALSE,
                             error_metric == "cor" ~ value > baseline_value,
                             TRUE ~ value < baseline_value))
 
-better_than_baseline_by_tissue <- better_than_baseline %>%
-  group_by(tissue, granularity, test_data_name, algorithm) %>%
+better_than_baseline_by_tissue <- better_than_baseline |>
+  group_by(tissue, granularity, test_data_name, algorithm) |>
   dplyr::summarize(count = n(),
                    pct_better_than_baseline = sum(better) / count,
-                   .groups = "drop") %>%
+                   .groups = "drop") |>
   as.data.frame()
 
-better_than_baseline_by_algorithm <- better_than_baseline %>%
-  group_by(granularity, algorithm) %>%
+better_than_baseline_by_algorithm <- better_than_baseline |>
+  group_by(granularity, algorithm) |>
   dplyr::summarize(count = n(),
                    pct_better_than_baseline = sum(better) / count,
-                   .groups = "drop") %>%
+                   .groups = "drop") |>
   as.data.frame()
 
 
@@ -407,16 +406,16 @@ better_than_baseline_by_algorithm <- better_than_baseline %>%
 # For top-level errors by algorithm
 
 best_errors_by_alg <- merge(top_errors$by_algorithm$errors,
-                            top_errors$by_algorithm$ranks) %>%
-  subset(reference_data_name != "zeros") %>%
+                            top_errors$by_algorithm$ranks) |>
+  subset(reference_data_name != "zeros") |>
   Standardize_DataTransform()
 
 best_errors_by_alg$avg_id <- unlist(apply(best_errors_by_alg, 1, function(row) {
   paste(row[group_cols_toplevel], collapse = "_")
 }))
 
-valid <- best_errors_by_alg %>%
-  select(param_id, tissue) %>%
+valid <- best_errors_by_alg |>
+  select(param_id, tissue) |>
   distinct()
 
 # Separate by granularity because of differing numbers of cell types
@@ -426,14 +425,14 @@ sig_stats <- lapply(granularities, function(granularity) {
   best_estimates_all <- lapply(qstats_all, function(qstat) {
     if (("best_estimates" %in% names(qstat)) &&
         (qstat$info$granularity == granularity)) {
-      ests <- qstat$best_estimates %>%
-        subset(param_id %in% best_errors_tmp$param_id) %>%
+      ests <- qstat$best_estimates |>
+        subset(param_id %in% best_errors_tmp$param_id) |>
         merge(valid)
       return(ests)
     } else {
       return(NULL)
     }
-  }) %>%
+  }) |>
     List_to_DF()
 
   # Average the estimates corresponding to best correlation, best rMSE, and best

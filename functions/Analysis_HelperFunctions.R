@@ -59,10 +59,10 @@ Get_AllBestEstimatesAsDf <- function(bulk_datasets, granularity, metadata,
       new_ests <- as.data.frame(data[[N]]$estimates[as.character(samples),])
       new_ests$sample <- rownames(new_ests)
 
-      new_ests <- new_ests %>%
+      new_ests <- new_ests |>
         melt(id.vars = c("sample"),
              variable.name = "celltype",
-             value.name = "percent") %>%
+             value.name = "percent") |>
         merge(metadata, by = "sample", all.y = FALSE)
 
       new_ests$param_id <- N
@@ -99,7 +99,7 @@ Get_AllQualityStatsAsDf <- function(bulk_datasets, granularity, n_cores = 2) {
   qstats_list <- mclapply(file_list_per_alg, function(file) {
     data <- readRDS(file)
 
-    file_id <- str_replace(basename(file), "quality_stats_", "") %>%
+    file_id <- str_replace(basename(file), "quality_stats_", "") |>
       str_replace(".rds", "")
 
     # TODO
@@ -113,8 +113,8 @@ Get_AllQualityStatsAsDf <- function(bulk_datasets, granularity, n_cores = 2) {
 
 Get_BulkMetadata <- function(bulk_dataset, columns) {
   bulk <- Load_BulkData(bulk_dataset)
-  bulk_metadata <- colData(bulk) %>%
-    as.data.frame() %>%
+  bulk_metadata <- colData(bulk) |>
+    as.data.frame() |>
     select(all_of(columns))
   return(bulk_metadata)
 }
@@ -133,10 +133,10 @@ Find_BestEstimateFiles <- function(bulk_dataset, algorithm, file_id) {
 
 
 Find_BestSignature <- function(errs_df) {
-  ranks <- errs_df %>%
-    subset(algorithm != "Baseline") %>%
-    Rank_Errors(group_cols = c("tissue", "data_transform")) %>%
-    Get_TopRank(n_top = 1) %>%
+  ranks <- errs_df |>
+    subset(algorithm != "Baseline") |>
+    Rank_Errors(group_cols = c("tissue", "data_transform")) |>
+    Get_TopRank(n_top = 1) |>
     subset(cor_rank == 1 | rMSE_rank == 1 | mAPE_rank == 1) # drop top mean_rank
 
   get_best_signature <- function(signature) {
@@ -144,8 +144,8 @@ Find_BestSignature <- function(errs_df) {
     names(tmp)[which.max(tmp)]
   }
 
-  best_signatures <- ranks_sub %>%
-    group_by(tissue, data_transform) %>%
+  best_signatures <- ranks_sub |>
+    group_by(tissue, data_transform) |>
     dplyr::summarize(best_signature = get_best_signature(signature),
                      .groups = "drop")
 
@@ -154,7 +154,7 @@ Find_BestSignature <- function(errs_df) {
 
 
 Standardize_DataTransform <- function(data) {
-  data %>%
+  data |>
     mutate(normalization = str_replace(normalization, "counts", "cpm"),
            normalization = str_replace(normalization, "log_", ""),
            data_transform = paste(normalization, regression_method, sep = " + "))
@@ -162,19 +162,19 @@ Standardize_DataTransform <- function(data) {
 
 
 Get_BestDataTransform <- function(ranked_df, algorithms) {
-  params <- ranked_df %>%
-    select(tissue, normalization, regression_method, data_transform) %>%
+  params <- ranked_df |>
+    select(tissue, normalization, regression_method, data_transform) |>
     distinct()
 
-  best_dt <- ranked_df %>%
-    group_by(tissue, data_transform) %>%
+  best_dt <- ranked_df |>
+    group_by(tissue, data_transform) |>
     dplyr::summarize(count = n(),
                      mean_rank = mean(mean_rank),
-                     .groups = "drop_last") %>%
+                     .groups = "drop_last") |>
     # First, pick the data transform(s) that show up the most in the top3
-    slice_max(order_by = count, with_ties = TRUE) %>%
+    slice_max(order_by = count, with_ties = TRUE) |>
     # If there's a tie, use the transform with the lowest mean rank
-    slice_min(order_by = mean_rank, with_ties = FALSE) %>%
+    slice_min(order_by = mean_rank, with_ties = FALSE) |>
     merge(params)
 
   best_dt <- tidyr::expand_grid(best_dt,
@@ -186,10 +186,10 @@ Get_BestDataTransform <- function(ranked_df, algorithms) {
   best_dt$normalization[best_dt$normalization == "tmm" &
                           best_dt$algorithm == "CibersortX"] <- "cpm"
 
-  best_dt <- best_dt %>%
+  best_dt <- best_dt |>
     # Fix the data_transform field for MuSiC and CibersortX
-    mutate(data_transform = paste(normalization, "+", regression_method)) %>%
-    select(-count, -mean_rank) %>%
+    mutate(data_transform = paste(normalization, "+", regression_method)) |>
+    select(-count, -mean_rank) |>
     as.data.frame()
 
   return(best_dt)
@@ -197,14 +197,14 @@ Get_BestDataTransform <- function(ranked_df, algorithms) {
 
 
 Rank_Errors <- function(errs_df, group_cols) {
-  ranks <- errs_df %>%
-    dplyr::group_by_at(group_cols) %>%
+  ranks <- errs_df |>
+    dplyr::group_by_at(group_cols) |>
     dplyr::mutate(cor_rank = rank(-cor),
                   spearman_rank = rank(-spearman),
                   rMSE_rank = rank(rMSE),
                   rMSE_log_rank = rank(rMSE_log),
                   mAPE_rank = rank(mAPE),
-                  mAPE_log_rank = rank(mAPE_log)) %>%
+                  mAPE_log_rank = rank(mAPE_log)) |>
     dplyr::ungroup()
   ranks$mean_rank <- rowMeans(ranks[, c("cor_rank", "spearman_rank", "rMSE_rank", "mAPE_rank")])
   ranks$mean_rank_log <- rowMeans(ranks[, c("cor_rank", "spearman_rank", "rMSE_log_rank", "mAPE_log_rank")])
@@ -213,7 +213,7 @@ Rank_Errors <- function(errs_df, group_cols) {
 
 
 Get_TopRanked <- function(df, group_cols, n_top = 1, with_mean_rank = TRUE) {
-  df_ranked <- Rank_Errors(df, group_cols) %>%
+  df_ranked <- Rank_Errors(df, group_cols) |>
     group_by_at(group_cols)
 
   top_ranked <- do.call(rbind, list(
@@ -240,8 +240,8 @@ Get_TopRanked <- function(df, group_cols, n_top = 1, with_mean_rank = TRUE) {
              type = "best_mean_log"))
   }
 
-  top_ranked %>%
-    ungroup() %>%
+  top_ranked |>
+    ungroup() |>
     as.data.frame()
 }
 
@@ -251,19 +251,19 @@ Get_TopErrors <- function(errors_df, group_cols, n_cores, with_mean_rank = TRUE)
   # for the "zeros" baseline data we just subset to have one unique param_id per
   # tissue/data transform. The zeros data also needs to be held out separately
   # from the other baseline data and not combined with it at the top level.
-  best_zeros <- subset(errors_df, reference_data_name == "zeros") %>%
-    mutate(signature = NA) %>%
-    distinct() %>%
+  best_zeros <- subset(errors_df, reference_data_name == "zeros") |>
+    mutate(signature = NA) |>
+    distinct() |>
     Get_TopRanked(group_cols, n_top = 1, with_mean_rank = with_mean_rank)
 
   # Remove the "zeros" data from the best errors df for ranking
   errors_df <- subset(errors_df, reference_data_name != "zeros")
 
-  top_errors <- errors_df %>%
-    Get_TopRanked(group_cols, n_top = 1, with_mean_rank = with_mean_rank) %>%
+  top_errors <- errors_df |>
+    Get_TopRanked(group_cols, n_top = 1, with_mean_rank = with_mean_rank) |>
     rbind(best_zeros)
 
-  error_stats <- top_errors %>%
+  error_stats <- top_errors |>
     Calculate_ErrorStats(group_cols)
 
   # Break into smaller data frames for storage. These dfs currently have one "best"
@@ -271,11 +271,11 @@ Get_TopErrors <- function(errors_df, group_cols, n_cores, with_mean_rank = TRUE)
   # same data where the param ID is the "best" for multiple error metrics. We
   # save the info for mapping param ID -> best metric as one data frame, and the actual
   # errors for each param ID/tissue in another
-  error_ranks <- top_errors %>%
+  error_ranks <- top_errors |>
     select(param_id, tissue, signature, ends_with("rank"), type)
 
-  top_errors <- top_errors %>%
-    select(-type, -ends_with("rank")) %>%
+  top_errors <- top_errors |>
+    select(-type, -ends_with("rank")) |>
     distinct()
 
   return(list(
@@ -294,8 +294,8 @@ Find_BestParameters <- function(errs_df, group_cols, with_mean_rank = TRUE) {
   # Some parameter IDs will be duplicated across multiple error metrics, this
   # creates a data frame with the list of unique parameter IDs associated with
   # each tissue.
-  best_params <- ranks %>%
-    dplyr::select(tissue, param_id) %>%
+  best_params <- ranks |>
+    dplyr::select(tissue, param_id) |>
     dplyr::distinct()
 
   return(best_params)
@@ -303,11 +303,11 @@ Find_BestParameters <- function(errs_df, group_cols, with_mean_rank = TRUE) {
 
 
 Calculate_ErrorStats <- function(errs_df, group_cols) {
-  err_stats <- errs_df %>%
+  err_stats <- errs_df |>
     melt(variable.name = "metric",
          id.vars = c("param_id", group_cols),
-         measure.vars = c("cor", "rMSE", "mAPE")) %>%
-    group_by_at(c(group_cols, "metric")) %>%
+         measure.vars = c("cor", "rMSE", "mAPE")) |>
+    group_by_at(c(group_cols, "metric")) |>
     summarize(mean_err = mean(value),
               sd_err = sd(value),
               rel_sd_err = sd_err / mean_err,
@@ -322,17 +322,17 @@ Calculate_EstimateStats <- function(best_ests, top_errors_list, group_cols) {
   # calculate best errors, so that each estimate is weighted by the number of
   # times it shows up as a "best" among the 4 error metrics. Also pull in
   # parameters listed in group_cols for this calculation.
-  weights <- top_errors_list$ranks %>%
-    merge(top_errors_list$errors) %>%
+  weights <- top_errors_list$ranks |>
+    merge(top_errors_list$errors) |>
     select(param_id, all_of(group_cols), type)
 
-  est_stats <- best_ests %>%
-    merge(weights) %>%
-    select(param_id, sample, all_of(group_cols), where(is.numeric)) %>%
+  est_stats <- best_ests |>
+    merge(weights) |>
+    select(param_id, sample, all_of(group_cols), where(is.numeric)) |>
     melt(variable.name = "celltype",
          value.name = "percent",
-         id.vars = c("param_id", "sample", group_cols)) %>%
-    group_by_at(c("sample", group_cols, "celltype")) %>%
+         id.vars = c("param_id", "sample", group_cols)) |>
+    group_by_at(c("sample", group_cols, "celltype")) |>
     summarize(mean_pct = mean(percent),
               sd_pct = sd(percent),
               rel_sd_pct = sd_pct / mean_pct,
@@ -348,12 +348,12 @@ Subset_BestEstimates <- function(best_param_ids, best_est_list, bulk_metadata) {
 
   # Get all best estimates as one data frame
   est_pcts <- lapply(best_est_list, function(est_item) {
-    estimates <- as.data.frame(est_item$estimates) %>%
+    estimates <- as.data.frame(est_item$estimates) |>
       mutate(sample = rownames(.),
-             param_id = est_item$param_id) %>%
+             param_id = est_item$param_id) |>
       merge(bulk_metadata)
   })
-  est_pcts <- List_to_DF(est_pcts) %>%
+  est_pcts <- List_to_DF(est_pcts) |>
     tibble::remove_rownames()
 
   return(est_pcts)
@@ -366,27 +366,27 @@ Calculate_ExcInhRatio <- function(est_pcts, params) {
     data.frame(
       Excitatory = rowSums(select(est_pcts, starts_with("Exc"))),
       Inhibitory = rowSums(select(est_pcts, starts_with("Inh")))
-    )) %>%
+    )) |>
     mutate(is_bad_estimate = Inhibitory > Excitatory,
            exc_inh_ratio = Excitatory / Inhibitory)
 
   # Change these to NA so they get removed when doing mean/median below
   neuron_ests$exc_inh_ratio[is.infinite(neuron_ests$exc_inh_ratio)] <- NA
 
-  exc_inh_ratio <- neuron_ests %>%
-    group_by(tissue, param_id) %>%
+  exc_inh_ratio <- neuron_ests |>
+    group_by(tissue, param_id) |>
     dplyr::summarize(n_bad = sum(is_bad_estimate),
                      count = n(),
                      pct_bad_inhibitory_ratio = n_bad / count,
                      mean_exc_inh_ratio = mean(exc_inh_ratio, na.rm = TRUE),
                      median_exc_inh_ratio = median(exc_inh_ratio, na.rm = TRUE),
                      param_id = unique(param_id),
-                     .groups = "drop") %>%
-    select(-n_bad, -count) %>%
+                     .groups = "drop") |>
+    select(-n_bad, -count) |>
     as.data.frame()
 
-  params <- params %>%
-    select(param_id, all_of(Get_ParameterColumnNames())) %>%
+  params <- params |>
+    select(param_id, all_of(Get_ParameterColumnNames())) |>
     subset(param_id %in% exc_inh_ratio$param_id)
 
   return(merge(exc_inh_ratio, params))
@@ -417,7 +417,7 @@ Count_AlgSpecificParameters <- function(best_params, top3_errors_df) {
                            pivot_column = param_col,
                            algorithm_specific = alg)
     })
-    param_frequency <- List_to_DF(param_frequency) %>%
+    param_frequency <- List_to_DF(param_frequency) |>
       mutate(granularity = gran)
 
   } else {
@@ -429,11 +429,11 @@ Count_AlgSpecificParameters <- function(best_params, top3_errors_df) {
 
 
 Count_ParamFrequency <- function(df, groups, pivot_column, algorithm_specific = FALSE) {
-  df %>%
-    group_by_at(groups) %>%
-    dplyr::summarize(count = n(), .groups = "drop") %>%
+  df |>
+    group_by_at(groups) |>
+    dplyr::summarize(count = n(), .groups = "drop") |>
     pivot_longer(cols = all_of(pivot_column), names_to = "parameter_name",
-                 values_to = "parameter_value") %>%
+                 values_to = "parameter_value") |>
     mutate(algorithm_specific = algorithm_specific)
 }
 
@@ -575,10 +575,10 @@ Get_MeanProps_Significance <- function(avg_list, group_cols, n_cores = 2) {
                                        fun = Calculate_Significance,
                                        ests_df = ests_ad)
 
-    significant <- List_to_DF(significant) %>%
+    significant <- List_to_DF(significant) |>
       dplyr::mutate(tissue = tissue,
                     significant_05 = (p_adj <= 0.05),
-                    significant_01 = (p_adj <= 0.01)) %>%
+                    significant_01 = (p_adj <= 0.01)) |>
       dplyr::select(celltype, tissue, p_adj, significant_05, significant_01,
                     anova_pval, avg_id)
 
@@ -588,17 +588,17 @@ Get_MeanProps_Significance <- function(avg_list, group_cols, n_cores = 2) {
 
     # Average cell type percentages across all AD or all CT samples in a given
     # parameter set
-    mean_props <- ests_ad %>% subset(diagnosis %in% c("CT", "AD")) %>%
-      group_by(avg_id, diagnosis, tissue, celltype, algorithm) %>%
+    mean_props <- ests_ad |> subset(diagnosis %in% c("CT", "AD")) |>
+      group_by(avg_id, diagnosis, tissue, celltype, algorithm) |>
       dplyr::summarize(mean_pct = mean(percent_mean),
                        sd_pct = sd(percent_mean),
                        rel_sd_pct = sd_pct / mean_pct,
                        count = n(),
-                       .groups = "drop") %>%
+                       .groups = "drop") |>
       # Make one column for AD and one for CT for each of mean_pct, sd_pct,
       # rel_sd_pct, and count, calculate fold-change between AD and CT means
       pivot_wider(names_from = "diagnosis",
-                  values_from = c("mean_pct", "sd_pct", "rel_sd_pct", "count")) %>%
+                  values_from = c("mean_pct", "sd_pct", "rel_sd_pct", "count")) |>
       dplyr::mutate(fc = mean_pct_AD / mean_pct_CT,
                     log2_fc = log2(fc), # equivalent to log2(AD)-log2(CT)
                     # If one or both of the means is 0, rel_sd_pct values and the
@@ -609,10 +609,10 @@ Get_MeanProps_Significance <- function(avg_list, group_cols, n_cores = 2) {
                     rel_sd_pct_AD = ifelse(is.na(rel_sd_pct_AD), 0, rel_sd_pct_AD),
                     rel_sd_pct_CT = ifelse(is.na(rel_sd_pct_CT), 0, rel_sd_pct_CT))
 
-    mean_props <- merge(mean_props, significant) %>%
-      dplyr::mutate(log_p = log(p_adj_thresh)) %>%
+    mean_props <- merge(mean_props, significant) |>
+      dplyr::mutate(log_p = log(p_adj_thresh)) |>
       # pull in missing parameter fields from errs_tmp
-      merge(errs_tmp[, c("avg_id", group_cols)]) %>%
+      merge(errs_tmp[, c("avg_id", group_cols)]) |>
       as.data.frame()
 
     return(mean_props)
@@ -649,8 +649,8 @@ Get_MeanProps_Significance <- function(avg_list, group_cols, n_cores = 2) {
 CalcEstimateStats <- function(all_ests, bulk_metadata, gof_means_all) {
   # Mean of each cell type percentage over all estimates in the file, per
   # celltype per sample
-  estimate_stats_sample <- all_ests %>%
-    group_by(celltype, sample) %>%
+  estimate_stats_sample <- all_ests |>
+    group_by(celltype, sample) |>
     summarize(mean_pct = mean(percent),
               sd_pct = sd(percent),
               rel_sd_pct = sd_pct / mean_pct,
@@ -661,9 +661,9 @@ CalcEstimateStats <- function(all_ests, bulk_metadata, gof_means_all) {
   # Top 10 scoring parameter sets per tissue, per signature used to
   # calculate the error. Each error metric may have different top 10 lists. If
   # there are less than 10 parameter sets, this just selects all of them.
-  top_cor <- gof_means_all %>% group_by(tissue, signature) %>% top_n(10, wt = cor)
-  top_rMSE <- gof_means_all %>% group_by(tissue, signature) %>% top_n(10, wt = -rMSE)
-  top_mAPE <- gof_means_all %>% group_by(tissue, signature) %>% top_n(10, wt = -mAPE)
+  top_cor <- gof_means_all |> group_by(tissue, signature) |> top_n(10, wt = cor)
+  top_rMSE <- gof_means_all |> group_by(tissue, signature) |> top_n(10, wt = -rMSE)
+  top_mAPE <- gof_means_all |> group_by(tissue, signature) |> top_n(10, wt = -mAPE)
 
   top_10 <- list(cor = top_cor,
                  rMSE = top_rMSE,
@@ -689,8 +689,8 @@ CalcEstimateStats <- function(all_ests, bulk_metadata, gof_means_all) {
 
         # Mean cell type percent for each cell type for each sample, across the
         # top 10 scoring parameter sets
-        ests_stats <- ests_filt %>%
-          group_by(celltype, sample) %>%
+        ests_stats <- ests_filt |>
+          group_by(celltype, sample) |>
           summarize(mean_pct = mean(percent),
                     sd_pct = sd(percent),
                     rel_sd_pct = sd_pct / mean_pct,
@@ -709,16 +709,16 @@ CalcEstimateStats <- function(all_ests, bulk_metadata, gof_means_all) {
   })
 
   # average and sd of the *mean* values for each sample, per cell type
-  estimate_stats_all <- estimate_stats_sample %>%
-    group_by(celltype) %>%
+  estimate_stats_all <- estimate_stats_sample |>
+    group_by(celltype) |>
     summarize(mean_pct = mean(mean_pct),
               mean_sd_pct = mean(sd_pct),
               mean_rel_sd_pct = mean(rel_sd_pct),
               .groups = "drop_last")
 
   # Same but broken down by tissue
-  estimate_stats_tissue <- estimate_stats_sample %>%
-    group_by(tissue, celltype) %>%
+  estimate_stats_tissue <- estimate_stats_sample |>
+    group_by(tissue, celltype) |>
     summarize(mean_pct = mean(mean_pct),
               mean_sd_pct = mean(sd_pct),
               mean_rel_sd_pct = mean(rel_sd_pct),
