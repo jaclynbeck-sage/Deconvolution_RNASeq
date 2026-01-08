@@ -99,6 +99,21 @@ Cibersort_Celltypes_To_Default <- function(obj, correct_celltype_names) {
   return(obj)
 }
 
+# Sample names get formatted with Cells_To_Cibersort for CibersortX, as they are
+# originally the column names of the input bulk data. We replace the sample
+# names in the output estimate matrix with the correct names. This function is
+# nearly identical to Celltypes_To_Default, however sample names are row names
+# in the estimates matrix instead of column names.
+Cibersort_Samples_To_Default <- function(obj, correct_sample_names) {
+  cx_names <- Cells_To_Cibersort(correct_sample_names, lowercase = FALSE)
+
+  stopifnot(all(rownames(obj) %in% cx_names))
+
+  obj <- obj[cx_names, ]
+  rownames(obj) <- correct_sample_names
+  return(obj)
+}
+
 # Convert CibersortX-formatted gene names back to their original values.
 # Assumes the row names of "obj" are genes.
 Cibersort_Genes_To_Default <- function(obj, correct_gene_names) {

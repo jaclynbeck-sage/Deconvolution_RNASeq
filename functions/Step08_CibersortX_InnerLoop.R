@@ -141,8 +141,10 @@ CibersortX_InnerLoop <- function(data, params) {
 
   # Undo replacement of special characters in the cell type names that was
   # needed for CibersortX. res_pcts may or may not have column names already,
-  # depending on whether batch correct is true or false.
+  # depending on whether batch correct is true or false. Sample names also
+  # need to be fixed.
   res_pcts <- Cibersort_Celltypes_To_Default(res_pcts, colnames(signature))
+  res_pcts <- Cibersort_Samples_To_Default(res_pcts, data$original_sample_names)
 
   res <- list("estimates" = res_pcts,
               "params" = params_orig,

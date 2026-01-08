@@ -75,6 +75,7 @@ for (P in 1:nrow(params_loop1)) {
   if (algorithm == "CibersortX") {
     # Remove special characters from row and colnames for CibersortX. We don't
     # modify the reference object yet, it is modified in the inner loop instead.
+    data$original_sample_names <- colnames(data$test)
     data$test <- Dimnames_To_Cibersort(data$test)
 
   } else if (algorithm %in% c("Dtangle", "HSPE")) {
