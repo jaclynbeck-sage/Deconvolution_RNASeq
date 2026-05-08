@@ -1,5 +1,4 @@
-# ...
-# This script also calculates some statistics about the estimates in each file:
+# This script calculates some statistics about the estimates in each file:
 #   - how many samples in each estimate have a "bad" inhibitory:excitatory ratio
 #   - the mean and SD of estimated percentages for each cell type for a given
 #     sample across all estimates in the file
@@ -115,12 +114,19 @@ qstats_all <- lapply(1:nrow(iter_vars), function(iter_row) {
     file_params <- FileParams_FromParams(est_list_step08[[1]]$params)
 
     err_f_step10 <- Find_ErrorFiles(bulk_dataset, algorithm, file_id)
-    best_est_f_step12 <- Find_BestEstimateFiles(bulk_dataset, algorithm, file_id)
+    best_est_f_step11 <- Find_BestEstimateFiles(bulk_dataset, algorithm, file_id)
+
+    # First, calculate the percentage of zero estimates for each cell type, for
+    # each estimate even if it didn't pass QC
+    zero_pcts <- sapply(est_list_step08, function(est_item) {
+      colSums(est_item$estimates < 1e-3) / nrow(est_item$estimates)
+    }) |>
+      t()
 
     # If there weren't any valid results for this file, the error file won't
     # exist. Create an abbreviated quality stats file for the sole purpose of
     # keeping track of number of failures.
-    if (length(err_f_step10) != 1 || length(best_est_f_step12) != 1) {
+    if (length(err_f_step10) != 1 || length(best_est_f_step11) != 1) {
       print(str_glue("No valid error or best estimates files found for ",
                      "{basename(est_f)}. Returning abbreviated stats data."))
 
@@ -128,11 +134,12 @@ qstats_all <- lapply(1:nrow(iter_vars), function(iter_row) {
                                     n_possible = length(est_list_step08))
       n_valid_results <- cbind(n_valid_results, file_params)
 
-      return(list("n_valid_results" = n_valid_results))
+      return(list("n_valid_results" = n_valid_results,
+                  "percent_zero_estimates_all" = zero_pcts))
     }
 
     err_list_step10 <- readRDS(err_f_step10)
-    best_est_list_step12 <- readRDS(best_est_f_step12)
+    best_est_list_step11 <- readRDS(best_est_f_step11)
 
 
     ## Valid vs possible results ---------------------------------------------
@@ -146,37 +153,43 @@ qstats_all <- lapply(1:nrow(iter_vars), function(iter_row) {
 
     ## Subset to results from top errors -------------------------------------
 
-    best_param_ids <- intersect(names(best_est_list_step12),
+    best_param_ids <- intersect(names(best_est_list_step11),
                                 top_errors$param_ids)
 
     if (length(best_param_ids) == 0) {
       print(str_glue("No estimates from {basename(est_f)} were included in ",
                      "the best error set. Returning abbreviated stats data."))
-      return(list("n_valid_results" = n_valid_results))
+      return(list("n_valid_results" = n_valid_results,
+                  "percent_zero_estimates_all" = zero_pcts))
     }
 
-    best_params <- List_to_DF(best_est_list_step12, "params") |>
-      mutate(param_id = rownames(.)) |>
-      subset(param_id %in% best_param_ids) |>
-      tibble::remove_rownames()
+    best_params <- List_to_DF(best_est_list_step11, "params") |>
+      tibble::rownames_to_column("param_id") |>
+      subset(param_id %in% best_param_ids)
 
-    est_pcts_step12 <- Subset_BestEstimates(best_param_ids,
-                                            best_est_list_step12,
+    est_pcts_step11 <- Subset_BestEstimates(best_param_ids,
+                                            best_est_list_step11,
                                             combined_metadata)
 
 
-    ## Number of 0 guesses for each cell type --------------------------------
+    ## Percent of 0 guesses for each cell type ---------------------------------
     # For best estimates
 
-    num_zeros <- est_pcts_step12 |>
+    zero_pcts_top <- est_pcts_step11 |>
       group_by(tissue, param_id) |>
-      summarize(across(where(is.numeric), ~ sum(.x < 1e-4)),
-                .groups = "drop") |>
-      as.data.frame()
+      summarize(
+        n_samples = n(),
+        across(where(is.numeric), ~ sum(.x < 1e-4) / n_samples),
+        .groups = "drop"
+      ) |>
+      select(-n_samples, -tissue) |>
+      as.data.frame() |>
+      tibble::column_to_rownames("param_id")
 
     return(list("n_valid_results" = n_valid_results,
-                "n_zero_guesses" = num_zeros,
-                "best_estimates" = est_pcts_step12,
+                "percent_zero_estimates_all" = zero_pcts,
+                "percent_zero_estimates_top" = zero_pcts_top,
+                "best_estimates" = est_pcts_step11,
                 "best_params" = best_params))
   }, mc.cores = n_cores)
 

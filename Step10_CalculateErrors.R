@@ -22,7 +22,6 @@ cluster_outfile <- "errors_output.txt"
 # Which algorithms to calculate errors for
 algorithms <- c("CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "Music",
                 "Scaden", "Baseline")
-algorithms <- c("Music")
 
 # Pre-load all signature matrices
 signatures <- Get_Signatures(singlecell_datasets, granularity)
@@ -43,7 +42,7 @@ for (bulk_dataset in bulk_datasets) {
                             pattern = granularity, full.names = TRUE)
 
     if (length(res_files) == 0) {
-      message(str_glue("No data for {algorithm} found. Skipping..."))
+      message(str_glue("No data for {bulk_dataset} / {algorithm} found. Skipping..."))
       next
     }
 
@@ -106,7 +105,7 @@ for (bulk_dataset in bulk_datasets) {
 
       cl <- makeCluster(cores, type = cluster_type, outfile = cluster_outfile)
 
-      error_list <- parLapply(cl, deconv_list, function(deconv_result) {
+      error_list <- parLapplyLB(cl, deconv_list, function(deconv_result) {
         source(file.path("functions", "General_HelperFunctions.R"))
         source(file.path("functions", "Step10_Error_HelperFunctions.R"))
 
@@ -161,7 +160,7 @@ for (bulk_dataset in bulk_datasets) {
 
         Save_ErrorIntermediate(errors)
         return(errors)
-      })
+      }, chunk.size = 1)
 
       stopCluster(cl)
 

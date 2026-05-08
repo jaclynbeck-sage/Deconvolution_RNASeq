@@ -155,7 +155,8 @@ Find_BestSignature <- function(errs_df) {
 
 Standardize_DataTransform <- function(data) {
   data |>
-    mutate(normalization = str_replace(normalization, "counts", "cpm"),
+    mutate(normalization = str_replace(normalization, "counts_tpm", "tpm"),
+           normalization = str_replace(normalization, "counts", "cpm"),
            normalization = str_replace(normalization, "log_", ""),
            data_transform = paste(normalization, regression_method, sep = " + "))
 }
@@ -170,6 +171,7 @@ Get_BestDataTransform <- function(ranked_df, algorithms) {
     group_by(tissue, data_transform) |>
     dplyr::summarize(count = n(),
                      mean_rank = mean(mean_rank),
+                     mean_rank_log = mean(mean_rank_log),
                      .groups = "drop_last") |>
     # First, pick the data transform(s) that show up the most in the top3
     slice_max(order_by = count, with_ties = TRUE) |>
@@ -180,16 +182,15 @@ Get_BestDataTransform <- function(ranked_df, algorithms) {
   best_dt <- tidyr::expand_grid(best_dt,
                                 algorithm = algorithms)
 
-  # MuSiC always has to use CPM (counts). CibersortX uses CPM when the
-  # normalization is TMM since TMM isn't a valid normalization in CibersortX.
-  best_dt$normalization[best_dt$algorithm == "Music"] <- "cpm"
+  # MuSiC and CibersortX use CPM when the normalization is TMM since TMM gets
+  # converted to CPM in both these algorithms.
   best_dt$normalization[best_dt$normalization == "tmm" &
-                          best_dt$algorithm == "CibersortX"] <- "cpm"
+                          best_dt$algorithm %in% c("CibersortX", "Music")] <- "cpm"
 
   best_dt <- best_dt |>
     # Fix the data_transform field for MuSiC and CibersortX
     mutate(data_transform = paste(normalization, "+", regression_method)) |>
-    select(-count, -mean_rank) |>
+    select(-count, -mean_rank, -mean_rank_log) |>
     as.data.frame()
 
   return(best_dt)
@@ -306,7 +307,7 @@ Calculate_ErrorStats <- function(errs_df, group_cols) {
   err_stats <- errs_df |>
     melt(variable.name = "metric",
          id.vars = c("param_id", group_cols),
-         measure.vars = c("cor", "rMSE", "mAPE")) |>
+         measure.vars = c("cor", "rMSE", "mAPE", "spearman", "rMSE_log", "mAPE_log")) |>
     group_by_at(c(group_cols, "metric")) |>
     summarize(mean_err = mean(value),
               sd_err = sd(value),
@@ -349,12 +350,11 @@ Subset_BestEstimates <- function(best_param_ids, best_est_list, bulk_metadata) {
   # Get all best estimates as one data frame
   est_pcts <- lapply(best_est_list, function(est_item) {
     estimates <- as.data.frame(est_item$estimates) |>
-      mutate(sample = rownames(.),
-             param_id = est_item$param_id) |>
+      tibble::rownames_to_column("sample") |>
+      mutate(param_id = est_item$param_id) |>
       merge(bulk_metadata)
   })
-  est_pcts <- List_to_DF(est_pcts) |>
-    tibble::remove_rownames()
+  est_pcts <- List_to_DF(est_pcts)
 
   return(est_pcts)
 }

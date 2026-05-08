@@ -19,6 +19,7 @@ dir_errors <- file.path(dir_data, "10_errors")
 dir_top_parameters <- file.path(dir_data, "11_top_parameters")
 dir_top_estimates <- file.path(dir_data, "11_top_estimates")
 dir_top_errors <- file.path(dir_data, "11_top_errors")
+dir_analysis <- file.path(dir_data, "12_analysis")
 
 dir_tmp <- file.path(dir_data, "tmp")
 dir_estimates_tmp <- file.path(dir_estimates, "tmp")

@@ -50,7 +50,7 @@ Get_FilteredSignatures <- function(signatures, common_genes) {
 
 # Quality control --------------------------------------------------------------
 
-Too_Many_Zeros <- function(est_pct, algorithm, granularity, zero_thresh = 0.25, tol = 1e-3) {
+Too_Many_Zeros <- function(est_pct, algorithm, granularity, zero_thresh = 0.25, tol = 1e-4) {
   # Major cell types are >5% of RNA contribution in the Cain dataset
   if (granularity == "broad_class") {
     major_celltypes <- c("Astrocyte", "Excitatory", "Inhibitory", "Oligodendrocyte")
@@ -60,8 +60,9 @@ Too_Many_Zeros <- function(est_pct, algorithm, granularity, zero_thresh = 0.25, 
                          "Pvalb", "Oligodendrocyte")
   }
 
-  # Flag any estimates that are < 0.001 for major cell types, which we expect to
-  # be > 0.05.
+  # Flag any estimates that are < 0.0001 for major cell types, which we expect
+  # to be > 0.05. This is mainly to catch algorithms that return exactly 0 for
+  # a large number of samples.
   zeros <- colSums(est_pct < tol)[major_celltypes]
   zero_thresh <- zero_thresh * nrow(est_pct) # 25% can be zeros
 
