@@ -1,0 +1,18 @@
+default:
+  # Used to create params_loop1 (data-specific arguments) in main function
+  reference_input_type: "signature" # DeconRNASeq uses a signature matrix
+  normalization: ["cpm", "tmm", "tpm"] # DeconRNASeq works on linear-scale data
+
+  # For params_loop2 (algorithm-specific arguments) in main function
+  marker_function: "CreateParams_FilterableSignature"
+  params_markers:
+    filter_levels: [1, 2, 3]
+  additional_args:
+    use_scale: [true, false]
+
+  # Define the function that runs each param set
+  inner_loop_file: !expr file.path("functions", "Step08_SignatureBased_InnerLoop.R")
+  inner_loop_func: "SignatureBased_InnerLoop" # must be a string
+
+  # How many cores to use in parallel
+  cores: !expr round(parallel::detectCores() / 2)

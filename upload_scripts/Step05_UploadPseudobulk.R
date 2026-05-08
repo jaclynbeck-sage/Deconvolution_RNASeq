@@ -2,22 +2,29 @@ source("Filenames.R")
 source(file.path("upload_scripts", "Upload_HelperFunctions.R"))
 
 # Deconvolution WG Synapse space
-pseudo_folder <- Folder("05_pseudobulk", parent = "syn58802522")
+pseudo_folder <- Folder(basename(dir_pseudobulk), parent = config::get("upload_synid"))
 pseudo_folder <- synStore(pseudo_folder, forceVersion = FALSE)
 
-provenance <- list("cain" = "syn58807553.1",
-                   "lau" = "syn58807566.1",
-                   "leng" = "syn58807572.1",
-                   "mathys" = "syn58808591.1",
-                   "seaRef" = "syn58808855.1")
+scaden_folder <- Folder(basename(dir_scaden_pseudobulk), parent = pseudo_folder)
+scaden_folder <- synStore(scaden_folder, forceVersion = FALSE)
 
-github <- "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/Step05_GeneratePseudobulk.R"
+main_folders <- GetMainFolderIds()
+provenance <- GetChildrenAsDf(main_folders[[basename(dir_singlecell)]]$id)
 
-for (dataset in names(provenance)) {
+github <- paste0(config::get("github_repo_url"), "Step05_GeneratePseudobulk.R")
+
+for (dataset in provenance$dataset) {
   files <- list.files(dir_pseudobulk, pattern = dataset, full.names = TRUE)
   for (filename in files) {
     UploadFile(filename, pseudo_folder,
-               list("used" = provenance[[dataset]],
+               list("used" = provenance$id[provenance$dataset == dataset],
+                    "executed" = github))
+  }
+
+  files_scaden <- list.files(dir_scaden_pseudobulk, pattern = dataset, full.names = TRUE)
+  for (filename in files_scaden) {
+    UploadFile(filename, scaden_folder,
+               list("used" = provenance$id[provenance$dataset == dataset],
                     "executed" = github))
   }
 }

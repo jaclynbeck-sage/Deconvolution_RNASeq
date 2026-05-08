@@ -6,25 +6,22 @@ source("Filenames.R")
 # For generating an auth token, see: https://help.synapse.org/docs/Managing-Your-Account.2055405596.html#ManagingYourAccount-PersonalAccessTokens
 #synLogin(<username>, authToken = <auth token>, rememberMe=True)
 
-synLogin()
+synLogin(silent = TRUE)
 
-folders <- list("metadata" = list("synID" = "syn58803307", "downloadLocation" = dir_metadata),
-                "singlecell" = list("synID" = "syn58807549", "downloadLocation" = dir_input),
-                "pseudobulk" = list("synID" = "syn58808874", "downloadLocation" = dir_pseudobulk),
-                "bulk" = list("synID" = "syn58841972", "downloadLocation" = dir_input),
-                "markers" = list("synID" = "syn58842534", "downloadLocation" = dir_markers),
-                "signatures" = list("synID" = "syn59480278", "downloadLocation" = dir_signatures),
-                "estimates" = list("synID" = "syn59489760", "downloadLocation" = dir_estimates),
-                "errors" = list("synID" = "syn60969684", "downloadLocation" = dir_errors),
-                "top_parameters" = list("synID" = "syn61917690", "downloadLocation" = dir_top_parameters),
-                "top_estimates" = list("synID" = "syn61922322", "downloadLocation" = dir_top_estimates),
-                "top_errors" = list("synID" = "syn63660315", "downloadLocation" = dir_best_errors)
-                # uncomment only if these files are needed
-                #"hspe_params" = list("synID" = "syn61709305", "downloadLocation" = dir_hspe_params),
-                #"music_basis" = list("synID" = "syn59500238", "downloadLocation" = dir_music_basis),
-                # This takes a lot of disk space
-                #"scaden_models" = list("synID" = "syn63151233", "downloadLocation" = dir_scaden_models)
-)
+# List of folders to download to disk. Names on Synapse mirror the folder names
+# locally.
+download_folders <- c(dir_metadata, dir_bulk, dir_singlecell, dir_pseudobulk,
+                      dir_signatures, dir_markers, dir_estimates, dir_errors,
+                      dir_top_parameters, dir_top_estimates, dir_top_errors)
+# uncomment only if these files are needed, they take a lot of disk space
+#dir_music_basis, dir_scaden_models)
+names(download_folders) <- basename(download_folders)
+
+# Get which of these folders are available on Synapse
+synapse_folders <- synGetChildren(config::get("upload_synid"))$asList()
+names(synapse_folders) <- sapply(synapse_folders, "[[", "name")
+
+synapse_folders <- synapse_folders[intersect(names(synapse_folders), names(download_folders))]
 
 
 # Helper function for recursive download
@@ -48,9 +45,6 @@ download <- function(synID, downloadLocation) {
 }
 
 # Download everything in each folder
-for (folder in folders) {
-  download(folder$synID, folder$downloadLocation)
+for (folder in synapse_folders) {
+  download(folder$id, download_folders[folder$name])
 }
-
-rm(list=ls())
-gc()

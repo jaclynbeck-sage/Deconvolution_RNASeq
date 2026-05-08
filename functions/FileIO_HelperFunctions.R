@@ -5,7 +5,7 @@ library(SingleCellExperiment)
 library(scuttle)
 library(stringr)
 library(DESeq2)
-library(preprocessCore)
+#library(preprocessCore)
 library(vroom)
 source("Filenames.R")
 
@@ -13,27 +13,34 @@ source("Filenames.R")
 # Generic read functions -------------------------------------------------------
 
 # Load_CountsFile: reads a SummarizedExperiment or SingleCellExperiment from
-# a file and transforms the counts according to output_type.
+# a file and transforms the counts according to 'normalization'.
 #
 # Arguments:
 #   filename = the name of of the file to read in, including file path
-#   output_type = one of "counts", "cpm", "tpm", "tmm",
-#                 "log_cpm", "log_tpm", or "log_tmm":
-#                   "counts" will return raw, unaltered counts
-#                   "cpm" will normalize the counts to counts per million
-#                   "tpm" will normalize the counts to transcripts per million
-#                         for bulk data only. Single cell data will default to
-#                         cpm since UMI data is similar to tpm already.
-#                   "tmm" will normalize using TMM factors from edgeR
-#                   "log_cpm" will take the log2(cpm+1)
-#                   "log_tpm" will take the log2(tpm+1)
-#                   "log_tmm" will take the log2(tmm+1)
+#   normalization = one of "counts", "counts_tpm", "cpm", "tpm", "tmm",
+#                   "log_cpm", "log_tpm", or "log_tmm":
+#                     "counts" will return raw, unaltered counts
+#                     "counts_tpm" will return the TPM matrix for bulk data,
+#                         scaled to the same order of magnitude as the counts
+#                         matrix. Single cell data will default to "counts"
+#                         since UMI data is similar to TPM already.
+#                     "cpm" will normalize the counts to counts per million
+#                     "tpm" will use the transcripts per million matrix for bulk
+#                         data only, normalized to CPM. The extra CPM
+#                         normalization is done because the TPM matrix values no
+#                         longer add up to 1e6 due to the large number of genes
+#                         removed from the data. Single cell data will default
+#                         to "cpm".
+#                     "tmm" will normalize using TMM factors from edgeR
+#                     "log_cpm" will take the log2(cpm+1)
+#                     "log_tpm" will take the log2(tpm+1)
+#                     "log_tmm" will take the log2(tmm+1)
 #   regression_method = which type of regressed/corrected counts to use, or "none".
 #                   The corrected counts (or raw counts if "none") will then be
-#                   transformed as usual according to "output_type". Valid values:
+#                   transformed as usual according to "normalization". Valid values:
 #                     "edger" - regression via edgeR::glmQLFit (bulk only)
 #                     "lme" - regression via lme4::lmer or lm (bulk only)
-#                     "dream" - regression via voom/dream (bulk only)
+#                     "combat" - regression via ComBat (bulk only)
 #                     "none" - use raw counts
 #
 # Returns:
@@ -49,52 +56,67 @@ source("Filenames.R")
 #       *and* the transformed values held in memory at the same time. Instead
 #       we overwrite the counts slot. To be consistent with single cell data and
 #       allow for inter-operability, bulk data is treated the same way.
-Load_CountsFile <- function(filename, output_type, regression_method = "none") {
+Load_CountsFile <- function(filename, normalization, regression_method = "none") {
   if (!file.exists(filename)) {
     message(str_glue("Error: {filename} doesn't exist!"))
     return(NULL)
   }
 
-  output_opts <- expand.grid(norm = c("cpm", "tpm", "tmm"),
-                             log = c("", "log_"))
-  output_opts <- c("counts",
-                   paste0(output_opts$log, output_opts$norm))
+  norm_opts <- expand.grid(norm = c("cpm", "tpm", "tmm"),
+                           log = c("", "log_"))
+  norm_opts <- c("counts", "counts_tpm",
+                 paste0(norm_opts$log, norm_opts$norm))
 
-  if (!(output_type %in% output_opts)) {
-    stop(paste0("Error! 'output_type' should be one of ", output_opts, "."))
+  if (!(normalization %in% norm_opts)) {
+    stop(paste0("Error! 'normalization' should be one of ",
+                paste(norm_opts, collapse = ", "),
+                "."))
   }
 
-  if (!(regression_method %in% c("none", "edger", "lme", "dream"))) {
-    stop("Error! 'regression_method' should be one of 'none', 'edger', 'lme', or 'dream'.")
+  if (!(regression_method %in% c("none", "edger", "lme", "combat"))) {
+    stop("Error! 'regression_method' should be one of 'none', 'edger', 'lme', or 'combat'.")
   }
 
   se_obj <- readRDS(filename)
+
+  # Bulk data only -- if TPM is part of the normalization, replace the "counts"
+  # assay with the TPM assay and remove tmm factors.
+  if (grepl("tpm", normalization) && "tpm" %in% names(assays(se_obj))) {
+    # The TPM matrices go to two decimal places, so we multiply by 100 to get
+    # count-like data. This has the advantage of putting the TPM data on
+    # roughly the same scale as the actual count data as well.
+    assay(se_obj, "counts") <- assay(se_obj, "tpm") * 100
+    se_obj$tmm_factors <- 1
+  }
 
   # If using regressed counts, replace the 'counts' matrix with those counts,
   # and replace the tmm_factors field with the TMM factors for the regressed
   # data
   if (regression_method != "none") {
-    assay(se_obj, "counts") <- assay(se_obj, paste0("corrected_", regression_method))
-    se_obj$tmm_factors <- colData(se_obj)[, paste0("tmm_factors_", regression_method)]
+    field_name <- regression_method
+    tmm_factors <- colData(se_obj)[, paste0("tmm_factors_", regression_method)]
+
+    if (grepl("tpm", normalization)) {
+      field_name <- str_glue("{regression_method}_tpm")
+      tmm_factors <- 1 # TMM factors ignored for TPM data
+    }
+
+    assay(se_obj, "counts") <- assay(se_obj, paste0("corrected_", field_name))
+    se_obj$tmm_factors <- tmm_factors
   }
 
-  if (output_type == "counts") {
+  if (normalization == "counts" || normalization == "counts_tpm") {
     return(se_obj)
   }
 
-  # The remaining output_types all need CPM, TPM, or TMM
+  # The remaining normalizations all need normalization by CPM, TPM, or TMM
 
-  # TPM for bulk data only
-  if (grepl("tpm", output_type) & "exon_length" %in% colnames(rowData(se_obj))) {
-    norm_counts <- scuttle::calculateTPM(se_obj,
-                                         lengths = rowData(se_obj)$exon_length)
-  }
-  # CPM for single cell, and for bulk if TPM is not specified
-  else {
-    norm_counts <- scuttle::calculateCPM(se_obj)
-  }
+  # If normalization is TPM, the appropriate TPM data for the regression method
+  # will be in the "counts" assay and get normalized to sum to 1e6. Otherwise,
+  # this acts on raw counts.
+  norm_counts <- scuttle::calculateCPM(se_obj)
 
-  if (grepl("tmm", output_type)) {
+  if (grepl("tmm", normalization)) {
     # This is equivalent to counts * 1e6 / (libSize * tmm).
     # Since norm_counts is already (counts * 1e6 / libSize), calling this
     # function just divides by tmm, while preserving sparse matrices.
@@ -104,7 +126,7 @@ Load_CountsFile <- function(filename, output_type, regression_method = "none") {
   }
 
   # log2(x+1)
-  if (grepl("log", output_type)) {
+  if (grepl("log", normalization)) {
     if (is(norm_counts, "matrix")) {
       norm_counts <- log2(norm_counts + 1)
     }
@@ -122,15 +144,16 @@ Load_CountsFile <- function(filename, output_type, regression_method = "none") {
 # Single cell / Pseudobulk wrapper functions -----------------------------------
 
 # Load_SingleCell: reads a SingleCellExperiment data set from a file and
-# transforms the counts according to output_type. Single-cell-specific wrapper
-# function for Load_CountsFile.
+# transforms the counts according to 'normalization'. Single-cell-specific
+# wrapper function for Load_CountsFile.
 #
 # Arguments:
 #   dataset = the name of the data set to load in
 #   granularity = either "broad_class" or "sub_class", for which level of cell
 #                 types to use in the metadata
-#   output_type = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm", or
-#                 "log_tpm". See Load_CountsFile for description.
+#   normalization = one of "counts", "counts_tpm", "cpm", "tmm", "tpm",
+#                   "log_cpm", "log_tmm", or "log_tpm". See Load_CountsFile for
+#                   description.
 #
 # Returns:
 #   a SingleCellExperiment object that is the exact same as what was read from
@@ -138,10 +161,10 @@ Load_CountsFile <- function(filename, output_type, regression_method = "none") {
 #   if applicable. The colData DataFrame also has a column added called
 #   "celltype", which is populated with either the broad or subclass cell type
 #   assignments based on granularity.
-Load_SingleCell <- function(dataset, granularity, output_type = "counts") {
-  sc_file <- file.path(dir_input, str_glue("{dataset}_sce.rds"))
+Load_SingleCell <- function(dataset, granularity, normalization = "counts") {
+  sc_file <- file.path(dir_singlecell, str_glue("{dataset}_sce.rds"))
 
-  singlecell <- Load_CountsFile(sc_file, output_type, regression_method = "none")
+  singlecell <- Load_CountsFile(sc_file, normalization, regression_method = "none")
   metadata <- colData(singlecell)
 
   if (!(granularity %in% c("broad_class", "sub_class"))) {
@@ -167,31 +190,32 @@ Load_SingleCell <- function(dataset, granularity, output_type = "counts") {
 # Returns:
 #   nothing
 Save_SingleCell <- function(dataset, sce) {
-  sc_file <- file.path(dir_input, str_glue("{dataset}_sce.rds"))
+  sc_file <- file.path(dir_singlecell, str_glue("{dataset}_sce.rds"))
   saveRDS(sce, sc_file)
 }
 
 
 # Load_PseudobulkPureSamples: reads a SummarizedExperiment data set from a file
-# and transforms the counts according to output_type. Pure sample pseudobulk-
-# specific wrapper function for Load_CountsFile.
+# and transforms the counts according to 'normalization'. Pure sample
+# pseudobulk-specific wrapper function for Load_CountsFile.
 #
 # Arguments:
 #   dataset = the name of the data set to load in
 #   granularity = either "broad_class" or "sub_class", for which level of cell
 #                 types to load in.
-#   output_type = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm", or
-#                 "log_tpm". See Load_CountsFile for description.
+#   normalization = one of "counts", "counts_tpm", "cpm", "tmm", "tpm",
+#                   "log_cpm", "log_tmm", or "log_tpm". See Load_CountsFile for
+#                   description.
 #
 # Returns:
 #   a SummarizedExperiment object that is the exact same as what was read from
 #   the file, except that the "counts" slot is set with the transformed values
 #   if applicable.
-Load_PseudobulkPureSamples <- function(dataset, granularity, output_type = "counts") {
+Load_PseudobulkPureSamples <- function(dataset, granularity, normalization = "counts") {
   pb_file <- str_glue("pseudobulk_{dataset}_puresamples_{granularity}.rds")
   pb_file <- file.path(dir_pseudobulk, pb_file)
 
-  pseudobulk <- Load_CountsFile(pb_file, output_type, regression_method = "none")
+  pseudobulk <- Load_CountsFile(pb_file, normalization, regression_method = "none")
   return(pseudobulk)
 }
 
@@ -215,8 +239,8 @@ Save_PseudobulkPureSamples <- function(se, dataset, granularity) {
 
 
 # Load_Pseudobulk: reads a SummarizedExperiment data set from a file and
-# transforms the counts according to output_type. Sample or training pseudobulk-
-# specific wrapper function for Load_CountsFile.
+# transforms the counts according to 'normalization'. Sample or training
+# pseudobulk-specific wrapper function for Load_CountsFile.
 #
 # Arguments:
 #   dataset = the name of the data set to load in
@@ -224,18 +248,19 @@ Save_PseudobulkPureSamples <- function(se, dataset, granularity) {
 #               to load in.
 #   granularity = either "broad_class" or "sub_class", for which level of cell
 #                 types to load in.
-#   output_type = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm", or
-#                 "log_tpm". See Load_CountsFile for description.
+#   normalization = one of "counts", "counts_tpm", "cpm", "tmm", "tpm",
+#                   "log_cpm", "log_tmm", or "log_tpm". See Load_CountsFile for
+#                   description.
 #
 # Returns:
 #   a SummarizedExperiment object that is the exact same as what was read from
 #   the file, except that the "counts" slot is set with the transformed values
 #   if applicable.
-Load_Pseudobulk <- function(dataset, data_type, granularity, output_type = "counts") {
+Load_Pseudobulk <- function(dataset, data_type, granularity, normalization = "counts") {
   pb_file <- str_glue("pseudobulk_{dataset}_{data_type}_{granularity}.rds")
   pb_file <- file.path(dir_pseudobulk, pb_file)
 
-  pseudobulk <- Load_CountsFile(pb_file, output_type, regression_method = "none")
+  pseudobulk <- Load_CountsFile(pb_file, normalization, regression_method = "none")
   return(pseudobulk)
 }
 
@@ -259,6 +284,27 @@ Save_Pseudobulk <- function(se, dataset, data_type, granularity) {
 }
 
 
+Load_SimulatedScadenData <- function(dataset, granularity, normalization) {
+  sim_file <- str_glue("simulated_{dataset}_{granularity}_{normalization}.rds")
+  sim_file <- file.path(dir_scaden_pseudobulk, sim_file)
+
+  # Always use the CPM file if normalization is "tpm", since TPM doesn't apply
+  # to single cell data.
+  sim_file <- str_replace(sim_file, "_tpm", "_cpm")
+
+  # Simulated scaden data is always normalized to CPM. If the normalization was
+  # TMM, the adjustment was already accounted for in the simulated data and it
+  # just needs to be normalized to library size.
+  sim_data <- Load_CountsFile(sim_file, normalization = "cpm", regression_method = "none")
+  return(sim_data)
+}
+
+save_SimulatedScadenData <- function(se, dataset, granularity, normalization) {
+  filename <- str_glue("simulated_{dataset}_{granularity}_{normalization}.rds")
+  saveRDS(se, file = file.path(dir_scaden_pseudobulk, filename))
+}
+
+
 # Bulk wrapper functions -------------------------------------------------------
 
 # Load_BulkData: reads a SummarizedExperiment object from a file and transforms
@@ -267,26 +313,27 @@ Save_Pseudobulk <- function(se, dataset, data_type, granularity) {
 #
 # Arguments:
 #   dataset = the name of the dataset ("ROSMAP", "Mayo", or "MSBB")
-#   output_type = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm", or
-#                 "log_tpm". See Load_CountsFile for description.
+#   normalization = one of "counts", "counts_tpm", "cpm", "tmm", "tpm",
+#                   "log_cpm", "log_tmm", or "log_tpm". See Load_CountsFile for
+#                   description.
 #   regression_method = "none", if raw uncorrected counts should be used for
-#                       bulk data, or one of "edger", "lme", or "dream", to
+#                       bulk data, or one of "edger", "lme", or "combat", to
 #                       use batch-corrected counts from one of those methods.
 #
 # Returns:
 #   a SummarizedExperiment object with (possibly normalized) data in the
 #   "counts" slot
-Load_BulkData <- function(dataset, output_type = "counts", regression_method = "none") {
+Load_BulkData <- function(dataset, normalization = "counts", regression_method = "none") {
   bulk_file <- str_glue(paste0("{dataset}_se.rds"))
-  bulk_file <- file.path(dir_input, bulk_file)
+  bulk_file <- file.path(dir_bulk, bulk_file)
 
-  bulk <- Load_CountsFile(bulk_file, output_type, regression_method)
+  bulk <- Load_CountsFile(bulk_file, normalization, regression_method)
   return(bulk)
 }
 
 # Save_BulkData: Save a SummarizedExperiment object to the input folder. This
 # object should be finalized data that has passed QC and has slots for normalized
-# data from edgeR, lme4, and dream.
+# data from edgeR, lme4, and combat
 #
 # Arguments:
 #   dataset = the name of the dataset ("ROSMAP", "Mayo", or "MSBB")
@@ -296,7 +343,7 @@ Load_BulkData <- function(dataset, output_type = "counts", regression_method = "
 #   nothing
 Save_BulkData <- function(dataset, se) {
   bulk_file <- str_glue(paste0("{dataset}_se.rds"))
-  bulk_file <- file.path(dir_input, bulk_file)
+  bulk_file <- file.path(dir_bulk, bulk_file)
 
   saveRDS(se, file = bulk_file)
 }
@@ -317,7 +364,7 @@ Save_BulkData <- function(dataset, se) {
 #   normalized average library size of each cell type. Sums to 1.
 Load_AvgLibSize <- function(dataset, granularity) {
   # This is a list with entries for "A_broad_class" and "A_sub_class"
-  A <- readRDS(file.path(dir_input, str_glue("{dataset}_A_matrix.rds")))
+  A <- readRDS(file.path(dir_singlecell, str_glue("{dataset}_A_matrix.rds")))
   return(A[[str_glue("A_{granularity}")]])
 }
 
@@ -329,33 +376,33 @@ Load_AvgLibSize <- function(dataset, granularity) {
 #   dataset = the name of the data set to load
 #   granularity = either "broad_class" or "sub_class", for which level of cell
 #                 types to load the signature matrix for.
-#   output_type = any output type from the 'output_type' argument of
-#                 Load_CountsFile, or "cibersortx". If output_type contains
+#   normalization = any value from the 'normalization' argument of
+#                 Load_CountsFile, or "cibersortx". If 'normalization' contains
 #                 'tmm', the signature matrix will be normalized with TMM
-#                 factors. Otherwise it is in CPM. If output_type contains
+#                 factors. Otherwise it is in CPM. If 'normalization' contains
 #                 'log', the signature matrix will be transformed as log2(x+1).
-#                 If output_type is "cibersortx", the signature matrix generated
-#                 by CibersortX will be loaded instead of the signature
-#                 generated by this pipeline.
+#                 If 'normalization' is "cibersortx", the signature matrix
+#                 generated by CibersortX will be loaded instead of the
+#                 signature generated by this pipeline.
 #
 # Returns:
 #   a matrix with rows = genes and columns = cell types, where the values are
 #   in counts per million (or TMM-normalized), describing the expected value of
 #   each gene for eachcell type.
-Load_SignatureMatrix <- function(dataset, granularity, output_type) {
+Load_SignatureMatrix <- function(dataset, granularity, normalization) {
   sig_matrix <- readRDS(file.path(dir_signatures, str_glue("{dataset}_signature.rds")))
 
-  if (grepl("tmm", output_type)) {
+  if (grepl("tmm", normalization)) {
     sig <- sig_matrix$tmm[[granularity]]
   }
-  else if (output_type == "cibersortx") {
+  else if (normalization == "cibersortx") {
     sig <- sig_matrix$cibersortx[[granularity]]
   }
   else {
     sig <- sig_matrix$cpm[[granularity]]
   }
 
-  if (grepl("log", output_type)) {
+  if (grepl("log", normalization)) {
     sig <- log2(sig + 1)
   }
   return(sig)
@@ -429,47 +476,6 @@ Load_ModelFormulas <- function(dataset_name) {
 }
 
 
-# Save_MapReference: saves a reference data set for cell type mapping to a
-# file with a specific filename format.
-#
-# Arguments:
-#   dataset_name = the name of the single cell dataset
-#   seurat_object = Either a single Seurat object (broad_class) or a list of
-#                   Seurat objects (sub_class). Seurat object(s) should be
-#                   SCTransform-ed, and have PCA and UMAP dimension reductions.
-#                   Run_UMAP needs to be run with 'return.model = TRUE' in order
-#                   for this object to work as a reference.
-#   granularity = either 'broad_class' or 'sub_class', for whether the
-#                 Seurat object(s) have been prepared for broad class mapping or
-#                 sub class mapping.
-#
-# Returns:
-#   Nothing
-Save_MapReference <- function(dataset_name, seurat_object, granularity) {
-  saveRDS(seurat_object,
-          file.path(dir_map_reference,
-                    str_glue("reference_{dataset_name}_{granularity}.rds")))
-}
-
-
-# Load_MapReference: loads a reference data set for cell type mapping from a
-# file with a specific filename format.
-#
-# Arguments:
-#   dataset_name = the name of the single cell dataset
-#   granularity = either 'broad_class' or 'sub_class', for whether the
-#                 Seurat object(s) have been prepared for broad class mapping or
-#                 sub class mapping.
-#
-# Returns:
-#   a single Seurat object (if granularity = "broad_class") or a list of
-#   Seurat objects (if granularity = "sub_class")
-Load_MapReference <- function(dataset_name, granularity) {
-  readRDS(file.path(dir_map_reference,
-                    str_glue("reference_{dataset_name}_{granularity}.rds")))
-}
-
-
 # Save_PreprocessedData: Saves single cell or bulk RNA seq data that has been
 # pre-processed (run through Step02) but has not had cell types mapped or
 # normalization applied.
@@ -481,9 +487,11 @@ Load_MapReference <- function(dataset_name, granularity) {
 # Returns:
 #   Nothing
 Save_PreprocessedData <- function(dataset_name, se_object) {
-  saveRDS(se_object,
-          file = file.path(dir_preprocessed,
-                           str_glue("{dataset_name}_preprocessed.rds")))
+  # Use base::saveRDS instead of saveRDS (which defaults to BiocGenerics::saveRDS)
+  # so we can save seaRef data, which is not loaded into memory
+  base::saveRDS(se_object,
+                file = file.path(dir_preprocessed,
+                                 str_glue("{dataset_name}_preprocessed.rds")))
 }
 
 
@@ -612,7 +620,7 @@ Save_AlgorithmOutputList <- function(output_list, algorithm, test_dataset,
 #                  bulk data sets ("Mayo", "MSBB", "ROSMAP")
 #   granularity = either "broad_class" or "sub_class", for which level of cell
 #                 types was used for markers and pseudobulk creation.
-#   normalization = the normalization strategy used. Same as the 'output_type'
+#   normalization = the normalization strategy used. Same as the 'normalization'
 #                   argument to Load_CountsFile.
 #   regression_method = the type of regression used for bulk counts. Same as
 #                       the 'regression_method' argument to Load_CountsFile.
@@ -663,7 +671,7 @@ Save_ErrorList <- function(dataset_name, error_list, algorithm, params_data,
   error_file_name <- str_glue("errors_{name_base}.rds")
 
   if (top_params) {
-    dir_errors_alg <- file.path(dir_best_errors, dataset_name, algorithm)
+    dir_errors_alg <- file.path(dir_top_errors, dataset_name, algorithm)
   } else {
     dir_errors_alg <- file.path(dir_errors, dataset_name, algorithm)
   }
@@ -693,7 +701,7 @@ Load_ErrorList <- function(params, top_params = FALSE) {
   error_file_name <- str_glue("errors_{name_base}.rds")
 
   if (top_params) {
-    error_file <- file.path(dir_best_errors, params$test_data_name,
+    error_file <- file.path(dir_top_errors, params$test_data_name,
                             params$algorithm, error_file_name)
   } else {
     error_file <- file.path(dir_errors, params$test_data_name, params$algorithm,
@@ -745,9 +753,11 @@ Get_ErrorFiles <- function(bulk_dataset, algorithm, granularity, reference_datas
 #   nothing
 Save_ErrorIntermediate <- function(error_obj) {
   params <- error_obj$params %>% select(-total_markers_used)
-  filename <- paste(params, collapse = "_")
-  saveRDS(error_obj,
-          file.path(dir_errors_tmp, paste0(filename, ".rds")))
+  filename <- paste(params, collapse = "_") |>
+    str_replace_all(" |/", "_") # Get rid of spaces and slashes
+  filename <- file.path(dir_errors_tmp, paste0(filename, ".rds"))
+
+  saveRDS(error_obj, filename)
 }
 
 
@@ -765,7 +775,8 @@ Save_ErrorIntermediate <- function(error_obj) {
 #   algorithms plus the error calculations if a file matching the input
 #   parameters exists, or NULL if not
 Load_ErrorIntermediate <- function(params) {
-  filename <- paste(params, collapse = "_")
+  filename <- paste(params, collapse = "_") |>
+    str_replace_all(" |/", "_") # Get rid of spaces and slashes
   filename <- file.path(dir_errors_tmp, paste0(filename, ".rds"))
 
   if (file.exists(filename)) {
@@ -775,7 +786,7 @@ Load_ErrorIntermediate <- function(params) {
 }
 
 
-# Load_TopParams: loads a top parameters file as calculated in Step 12.
+# Load_TopParams: loads a top parameters file as calculated in Step 11.
 #
 # Arguments:
 #   params = a named vector or single-row dataframe with the parameters used to
@@ -817,7 +828,7 @@ Load_TopParams <- function(params) {
 #   marker_file_format = a string formatted so that can be used with str_glue()
 #                        to insert the proper variable values into the file name
 Get_MarkerFileFormat <- function(dataset, granularity, marker_type,
-                                 marker_subtype = NULL, input_type = NULL) {
+                                 marker_subtype = NULL) {
   if (!(marker_type %in% c("dtangle", "autogenes", "seurat", "deseq2"))) {
     message("marker_type must be one of 'dtangle', 'autogenes', 'seurat', or 'deseq2'")
     return(NULL)
@@ -825,12 +836,8 @@ Get_MarkerFileFormat <- function(dataset, granularity, marker_type,
 
   marker_file_format <- paste0("{marker_type}_markers_{dataset}_{granularity}")
 
-  # Dtangle, and AutogeneS need extra information added to the name
-  if (marker_type == "dtangle") {
-    marker_file_format <- paste0(marker_file_format,
-                                 "_input_{input_type}_method_{marker_subtype}")
-  }
-  else if (marker_type == "autogenes") {
+  # Dtangle and AutogeneS need extra information added to the name
+  if (marker_type %in% c("dtangle", "autogenes")) {
     marker_file_format <- paste0(marker_file_format, "_{marker_subtype}")
   }
 
@@ -860,16 +867,13 @@ Get_MarkerFileFormat <- function(dataset, granularity, marker_type,
 #                    pick markers.
 #                    Seurat and DESeq2 don't have a subtype so this can be left
 #                    as NULL.
-#   input_type = for marker_type == "dtangle" only, either "singlecell" or
-#                "pseudobulk", for which type of input was used to generate the
-#                markers. For other marker_types, leave as NULL.
 #
 # Returns:
 #   nothing
 Save_Markers <- function(markers, dataset, granularity, marker_type,
-                         marker_subtype = NULL, input_type = NULL) {
+                         marker_subtype = NULL) {
   marker_file_format <- Get_MarkerFileFormat(dataset, granularity, marker_type,
-                                             marker_subtype, input_type)
+                                             marker_subtype)
   if (is.null(marker_file_format)) {
     stop("marker_type must be one of 'autogenes', 'deseq2', 'dtangle', or 'seurat'")
   }
@@ -888,9 +892,9 @@ Save_Markers <- function(markers, dataset, granularity, marker_type,
 #   a named list where each entry is a list of marker gene names for a given
 #   cell type
 Load_Markers <- function(dataset, granularity, marker_type,
-                         marker_subtype = NULL, input_type = NULL) {
+                         marker_subtype = NULL) {
   marker_file_format <- Get_MarkerFileFormat(dataset, granularity, marker_type,
-                                             marker_subtype, input_type)
+                                             marker_subtype)
 
   if (is.null(marker_file_format)) { # This indicates a typo in the input somewhere
     stop("marker_type must be one of 'autogenes', 'deseq2', 'dtangle', or 'seurat'")
@@ -904,60 +908,7 @@ Load_Markers <- function(dataset, granularity, marker_type,
 
   markers <- readRDS(file = marker_file)
 
-  if (any(lengths(markers$filtered) < 3)) {
-    return(NULL)
-  }
-
   return(markers)
-}
-
-
-# CibersortX save function -----------------------------------------------------
-
-# Save_SingleCellToCibersort: CibersortX requires passing files to its docker
-# container, so the single cell data needs to be written as a dense matrix
-# in a specific format. The file is saved to the directory that is shared
-# with the CibersortX docker container. omnideconv will do this automatically
-# if you pass it a matrix instead of a filename, but it doesn't clear out the
-# memory after casting to a dense matrix and doesn't expose its write function,
-# so this is a re-implementation.
-#
-# Arguments:
-#   sce - a SingleCellExperiment object, which must have a column for "celltype"
-#   dataset_name - the name of this dataset
-#   granularity - either 'broad_class' or 'sub_class'
-#
-# Returns:
-#   f_name - the filename of the newly-created file
-Save_SingleCellToCibersort <- function(sce, dataset_name, granularity) {
-  # omnideconv requires that the file be named this way
-  f_name <- file.path(dir_cibersort, "sample_file_for_cibersort.tsv")
-
-  # Header (column names) is "GeneSymbol" followed by the cell type labels for
-  # each cell
-  cts <- as.data.frame(t(c("GeneSymbol", as.character(sce$celltype))))
-  vroom_write(cts, file = f_name, delim = "\t", col_names = FALSE)
-
-  # Write in blocks of 500 genes to avoid loading the whole matrix into memory
-  # at once, and to speed this process up considerably.
-  block_size <- 500
-  n_blocks <- ceiling(nrow(sce) / block_size)
-
-  for (block in 1:n_blocks) {
-    start <- (block-1) * block_size + 1
-    end <- min(block * block_size, nrow(sce))
-
-    df <- as.data.frame(as.matrix(counts(sce[start:end,])))
-    df <- cbind(rownames(df), df)
-    vroom_write(df, file = f_name, delim = "\t", col_names = FALSE,
-                append = TRUE,
-                num_threads = parallel::detectCores()-1)
-  }
-
-  rm(df)
-  gc()
-
-  return(f_name)
 }
 
 

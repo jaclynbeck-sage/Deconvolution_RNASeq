@@ -1,7 +1,9 @@
 library(dplyr)
 library(stringr)
 library(synapser)
-synLogin()
+source(file.path("functions", "General_HelperFunctions.R"))
+
+synLogin(silent = TRUE)
 
 UploadFile <- function(filename, parent_folder, provenance) {
   if (!(file.info(filename)$isdir)) { # Exclude directories
@@ -34,21 +36,52 @@ RecursiveUpload <- function(folder_name, parent_folder, provenance) {
   }
 }
 
+ExtractDatasetName <- function(filename) {
+  all_datasets <- c(all_singlecell_datasets(), all_bulk_datasets(),
+                    "random_biased", "random_educated", "random_uniform", "zeros")
 
-GetChildrenAsDf <- function(syn_id) {
-  syn_list <- as.list(synGetChildren(syn_id))
-  syn_df <- data.frame(do.call(rbind, syn_list)) %>%
-      select(name, id) %>%
-      mutate(name = unlist(name),
-             id = unlist(id))
+  # Can return multiple dataset names (i.e. bulk + single cell)
+  names <- all_datasets[sapply(all_datasets, grepl, x = filename)]
 
-  syn_df$dataset <- str_replace(str_replace(syn_df$name, "pseudobulk_", ""),
-                                "_.*", "")
+  if (length(names) == 0) {
+    return(NA)
+  } else if (length(names) > 1) {
+    return(list(names))
+  }
 
-  if (any(grepl("[broad|sub]_class", syn_df$name))) {
-    syn_df$granularity <- "broad_class"
-    syn_df$granularity[grepl("sub", syn_df$name)] <- "sub_class"
+  return(names)
+}
+
+GetChildrenAsDf <- function(syn_id, types = list("file")) {
+  syn_list <- as.list(synGetChildren(syn_id, includeTypes = types))
+  if (length(syn_list) == 0) {
+    return(NULL)
+  }
+
+  syn_df <- data.frame(do.call(rbind, syn_list)) |>
+    select(name, id) |>
+    mutate(across(everything(), unlist)) |>
+    # Find which dataset and granularity (if applicable) this is
+    rowwise() |>
+    mutate(
+      dataset = ExtractDatasetName(name),
+      granularity = case_when(
+        grepl("broad_class", name) ~ "broad_class",
+        grepl("sub_class", name) ~ "sub_class",
+        .default = NA
+      )
+    ) |>
+    ungroup()
+
+  if (all(is.na(syn_df$granularity))) {
+    syn_df <- select(syn_df, -granularity)
   }
 
   return(syn_df)
+}
+
+GetMainFolderIds <- function() {
+  main_folders <- synGetChildren(config::get("upload_synid"))$asList()
+  names(main_folders) <- lapply(main_folders, "[[", "name")
+  return(main_folders)
 }

@@ -3,28 +3,19 @@
 #   1. Pseudobulk of each sample
 #   2. Pseudobulk of each cell type + sample combination, to create "pure"
 #      pseudobulk samples of each cell type
-#   3. A training pseudobulk set with randomly-sampled cells
+#   3. Simulated bulk data that is pseudobulked from a random subset of cells,
+#      which is used for Scaden only
 #
-# The training pseudobulk set is generated as follows:
-#   1. For each cell type, determine a reasonable range of proportions to
-#      test based on that cell type's abundance in the single cell data set
-#   2. For each cell type, for each proportion in {0 to max_proportion}, create
-#      5 pseudobulk samples where that cell type has the specified proportion:
-#      2a. Cells are randomly sampled from the pool of cells of that cell type
-#          to make up the specified proportion of the sample.
-#      2b. The other cell types fill in the rest of the sample with
-#          randomly-generated proportions, sampling from their respective
-#          pools of cell types.
-#      2c. The counts from all sampled cells are added together.
-#   3. For each pseudobulk sample, the ground truth proportion of cells and
-#      percent RNA from each cell type is calculated and added as metadata
+# In the first two cases, the raw counts are summed together for each group, TMM
+# factors are computed for each new sample, and the percentage of RNA and
+# percentage of cells that contributed to each pseudobulked sample are
+# calculated. The data is saved as a SummarizedExperiment object.
 #
-# This ensures that:
-#   1. Each cell type is missing from at least 5 samples in the set
-#   2. Each cell type is forced to cover a range of proportions across samples
-#   3. Randomness in assigning proportions to each non-main cell type will
-#      create an even wider range of proportions than you would get from
-#      treating the other cell types as a single pool
+# For the last case, we generate a set of random cell type proportions for 1000
+# simulated samples, randomly select cells from each cell type to meet those
+# proportions, and sum the CPM or TMM values of those cells together to create
+# each simulated sample. The data is saved as an anndata/h5ad file in the format
+# Scaden expects.
 
 library(Matrix)
 library(SummarizedExperiment)
@@ -33,100 +24,157 @@ library(stringr)
 library(dplyr)
 library(edgeR)
 
-source(file.path("functions", "FileIO_HelperFunctions.R"))
 source(file.path("functions", "General_HelperFunctions.R"))
-source(file.path("functions", "Step05a_CreatePseudobulk_BySample.R"))
-source(file.path("functions", "Step05b_CreatePseudobulk_PureSamples.R"))
-#source(file.path("functions", "Step05c_CreatePseudobulk_Training.R"))
 
-datasets <- c("cain", "lau", "leng", "mathys", "seaRef")
+datasets <- all_singlecell_datasets()
 
 for (dataset in datasets) {
-  sce <- Load_SingleCell(dataset, "broad_class", output_type = "counts")
-  metadata <- colData(sce)
+  sce <- Load_SingleCell(dataset, "broad_class", normalization = "counts")
+
+  ## Pseudobulk by sample ------------------------------------------------------
 
   message(str_glue("{dataset}: creating pseudobulk by sample..."))
-  CreatePseudobulk_BySample(counts(sce), metadata, dataset)
+  pb <- scuttle::aggregateAcrossCells(sce, ids = sce$sample, statistics = "sum")
+
+  colData(pb) <- colData(pb)[, c("sample", "diagnosis", "ncells")]
+  pb$tmm_factors <- edgeR::normLibSizes(counts(pb), method = "TMMwsp")
+
+  # The counts for broud and sub type pseudobulk sets are the same, only the
+  # metadata changes. But we create each as a separate file to make looping
+  # easier further down the pipeline.
+  for (granularity in c("broad_class", "sub_class")) {
+    sce$celltype <- colData(sce)[, granularity]
+    propCells <- table(sce$sample, sce$celltype)
+    propCells <- sweep(propCells, 1, rowSums(propCells), "/")
+
+    pctRNA <- CalculatePercentRNA(sce, granularity)
+    metadata(pb) <- list("propCells" = propCells,
+                         "pctRNA" = pctRNA)
+
+    Save_Pseudobulk(pb, dataset, "sc_samples", granularity)
+  }
+
+
+  ## Pseudobulk by sample x celltype -------------------------------------------
 
   message(str_glue("{dataset}: creating pseudobulk pure samples..."))
-  CreatePseudobulk_PureSamples(counts(sce), metadata, dataset)
 
-  # Skip making training pseudobulk but keep the code just in case
-  next
+  # Here, the counts are different between broad and sub class
+  for (granularity in c("broad_class", "sub_class")) {
+    sce$celltype <- colData(sce)[, granularity]
+
+    pb <- scuttle::aggregateAcrossCells(sce,
+                                        ids = paste(sce$sample, sce$celltype),
+                                        statistics = "sum")
+
+    # Reassign "sample" to be the new ID, but preserve original sample values
+    pb$sample_orig <- pb$sample
+    pb$sample <- pb$ids
+
+    colData(pb) <- colData(pb)[, c("sample", "sample_orig", "diagnosis", "celltype", "ncells")]
+
+    pb$tmm_factors <- edgeR::normLibSizes(counts(pb), method = "TMMwsp")
+
+    # There will be a single "1" value per row, no need to divide for percentages
+    propCells <- table(pb$sample, pb$celltype)
+
+    # Since these are pure samples, pctRNA and propCells = 1 where the cell type
+    # matches the pure sample. pctRNA is therefore identical to propCells.
+    metadata(pb) <- list("propCells" = propCells,
+                         "pctRNA" = propCells)
+
+    Save_PseudobulkPureSamples(pb, dataset, granularity)
+  }
+
+
+  ## Simulated pseudobulk for Scaden -------------------------------------------
+
+  # This is functionally equivalent to `scaden_simulate`, but much faster and
+  # allows for a seed to be set for reproducibility.
+  message(str_glue("{dataset}: creating simulated pseudobulks for Scaden..."))
 
   for (granularity in c("broad_class", "sub_class")) {
-    message(str_glue("{dataset}: creating pseudobulk training set for {granularity} cell types..."))
+    set.seed(sageRNAUtils::string_to_seed(paste(dataset, granularity, "scaden")))
 
-    # Create a generic "celltype" column that is populated with either broad or
-    # fine cell types depending on the for-loop
-    if (granularity == "broad_class") {
-      metadata$celltype <- metadata$broad_class
-    } else if (granularity == "sub_class") {
-      metadata$celltype <- metadata$sub_class
+    sce$celltype <- colData(sce)[, granularity]
+
+    celltypes <- levels(sce$celltype)
+    n_celltypes <- length(celltypes) # number of unique cell types
+    n_samples <- 1000 # number of samples to generate
+    n_cells <- 1000 # number of cells to sum for each sample
+
+    # Generate 1000 pseudobulk samples -- 500 with all cell types and 500 that
+    # are missing at least one cell type
+    fractions <- runif(n_samples * n_celltypes) |>
+      matrix(nrow = n_samples, ncol = n_celltypes,
+             dimnames = list(paste0("s", 1:n_samples), celltypes))
+
+    # How many cell types to drop for the dropout samples, always drop at least
+    # 1 and keep at least one
+    n_drop <- sample(1:(n_celltypes-1), size = n_samples / 2, replace = TRUE)
+
+    # Keep sparse samples at the end of the dataset like Scaden does, even
+    # though it might not affect anything
+    sparse_start <- n_samples / 2
+    for (ind in 1:length(n_drop)) {
+      cts_drop <- sample(celltypes, size = n_drop[ind], replace = FALSE)
+      fractions[sparse_start + ind, cts_drop] <- 0
     }
 
-    celltypes <- levels(metadata$celltype)
+    # Force sample props to sum to 1
+    fractions <- sweep(fractions, 1, rowSums(fractions), "/")
 
-    # 5 samples per proportion
-    num_samples <- 5
-    n_cells <- table(metadata$celltype)
+    # For each simulated sample, pick random cells from each cell type at the
+    # fraction specified, and pseudobulk the result. Although the above
+    # pseudobulk code adds counts together, the code below follows the method
+    # used in the Scaden paper's pre-processing code, which normalizes every
+    # cell by library size and scales the values to the median library size,
+    # before adding the values together.
+    med_lib <- median(colSums(counts(sce)))
+    cpm_mat <- scuttle::calculateCPM(sce) * med_lib / 1e6
+    tmm_mat <- scuttle::normalizeCounts(cpm_mat, sce$tmm_factors,
+                                        log = FALSE,
+                                        center.size.factors = FALSE)
 
-    # The range of percents we use to create the training set is dependent on
-    # how abundant each cell type is in this data set
-    pcts <- table(metadata$sample, metadata$celltype)
-    pcts <- sweep(pcts, 1, rowSums(pcts), "/")
+    fractions_real <- fractions
 
-    # The largest proportion of each cell type from any sample, x 2 determines
-    # the range of percents we test for that cell type
-    maxs <- colMaxs(pcts, useNames = TRUE)
-    maxs <- ceiling(20 * maxs) / 10 # Rounds 2*X to the next-highest 10%
-    maxs[maxs > 1] <- 1.0
+    # Use identical cells for both cpm and tmm pseudobulking
+    pb_cpm <- matrix(0, nrow = nrow(sce), ncol = n_samples,
+                     dimnames = list(rownames(sce), rownames(fractions)))
 
-    # Each cell type gets its own range of percents, divided into 20 increments
-    ints <- sapply(maxs, function(X) {
-      seq(from = 0, to = X, by = (X / 20))
-    })
+    pb_tmm <- matrix(0, nrow = nrow(sce), ncol = n_samples,
+                     dimnames = list(rownames(sce), rownames(fractions)))
 
-    pseudobulk <- list()
-    propCells <- list()
-    pctRNA <- list()
+    for (samp in rownames(fractions)) {
+      # How many cells from each cell type to sample
+      sample_num <- round(fractions[samp, ] * n_cells)
 
-    # Create randomly-sampled data sets to fill out pseudobulk data
+      cells <- lapply(celltypes, function(ct) {
+        sample(colnames(sce)[sce$celltype == ct], size = sample_num[ct], replace = TRUE)
+      }) |>
+        unlist()
 
-    for (ct in 1:length(celltypes)) {
-      for (prop in ints[, ct]) {
-        # Limit the total number of cells in the resample to be proportional
-        # to the number of cells for this cell type. We don't want to resample
-        # a population of 100 cells 10,000 times, for example
-        numcells <- min(10000, n_cells[celltypes[ct]] / prop)
+      pb_cpm[, samp] <- rowSums(cpm_mat[, cells])
+      pb_tmm[, samp] <- rowSums(tmm_mat[, cells])
 
-        result <- CreatePseudobulk_Training(singlecell_counts = counts(sce),
-                                            cell_assigns = metadata$celltype,
-                                            main_celltype = celltypes[ct],
-                                            proportion = prop,
-                                            num_cells = numcells,
-                                            num_samples = num_samples)
-        name <- paste(ct, prop)
-        pseudobulk[[name]] <- result$counts
-        propCells[[name]] <- result$propCells
-        pctRNA[[name]] <- result$pctRNA
-
-        print(c(dataset, celltypes[ct], prop))
-      }
+      # Adjust the fractions to reflect the actual number of cells that went into
+      # the sample
+      fractions_real[samp, ] <- sample_num / sum(sample_num)
     }
 
-    pseudobulk <- do.call(cbind, pseudobulk)
-    propCells <- do.call(rbind, propCells)
-    pctRNA <- do.call(rbind, pctRNA)
+    fractions_real <- as.data.frame(fractions_real)
 
-    pseudobulk <- as(pseudobulk, "matrix")
-    tmm <- edgeR::calcNormFactors(pseudobulk, method = "TMMwsp")
+    # Turn this into a SummarizedExperiment. Preserve the original cell type
+    # names as a metadata variable, because they get modified with make.names()
+    # when fractions_real is converted to a DataFrame.
+    pb_se <- SummarizedExperiment(list(counts = pb_cpm),
+                                  colData = DataFrame(fractions_real),
+                                  metadata = list(celltype_names = colnames(fractions)))
 
-    se <- SummarizedExperiment(assays = SimpleList(counts = pseudobulk),
-                               colData = data.frame(tmm_factors = tmm),
-                               metadata = list("propCells" = propCells,
-                                               "pctRNA" = pctRNA))
+    save_SimulatedScadenData(pb_se, dataset, granularity, "cpm")
 
-    Save_Pseudobulk(se, dataset, "training", granularity)
+    # Save a separate file for TMM data
+    assay(pb_se, "counts") <- pb_tmm
+    save_SimulatedScadenData(pb_se, dataset, granularity, "tmm")
   }
 }

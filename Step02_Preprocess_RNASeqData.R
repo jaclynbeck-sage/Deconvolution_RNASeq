@@ -13,17 +13,16 @@ source(file.path("functions", "General_HelperFunctions.R"))
 
 # Setup ------------------------------------------------------------------------
 
-datasets <- c("cain", "lau", "leng", "mathys", "seaRef") # Single cell
-              #"Mayo", "MSBB", "ROSMAP") # Bulk
+# For now, discarding Leng EC/SFG data due to extremely low gene counts
+datasets <- c("cain", "lau", "mathys", "seaRef", # Single cell
+              "Mayo", "MSBB", "ROSMAP") # Bulk -- not separated by tissue yet
 
-# Helper functions
-is_bulk <- function(dataset) {
-  return(dataset %in% c("Mayo", "MSBB", "ROSMAP"))
-}
+# Single cell only, how many cores to use while looking for doublets. Assumes a
+# ratio of 8 GB per 1 CPU. This formula should be safe for all data sets except
+# seaRef, which doesn't go through doublet detection and doesn't need this
+# parameter.
+n_cores <- max(parallel::detectCores() - 4, 1)
 
-is_singlecell <- function(dataset) {
-  return(!is_bulk(dataset))
-}
 
 # Download files and process data ----------------------------------------------
 
@@ -42,8 +41,8 @@ for (dataset in datasets) {
   Save_Covariates(dataset, covariates)
 
   if (is_singlecell(dataset)) {
-    colnames(metadata) <- c("cell_id", "sample", "diagnosis",
-                            "broad_class", "sub_class")
+    colnames(metadata)[1:5] <- c("cell_id", "sample", "diagnosis",
+                                 "broad_class", "sub_class")
     rownames(metadata) <- metadata$cell_id
   } else { # bulk
     colnames(metadata) <- c("sample", "diagnosis", "tissue")
@@ -64,84 +63,152 @@ for (dataset in datasets) {
 
   if (is_bulk(dataset)) {
     outliers <- FindOutliers_BulkData(dataset, covariates, counts,
-                                      do_plot = FALSE, sd_threshold = 4)
+                                      do_plot = TRUE, sd_threshold = 4)
 
     print(str_glue("{length(outliers)} outlier samples will be removed from {dataset}."))
     counts <- counts[, setdiff(colnames(counts), outliers)]
     metadata <- metadata[colnames(counts),]
+
+    # Sex mismatches
+    # A threshold of 3 works for all data sets to separate male and female expression
+    mismatches <- FindSexMismatches_BulkData(dataset, covariates, counts,
+                                             do_plot = TRUE,
+                                             y_expr_threshold = 3)
+    print(str_glue("{length(mismatches)} sex-mismatched samples will be removed from {dataset}."))
+    counts <- counts[, setdiff(colnames(counts), mismatches)]
+    metadata <- metadata[colnames(counts), ]
   }
 
 
   ## Convert gene names --------------------------------------------------------
 
-  # Bulk only -- Convert bulk data Ensembl IDs to gene symbols.
-  if (is_bulk(dataset)) {
+  # Most datasets have genes listed as Ensembl IDs
+  if (dataset != "cain" & dataset != "seaRef") {
     genes <- EnsemblIdToGeneSymbol(rownames(counts))
   } else {
-    # Single cell only -- update potentially outdated gene symbols to the most
-    # current version possible, and get the matching Ensembl IDs too.
+    # cain and seaRef only -- update potentially outdated gene symbols to the
+    # most current version possible, and get the matching Ensembl IDs too.
     genes <- UpdateGeneSymbols(dataset, rownames(counts))
   }
 
-  # Some symbols are not unique so we use the first entry in the list for
-  # duplicate symbols, which is what Seurat does and is probably consistent with
-  # most of the single cell data sets.
-  dupes <- duplicated(genes$hgnc_symbol)
-  genes <- genes[!dupes, ]
-
-  # Puts 'genes' in the same gene order as counts so the counts matrix doesn't
-  # get rearranged unnecessarily
+  # Puts 'genes' in the same gene order as counts
   genes <- genes[intersect(rownames(counts), rownames(genes)), ]
+
+  if (nrow(genes) != nrow(counts) || !all(rownames(genes) == rownames(counts))) {
+    stop(str_glue("Gene set mismatch for {dataset}"))
+  }
+
+  # Save a metadata-free copy as an h5ad file for mapping, before any filtering.
+  # seaRef is already mapped and doesn't need this step
+  if (is_singlecell(dataset) && dataset != "seaRef") {
+    ad <- import("anndata")
+
+    ens <- genes[, "ensembl_gene_id"]
+
+    obs <- data.frame(cell_id = metadata$cell_id,
+                      row.names = metadata$cell_id)
+    var <- data.frame(ensembl_gene_id = ens,
+                      row.names = ens)
+
+    adata <- ad$AnnData(X = t(counts),
+                        obs = obs,
+                        var = var)
+    adata$write_h5ad(filename = file.path(dir_preprocessed,
+                                          str_glue("{dataset}_preprocessed.h5ad")),
+                     compression = "gzip")
+  }
 
   # Assign rownames to be the canonical hgnc symbol, applies to both bulk and
   # single cell
-  counts <- counts[rownames(genes), ]
   rownames(counts) <- genes$hgnc_symbol
   rownames(genes) <- genes$hgnc_symbol
 
+
   ## Adjust for and remove mitochondrial/non-coding genes ----------------------
 
-  # Remove samples with > 20% (single cell) or > 35% (bulk) mito genes by count.
-  # All single cell datasets have most cells under 20% already, but the
-  # percentages are much higher in Mayo and ROSMAP. The 35% threshold for bulk
-  # data was chosen by looking at the value of median(pct_mt) + 3*mad(pct_mt),
-  # which is near 0.35 for both Mayo and ROSMAP (MSBB is much lower), and visual
-  # inspection of the distribution of pct_mt for each data set.
-  mt_genes <- grepl("^MT-", rownames(counts))
-  pct_mt <- colSums(counts[mt_genes, ]) / colSums(counts)
-  metadata$percent_mito <- pct_mt
+  # Keep track of original library size before excluding mito/nc genes.
+  metadata$lib_size <- colSums(counts)
 
-  # Remove non-coding genes -- grep pattern from Green et al 2023.
-  nc_genes <- grepl("^(AC\\d+{3}|AL\\d+{3}|AP\\d+{3}|LINC\\d+{3})", rownames(counts))
-  pct_nc <- colSums(counts[nc_genes, ]) / colSums(counts)
-  metadata$percent_noncoding <- pct_nc
+  # Mitochondrial genes
+  mt_genes <- grepl("^MT-", rownames(counts)) |
+    (!is.na(genes$chromosome_name) & genes$chromosome_name == "chrM")
+  metadata$pct_mito <- colSums(counts[mt_genes, ]) / metadata$lib_size
 
-  genes$exclude <- mt_genes | nc_genes
+  # Percent of counts mapped to protein coding genes
+  pc_genes <- !is.na(genes$gene_biotype) & genes$gene_biotype == "protein_coding"
+  metadata$pct_protein_coding <- colSums(counts[pc_genes, ]) / metadata$lib_size
 
-  mt_threshold <- if (is_singlecell(dataset)) 0.2 else 0.35
+  # Remove Y-chromosome genes
+  y_genes <- !is.na(genes$chromosome_name) & genes$chromosome_name == "chrY"
 
-  if (any(pct_mt > mt_threshold)) {
-    print(str_glue(paste("Removing {sum(pct_mt > mt_threshold)} samples from",
-                         "{dataset} due to high mitochondrial gene expression.")))
+  genes$exclude <- !pc_genes | mt_genes | y_genes
+
+  if (is_singlecell(dataset)) {
+    # Since all of these are single nucleus datasets, we expect the percent of
+    # mitochondrial expression to be near-zero. We set the threshold to 0.06 to
+    # allow for a small amount of noise or minor non-nuclear RNA contamination.
+    # Ideally this threshold would be closer to 0.02 or 0.03, but some of the
+    # datasets are too noisy for this to be realistic. The seaRef dataset is
+    # pre-capped at 0.05, but both the Mathys and Lau datasets have higher
+    # percentages in general and benefit from slightly raising the threshold to
+    # 0.06.
+    counts <- QC_SingleCell(metadata, counts,
+                            mt_threshold = 0.06,
+                            dataset_name = dataset,
+                            n_cores = n_cores)
+  } else {
+    # Remove bulk samples with > 40% mito genes by count. The percentages in
+    # ROSMAP can get pretty high and these samples should be removed as
+    # low-quality. The 40% threshold was chosen by looking at the value of Q3 +
+    # 1.5*IQR for each data set, both as a whole and by tissue.
+    # Values:
+    #   Mayo: CBE = 0.25, TCX = 0.40, all = 0.35
+    #   MSBB: <= 0.05 for all tissues and as a whole
+    #   ROSMAP: polyA DLPFC samples = 0.64
+    #           rRNA samples <= 0.17 for each tissue, 0.16 as a whole,
+    #           whole dataset = 0.49
+    #   All 3 data sets together: 0.36
+    # Due to the large skew for polyA samples in ROSMAP, I set the cutoff to
+    # 0.40, which the highest threshold for any tissue excluding polyA samples.
+    # This threshold excludes no MSBB samples, 9 Mayo samples, and 161 ROSMAP
+    # samples.
+    mt_threshold <- 0.40
+
+    if (any(metadata$pct_mito > mt_threshold)) {
+      print(str_glue("Removing {sum(metadata$pct_mito > mt_threshold)} samples ",
+                     "from {dataset} due to high mitochondrial gene expression."))
+    }
+    counts <- counts[, metadata$pct_mito <= mt_threshold]
   }
-  counts <- counts[, pct_mt <= mt_threshold] # Exclude samples with high mitochondrial genes
 
-  # Remove genes that are expressed in less than 3 cells (or samples) after
-  # filtering for outliers and high mitochondrial percentages
-  ok <- rowSums(counts > 0) >= 3
-  counts <- counts[ok, ]
+  # Bulk data only -- after removing all low-quality samples, remove any samples
+  # that are from single- or two-sample batches.
+  if (is_bulk(dataset)) {
+    covars <- subset(covariates, specimenID %in% colnames(counts))
 
-  genes <- genes[rownames(counts), ]
+    samps <- table(covars$batch, covars$tissue)
+    singletons <- which(samps == 1 | samps == 2, arr.ind = TRUE) |> rownames()
+    remove <- covars$specimenID[covars$batch %in% singletons]
+
+    print(samps)
+    print(str_glue("Removing {length(singletons)} sample(s) from singleton ",
+                   "batches in {dataset}."))
+
+    metadata <- subset(metadata, sample %in% colnames(counts) &
+                         !(sample %in% remove))
+    counts <- counts[, metadata$sample]
+  }
+
+  # Remove genes that are expressed in less than 10 cells (or samples) after
+  # filtering out bad samples
+  ok <- rowSums(counts > 0) >= 10
+  genes$exclude <- genes$exclude | !ok
 
 
   ## Final modifications to metadata -------------------------------------------
 
   # Make sure metadata has the same samples and is in the same order as counts
   metadata <- metadata[colnames(counts), ]
-
-  if (is_singlecell(dataset)) {
-    metadata$broad_class <- RemapCelltypeNames(metadata$broad_class)
-  }
 
   # Ensure "sample" is a factor and not numeric (fixes mathys samples)
   metadata$sample <- factor(metadata$sample)
@@ -152,21 +219,41 @@ for (dataset in datasets) {
     }
   }
 
-  # TMM normalization factors -- unfortunately will convert to dense matrix
-  if (is_singlecell(dataset)) {
-    tmm <- edgeR::calcNormFactors(counts[!genes$exclude, ], method = "TMMwsp")
-  } else { # bulk
-    tmm <- edgeR::calcNormFactors(counts[!genes$exclude, ], method = "TMM")
+  # TMM normalization factors -- bulk only. Single cell factors will be
+  # calculated after cell type mapping.
+  if (is_bulk(dataset)) {
+    tmm <- rep(1, ncol(counts))
+    names(tmm) <- metadata$sample
+
+    # Calculate norm factors on a tissue-by-tissue basis
+    for (tissue in levels(metadata$tissue)) {
+      samples <- metadata$sample[metadata$tissue == tissue]
+      group <- metadata$diagnosis[metadata$tissue == tissue]
+
+      tmm[samples] <- edgeR::normLibSizes(
+        counts[!genes$exclude, samples],
+        method = "TMM"
+      )
+    }
+    metadata$tmm_factors <- tmm
   }
 
-  metadata$tmm_factors <- tmm
   gc()
 
 
   ## Bulk data -- create SummarizedExperiment and save -------------------------
 
   if (is_bulk(dataset)) {
-    se <- SummarizedExperiment(assays = list(counts = counts),
+    print(table(metadata$diagnosis, metadata$tissue))
+
+    # Get TPM data and subset to the same genes/samples in "counts"
+    tpm <- ReadCounts_Bulk(files, data_type = "tpm")
+
+    tpm <- tpm[genes$ensembl_gene_id, colnames(counts)]
+    rownames(tpm) <- genes$hgnc_symbol
+
+    se <- SummarizedExperiment(assays = list(counts = counts,
+                                             tpm = tpm),
                                colData = metadata,
                                rowData = genes)
 

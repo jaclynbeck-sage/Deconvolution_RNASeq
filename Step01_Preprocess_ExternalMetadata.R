@@ -9,18 +9,18 @@
 #
 # For the gene list, we pull multiple sources of data to make sure we have as
 # much coverage as possible:
-#   1. All genes in the current Biomart database,
-#   2. The genes used for ROSMAP/Mayo/MSBB in the RNASeq Harmonization Study,
-#   3. The genes used for the Seattle Reference Atlas,
-#   4. All genes from Ensembl versions 98, 93, and 84, corresponding to the
-#      versions used in some of the single cell data, and
-#   5. The genes used for the Mathys data set
-# Some symbols from previous versions of Ensembl are different and some Ensembl
-# IDs exist in those lists that are no longer in Biomart. We merge the multiple
-# lists by Ensembl ID and create a list of all possible gene symbols associated
-# with each ID. We then assign a "canonical" symbol that will be used in every
-# data set by finding the first non-null symbol for a given Ensembl ID in the
-# list of symbols (ordered by source, as above).
+#   1. The genes used for ROSMAP/Mayo/MSBB in the RNASeq Harmonization Study,
+#   2. The genes used for the Seattle Reference Atlas,
+#   3. All genes from Ensembl version 98 corresponding to the genome used for
+#      the Cain data set,
+#   4. The genes used for the Lau, Leng, and Mathys data sets, which are
+#      provided by the studies in the raw data
+# Some symbols from previous versions of Ensembl are different from the symbols
+# in Gencode v43. We merge the multiple lists by Ensembl ID and create a list of
+# all possible gene symbols associated with each ID. We then assign a
+# "canonical" symbol that will be used in every data set by using the symbol
+# from Gencode v43 if it exists, otherwise by finding the most common symbol for
+# a given Ensembl ID in the list of symbols from the other data sets.
 #
 # For the cell type proportions, the data was determined from separate stains,
 # so the proportions do not add up to 1 and some cell types are missing from
@@ -32,66 +32,79 @@
 # that output percent RNA. This conversion is handled downstream.
 
 library(stringr)
-library(biomaRt)
-library(GenomicFeatures)
-library(GenomicRanges)
 library(synapser)
 library(dplyr)
 library(purrr)
 library(rtracklayer)
+library(sageRNAUtils)
+library(GEOquery)
+library(rhdf5)
 source("Filenames.R")
+
+cfg <- config::get("step01_gene_metadata")
 
 synLogin()
 
-# URLs for GTF files -----------------------------------------------------------
-
-gtf_seaRef <- "https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/67/39/67390730-a684-47a5-b9f4-89c47cd4e3fc/genesgtf.gz"
-gtf_v98 <- "https://ftp.ensembl.org/pub/release-98/gtf/homo_sapiens/Homo_sapiens.GRCh38.98.gtf.gz"
-gtf_v93 <- "https://ftp.ensembl.org/pub/release-93/gtf/homo_sapiens/Homo_sapiens.GRCh38.93.gtf.gz"
-gtf_v84 <- "https://ftp.ensembl.org/pub/release-84/gtf/homo_sapiens/Homo_sapiens.GRCh38.84.gtf.gz"
-
-
-# Gene symbol / Ensembl ID conversions -----------------------------------------
-
-# Biomart query to get all genes in the database
-mart <- useEnsembl(biomart = "genes", dataset = "hsapiens_gene_ensembl",
-                   version = "110")
-biomart_genes <- getBM(attributes = c("external_gene_name", "ensembl_gene_id"),
-                       mart = mart)
-
-colnames(biomart_genes) <- c("symbol_Biomart", "ensembl_gene_id")
-biomart_genes <- subset(biomart_genes, symbol_Biomart != "")
-
-dir_gene_files <- file.path(dir_metadata, "gene_files")
+dir_gene_files <- file.path(dir_downloads, "gene_files")
 dir.create(dir_gene_files, showWarnings = FALSE)
 
-# Gene conversions used for ROSMAP, Mayo, and MSBB. The files from all three
-# studies (syn27024953, syn27068755, syn26967452) are identical so we just use
-# the one from ROSMAP.
-filename <- synGet("syn26967452", version = 1,
+## Bulk RNA Seq genes ----------------------------------------------------------
+
+# Get exon lengths for each gene, for the purpose of calculating TPM on the
+# bulk datasets. The bulk datasets were aligned to Gencode release 43.
+
+download.file(cfg$gtf_bulk,
+              destfile = file.path(dir_gene_files, basename(cfg$gtf_bulk)),
+              method = "curl")
+download.file(cfg$fasta_bulk,
+              destfile = file.path(dir_gene_files, basename(cfg$fasta_bulk)),
+              method = "curl")
+
+# We don't strictly need GC content but this function gets us gene length,
+# gene biotype, and symbols
+gene_info <- sageRNAUtils::get_gc_content_gtf(
+  gtf_file = file.path(dir_gene_files, basename(cfg$gtf_bulk)),
+  fasta_file = file.path(dir_gene_files, basename(cfg$fasta_bulk)),
+  include_introns = FALSE
+)
+
+# Strip version numbers
+gene_info$ensembl_gene_id <- str_replace(gene_info$ensembl_gene_id, "\\.[0-9]+", "")
+
+gene_info <- gene_info |>
+  dplyr::rename(symbol_bulkRNA = external_gene_name)
+
+
+## Lau genes -------------------------------------------------------------------
+
+# Download one of the features.tsv files from GEO to get the gene information
+
+res <- getGEOSuppFiles(cfg$geo_lau, makeDirectory = FALSE,
+                       baseDir = dir_gene_files,
+                       filter_regex = "features")
+
+lau_genes <- read.delim(gzfile(rownames(res)), header = FALSE) |>
+  dplyr::select(V1, V2) |>
+  dplyr::rename(ensembl_gene_id = V1, symbol_Lau = V2)
+
+
+## Mathys genes ----------------------------------------------------------------
+
+# They provided their mapping file on Synapse
+filename <- synGet(cfg$genes_mathys, version = 1,
                    downloadLocation = dir_gene_files)
 
-ros_genes <- read.table(filename$path, header = TRUE) %>%
-  dplyr::select(ensembl_gene_id, hgnc_symbol) %>%
-  dplyr::rename(symbol_RNASeq = hgnc_symbol)
-
-# Mathys genes -- this is the only single cell data set that provides their own
-# mapping from gene symbol to Ensembl ID
-filename <- synGet("syn18687959", version = 1,
-                   downloadLocation = dir_gene_files)
-
-mathys_genes <- read.table(filename$path, header = FALSE) %>%
+mathys_genes <- read.table(filename$path, header = FALSE) |>
   dplyr::rename(ensembl_gene_id = V1, symbol_Mathys = V2)
 
-# GRCh38 Ensembl releases 84, 93, and 98, plus the seaRef GTF file
+
+## Cain and SEA-AD genes -------------------------------------------------------
+
+# GRCh38 Ensembl release 98 (Cain) plus the seaRef GTF file
 files <- list("symbol_seaRef" = c(filename = file.path(dir_gene_files, "seaRef_genes.gtf.gz"),
-                                  url = gtf_seaRef),
-              "symbol_v98" = c(filename = file.path(dir_gene_files, "Homo_sapiens.GRCh38.98.gtf.gz"),
-                               url = gtf_v98),
-              "symbol_v93" = c(filename = file.path(dir_gene_files, "Homo_sapiens.GRCh38.93.gtf.gz"),
-                               url = gtf_v93),
-              "symbol_v84" = c(filename = file.path(dir_gene_files, "Homo_sapiens.GRCh38.84.gtf.gz"),
-                               url = gtf_v84))
+                                  url = cfg$gtf_sea_ad),
+              "symbol_v98_cain" = c(filename = file.path(dir_gene_files, "Homo_sapiens.GRCh38.98.gtf.gz"),
+                                    url = cfg$gtf_cain))
 
 gtf_genes <- lapply(names(files), function(version) {
   file_info <- files[[version]]
@@ -101,64 +114,70 @@ gtf_genes <- lapply(names(files), function(version) {
                   method = "curl")
   }
 
-  df <- rtracklayer::import(gzfile(file_info[["filename"]]), format = "gtf") %>%
-    as.data.frame() %>%
-    dplyr::select(gene_id, gene_name) %>%
+  df <- rtracklayer::import(file_info[["filename"]], format = "gtf") |>
+    as.data.frame() |>
+    dplyr::select(gene_id, gene_name) |>
     dplyr::distinct()
 
   colnames(df) <- c("ensembl_gene_id", version)
   return(df)
 })
 
-gtf_genes <- purrr::reduce(gtf_genes, full_join, by = "ensembl_gene_id")
+gtf_genes <- purrr::reduce(gtf_genes, dplyr::full_join, by = "ensembl_gene_id")
+
+# seaRef only -- duplicate gene names have the Ensembl ID pasted after them in
+# the rownames of the counts matrix
+dupes <- duplicated(gtf_genes$symbol_seaRef) & !is.na(gtf_genes$symbol_seaRef)
+gtf_genes$symbol_seaRef[dupes] <- paste(gtf_genes$symbol_seaRef[dupes],
+                                        gtf_genes$ensembl_gene_id[dupes])
 
 
 # Merge all gene sets together -------------------------------------------------
 
-all_genes <- merge(biomart_genes, ros_genes,
-                   by = "ensembl_gene_id",
-                   all = TRUE) %>%
-  merge(gtf_genes, by = "ensembl_gene_id", all = TRUE) %>%
-  merge(mathys_genes, by = "ensembl_gene_id", all = TRUE)
+all_genes <- purrr::reduce(list(gene_info, gtf_genes, lau_genes, mathys_genes),
+                           dplyr::full_join,
+                           by = "ensembl_gene_id") |>
+  # Remove some symbols that got set to the Ensembl ID
+  mutate(symbol_bulkRNA = ifelse(grepl("ENSG00", symbol_bulkRNA), NA, symbol_bulkRNA))
 
-# For each row/gene, take the first non-NA symbol. The symbol columns are
-# ordered left to right in order of priority (1 - Biomart, 2 - RNASeq,
-# 3 - seaRef genes, 4 - GTF genes in descending version order, 5 - Mathys), so
-# the first entry from c_across with NAs removed will be the highest-priority
-# non-NA gene symbol.
-first_symbol <- function(...) {
-  vec <- c_across(starts_with("symbol_"))
-  return(na.omit(vec)[1])
-}
+# For each row/gene that doesn't have a symbol in the bulk RNA seq data, take
+# the symbol that appears the most across all data sets. In case of ties,
+# which.max returns the first symbol in the tie, which would be the first
+# alphabetically.
+max_symbol <- all_genes |>
+  subset(is.na(symbol_bulkRNA)) |>
+  tidyr::pivot_longer(cols = starts_with("symbol"),
+                      names_to = "dataset",
+                      values_to = "symbol",
+                      values_drop_na = TRUE) |>
+  group_by(ensembl_gene_id, symbol) |>
+  summarize(count = n(), .groups = "drop_last") |>
+  summarize(canonical_symbol = symbol[which.max(count)])
 
-all_genes <- all_genes %>%
-  rowwise() %>%
-  dplyr::mutate(canonical_symbol = first_symbol()) %>%
-  dplyr::arrange(ensembl_gene_id) %>%
-  as.data.frame()
+# Use bulk RNA seq symbols where possible and concat the most-used symbols from
+# the other data sets when bulk RNA symbols are NA
+final_symbol <- all_genes |>
+  subset(!is.na(symbol_bulkRNA)) |>
+  mutate(canonical_symbol = symbol_bulkRNA) |>
+  dplyr::select(ensembl_gene_id, canonical_symbol) |>
+  rbind(max_symbol)
 
-# Get exon lengths for each gene, for the purpose of calculating TPM on the
-# bulk datasets. The bulk datasets were aligned to Gencode release 31, which
-# corresponds to Ensembl release 97.
-tx <- GenomicFeatures::makeTxDbFromEnsembl(organism = "Homo sapiens",
-                                           release = 97)
-ex <- GenomicFeatures::exonsBy(tx, by = "gene")
-ex <- GenomicRanges::reduce(ex)
-exlen <- relist(width(unlist(ex)), ex)
-exlens <- sapply(exlen, sum)
-exlens <- data.frame(ensembl_gene_id = names(exlens), exon_length = exlens)
+# Merge back in to the main data frame and set any NA symbols to the Ensembl ID.
+# To make symbols unambiguous but still human-readable, paste the Ensembl ID
+# after the gene name.
+all_genes <- merge(all_genes, final_symbol, all = TRUE) |>
+  dplyr::arrange(ensembl_gene_id) |>
+  dplyr::mutate(canonical_symbol = ifelse(is.na(canonical_symbol),
+                                          ensembl_gene_id,
+                                          paste(canonical_symbol, ensembl_gene_id)))
 
-all_genes <- merge(all_genes, exlens, by = "ensembl_gene_id", all = TRUE)
-
-all_genes <- subset(all_genes, !is.na(canonical_symbol))
 write.csv(all_genes, file_gene_list, quote = FALSE, row.names = FALSE)
 
 
 # Ground-truth proportions for some ROSMAP samples, generated from IHC ---------
 
-dir_ihc_git <- file.path(dir_metadata, "CortexCellDeconv")
-system(paste("git clone https://github.com/ellispatrick/CortexCellDeconv.git",
-             dir_ihc_git))
+dir_ihc_git <- file.path(dir_downloads, "CortexCellDeconv")
+system(paste("git clone", cfg$git_ihc, dir_ihc_git))
 
 celltypes <- c("astro", "endo", "microglia", "neuro", "oligo")
 

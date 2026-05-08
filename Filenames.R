@@ -1,60 +1,52 @@
-# Filenames that are used in multiple files
+# Filenames that are used in multiple files. This isn't in the config.yaml file
+# because R code in the yaml file can't reference another yaml variable that is
+# also defined by R code, so none of the file.path() functions would work.
 
 dir_data <- "data"
 dir_figures <- "figures"
+dir_downloads <- file.path("data", "downloads")
 
-dir_input <- file.path(dir_data, "input")
-dir_pseudobulk <- file.path(dir_data, "pseudobulk")
-dir_output <- file.path(dir_data, "output")
-dir_metadata <- file.path(dir_data, "metadata")
+dir_metadata <- file.path(dir_data, "01_metadata")
+dir_preprocessed <- file.path(dir_data, "02_preprocessed")
+dir_bulk <- file.path(dir_data, "03_bulk_input")
+dir_singlecell <- file.path(dir_data, "04_singlecell_input")
+dir_pseudobulk <- file.path(dir_data, "05_pseudobulk")
+dir_signatures <- file.path(dir_data, "06_signatures")
+dir_markers <- file.path(dir_data, "07_markers")
+dir_estimates <- file.path(dir_data, "08_estimates")
+dir_algorithm_models <- file.path(dir_data, "08_algorithm_models")
+dir_errors <- file.path(dir_data, "10_errors")
+dir_top_parameters <- file.path(dir_data, "11_top_parameters")
+dir_top_estimates <- file.path(dir_data, "11_top_estimates")
+dir_top_errors <- file.path(dir_data, "11_top_errors")
+dir_analysis <- file.path(dir_data, "12_analysis")
+
 dir_tmp <- file.path(dir_data, "tmp")
-dir_markers <- file.path(dir_data, "markers")
-dir_signatures <- file.path(dir_data, "signatures")
-dir_analysis <- file.path(dir_data, "analysis")
-dir_cibersort_corrected_signatures <- file.path(dir_signatures, "cibersortx_batch_corrected")
-dir_cibersort <- "/data" # outside this working directory, gets shared with cibersort docker
-
-dir_estimates <- file.path(dir_output, "estimates")
-dir_top_estimates <- file.path(dir_output, "top_estimates")
-dir_errors <- file.path(dir_output, "errors")
-dir_top_parameters <- file.path(dir_output, "top_parameters")
-dir_best_errors <- file.path(dir_output, "best_errors")
-
 dir_estimates_tmp <- file.path(dir_estimates, "tmp")
 dir_errors_tmp <- file.path(dir_errors, "tmp")
 
-dir_scaden_models <- file.path(dir_output, "scaden_models")
-dir_music_basis <- file.path(dir_output, "music_basis")
-dir_hspe_params <- file.path(dir_output, "hspe_params")
+dir_scaden_pseudobulk <- file.path(dir_pseudobulk, "scaden_simulated")
 
-dir_raw_data <- file.path(dir_input, "raw_data")
-dir_preprocessed <- file.path(dir_input, "preprocessed")
-dir_map_reference <- file.path(dir_input, "map_reference")
+dir_cibersort_corrected_signatures <- file.path(dir_signatures, "cibersortx_batch_corrected")
+dir_cibersort <- "/data" # outside this working directory, gets shared with cibersort docker
+
+dir_scaden_models <- file.path(dir_algorithm_models, "scaden_models")
+dir_music_basis <- file.path(dir_algorithm_models, "music_basis")
+dir_hspe_params <- file.path(dir_algorithm_models, "hspe_params")
+
+dir_raw_data <- file.path(dir_downloads, "raw_data")
 dir_covariates <- file.path(dir_metadata, "covariates")
 
-dir_cain_raw <- file.path(dir_raw_data, "cain_raw")
 dir_lau_raw <- file.path(dir_raw_data, "lau_raw")
 dir_leng_raw <- file.path(dir_raw_data, "leng_raw")
-dir_mathys_raw <- file.path(dir_raw_data, "mathys_raw")
-dir_morabito_raw <- file.path(dir_raw_data, "morabito_raw")
 dir_seaad_raw <- file.path(dir_raw_data, "sea-ad_raw")
-
-dir_mayo_raw <- file.path(dir_raw_data, "mayo_raw")
-dir_msbb_raw <- file.path(dir_raw_data, "msbb_raw")
-dir_rosmap_raw <- file.path(dir_raw_data, "rosmap_raw")
 
 file_searef_h5 <- file.path(dir_seaad_raw, "ref_counts.h5ad")
 file_seaad_h5 <- file.path(dir_seaad_raw, "seaad_counts.h5ad")
 
-url_searef_h5 <- "https://sea-ad-single-cell-profiling.s3.amazonaws.com/MTG/RNAseq/Reference_MTG_RNAseq_final-nuclei.2022-06-07.h5ad"
-url_seaad_h5 <- "https://sea-ad-single-cell-profiling.s3.amazonaws.com/MTG/RNAseq/SEAAD_MTG_RNAseq_final-nuclei.2024-02-13.h5ad"
-url_seaad_merfish <- "https://sea-ad-spatial-transcriptomics.s3.amazonaws.com/middle-temporal-gyrus/all_donors-h5ad/SEAAD_MTG_MERFISH.2024-02-13.h5ad"
-url_seaad_donor_metadata <- "https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/b4/c7/b4c727e1-ede1-4c61-b2ee-bf1ae4a3ef68/sea-ad_cohort_donor_metadata_072524.xlsx"
-url_seaad_cain_map <- "https://sea-ad-single-cell-profiling.s3.amazonaws.com/PFC/RNAseq/public_datasets/Cain_2022-cell-annotation.2024-03-27.csv"
-
-dir_mayo_output <- file.path(dir_estimates, "Mayo")
-dir_msbb_output <- file.path(dir_estimates, "MSBB")
-dir_rosmap_output <- file.path(dir_estimates, "ROSMAP")
+#url_seaad_h5 <- "https://sea-ad-single-cell-profiling.s3.amazonaws.com/MTG/RNAseq/SEAAD_MTG_RNAseq_final-nuclei.2024-02-13.h5ad"
+#url_seaad_merfish <- "https://sea-ad-spatial-transcriptomics.s3.amazonaws.com/middle-temporal-gyrus/all_donors-h5ad/SEAAD_MTG_MERFISH.2024-02-13.h5ad"
+#url_seaad_donor_metadata <- "https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/b4/c7/b4c727e1-ede1-4c61-b2ee-bf1ae4a3ef68/sea-ad_cohort_donor_metadata_072524.xlsx"
 
 file_gene_list <- file.path(dir_metadata, "ensembl_gene_list.csv")
 file_rosmap_ihc_proportions <- file.path(dir_metadata, "ihc_proportions_normalized.csv")

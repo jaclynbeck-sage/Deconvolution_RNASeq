@@ -1,43 +1,83 @@
-install.packages(c("BiocManager", "devtools", "stringr", "Metrics",
-                   "dplyr", "ggplot2", "DEoptimR", "nloptr", "anndata",
-                   "readxl", "Hmisc", "RMariaDB", "lme4", "corrplot",
-                   "circlize", "gMWT", "pak", "uuid"),
+install.packages(
+  c(
+    "BiocManager", "remotes", "reticulate", "foreach", "doParallel", "config",  # general
+    "stringr", "tidyr", "purrr", "dplyr", "ggplot2", "readxl", "vroom",  # tidyverse
+    "anndata", "hdf5r",  # h5ad ingest / AutogeneS
+    "Metrics", "Hmisc", "lme4", "DescTools",  # analysis
+    "uuid",  # omnideconv dependency
+    "RColorBrewer", "viridis", "patchwork" # plotting
+  ),
+  dependencies = c("Depends", "Imports"),
+  clean = TRUE
+)
+
+# Extra setup to get synapser to install -- Downgrade to Python 3.11 and install
+# rjson version 0.2.21. Freezing at specific Python version 3.11.12 which is
+# the version used to run data for the paper.
+reticulate::install_python(version = "3.11.12")
+reticulate::virtualenv_create("r-reticulate")
+
+remotes::install_version("rjson", version = "0.2.21")
+install.packages("synapser",
+                 repos = c("http://ran.synapse.org", "https://cloud.r-project.org"),
+                 dependencies = c("Depends", "Imports"),
                  clean = TRUE)
 
-# If synapser fails to install because it can't find "synapseclient", go to
-# RStudio options (Tools->Global Options) -> Python, uncheck "Automatically
-# activate project-local Python environments" and restart R.
-install.packages("synapser", repos = c("http://ran.synapse.org", "http://cran.fhcrc.org"))
+BiocManager::install(
+  c(
+    "rtracklayer", "BSgenome", # gtf file ingest
+    "SingleCellExperiment", "Seurat", "edgeR", "scuttle", "DESeq2",  # general
+    "GEOquery", "scDblFinder", "HDF5Array",  # data ingest / QC
+    "variancePartition", "sva",  # regression
+    "TOAST",  # MuSiC dependency
+    "MAST",  # omnideconv dependency
+    "DeconRNASeq"  # deconvolution
+  ),
+  clean = TRUE
+)
 
-BiocManager::install(c("Biobase", "SingleCellExperiment", "TOAST", "scuttle",
-                       "DeconRNASeq", "Seurat", "MAST", "GEOquery", "biomaRt",
-                       "DESeq2", "edgeR", "GenomicFeatures", "snpStats",
-                       "HDF5Array", "glmGamPoi"))
+#BiocManager::install(c("Biobase", "GenomicFeatures", "snpStats", "glmGamPoi"))
+#BiocManager::install("preprocessCore", configure.args="--disable-threading")
 
-BiocManager::install("preprocessCore", configure.args="--disable-threading")
+# install presto for faster marker finding in Seurat
+remotes::install_github("immunogenomics/presto", clean = TRUE)
 
-# These packages require several BiocManager packages to be installed first
-install.packages(c("GenomicTools.fileHandler"))
+# install my utility package
+remotes::install_github("jaclynbeck-sage/sageRNAUtils", clean = TRUE)
+
+# install mvIC for regression
+remotes::install_github("GabrielHoffman/mvIC", clean = TRUE)
 
 # install the MuSiC package from my fork, which has a few fixes and speedups
-devtools::install_github("jaclynbeck-sage/MuSiC")
+remotes::install_github("jaclynbeck-sage/MuSiC", clean = TRUE)
 
 # install Dtangle and HSPE from my forks, which have a few fixes
-devtools::install_github("jaclynbeck-sage/dtangle", subdir = "lib_dtangle")
-devtools::install_github("jaclynbeck-sage/hspe", subdir = "lib_hspe")
-
-# install sageseqr -- uses my fork with updated package dependencies
-devtools::install_github("jaclynbeck-sage/sageseqr")
+remotes::install_github("jaclynbeck-sage/dtangle", subdir = "lib_dtangle",
+                        clean = TRUE)
+remotes::install_github("jaclynbeck-sage/hspe", subdir = "lib_hspe",
+                        clean = TRUE)
 
 # Extra package needed for pre-processing seaRef
 reticulate::virtualenv_install("r-reticulate", packages = c("anndata"))
 
-# virtualenv setup for AutogeneS
-reticulate::virtualenv_create("autogenes_env",
-                              packages = c("scanpy", "anndata", "autogenes",
-                                           "scikit-misc"))
-
 # Install omnideconv and its DWLS add-on. Uses my fork of omnideconv
-pak::pkg_install("jaclynbeck-sage/omnideconv")
-pak::pkg_install("omnideconv/DWLS")
-omnideconv::install_all_python()
+remotes::install_github("jaclynbeck-sage/omnideconv", ref = "use_virtualenv",
+                        clean = TRUE)
+remotes::install_github("omnideconv/DWLS",
+                        clean = TRUE)
+
+# Ensure that pip manages all dependencies at once for all packages that need to
+# get installed for omnideconv. Calling omnideconv::install_all_python() does
+# the installation piecemeal and results in an incompatible environment.
+#reticulate::virtualenv_create("r-omnideconv", version = "3.11.12", force = TRUE,
+#                              packages = c("numpy", "anndata", "scanpy",
+#                                           "scikit-learn", "scikit-misc",
+#                                           "git+https://github.com/omnideconv/AutoGeneS.git",
+#                                           "git+https://github.com/omnideconv/scaden.git"))
+
+# After running the above virtualenv_create and confirming that the resulting
+# environment works, I used `pip freeze > omnideconv_requirements.txt` to get a
+# requirements file. This will ensure that the exact package versions used are
+# always installed in the docker container.
+reticulate::virtualenv_create("r-omnideconv", version = "3.11.12", force = TRUE,
+                              requirements = file.path("docker", "omnideconv_requirements.txt"))

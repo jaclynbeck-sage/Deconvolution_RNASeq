@@ -290,7 +290,7 @@ Paper_Renames <- function(df) {
                        "random_uniform" = "Random (uniform)",
                        "zeros" = "All zeros")
   regression_renames <- c("none" = "No regression", "edger" = "edgeR",
-                          "lme" = "LME", "dream" = "dream")
+                          "lme" = "LME", "combat" = "ComBat")
 
   if (all(c("normalization", "regression_method") %in% colnames(df))) {
     df <- df %>%
@@ -311,7 +311,7 @@ Paper_Renames <- function(df) {
     df <- df %>%
       mutate(tissue = factor(tissue,
                              levels = c("CBE", "TCX", "FP", "IFG", "PHG",
-                                        "STG", "ACC", "DLPFC", "PCC"))
+                                        "STG", "ACC", "DLPFC_1", "DLPFC_2", "PCC"))
     )
 
     if ("test_data_name" %in% colnames(df)) {

@@ -1,0 +1,17 @@
+default:
+  # Used to create params_loop1 (data-specific arguments) in main function
+  reference_input_type: "scaden"
+  normalization: ["cpm", "tmm", "tpm"] # Scaden works on linear-scale data
+
+  # For params_loop2 (algorithm-specific arguments) in main function
+  marker_function: "CreateParams_FilterableSignature"
+  params_markers:
+    filter_levels: 0 # this produces one row with filter = 0 since this alg doesn't use markers
+  additional_args: [] # No additional arguments
+
+  # Define the function that runs each param set
+  inner_loop_file: !expr file.path("functions", "Step08_Scaden_InnerLoop.R")
+  inner_loop_func: "Scaden_InnerLoop" # must be a string
+
+  # How many cores to use in parallel
+  cores: 1 # Scaden only has one parameter set per data input type so threading doesn't matter

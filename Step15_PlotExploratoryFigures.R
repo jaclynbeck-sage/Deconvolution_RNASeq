@@ -8,7 +8,7 @@ library(reshape2)
 library(patchwork)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
-source(file.path("functions", "Step15_Analysis_HelperFunctions.R"))
+source(file.path("functions", "Analysis_HelperFunctions.R"))
 source(file.path("functions", "Step15_Plotting_HelperFunctions.R"))
 
 # TODO remove the Mayo TCX param with > 800 rMSE? it's all from TPM
@@ -935,7 +935,7 @@ sig_toplevel$normalization <- sapply(sig_toplevel$avg_id, function(A) {
 })
 
 sig_toplevel$regression_method <- sapply(sig_toplevel$avg_id, function(A) {
-  for (reg in c("none", "edger", "lme", "dream")) {
+  for (reg in c("none", "edger", "lme", "combat")) {
     if (grepl(reg, A)) {
       if (reg == "edger") { return("edgeR") }
       if (reg == "lme") { return("LME") }

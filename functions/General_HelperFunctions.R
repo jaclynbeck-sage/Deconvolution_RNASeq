@@ -14,6 +14,26 @@ library(reshape2)
 
 source(file.path("functions", "FileIO_HelperFunctions.R"))
 
+# Shortcut functions for listing out all single cell and bulk data sets
+all_singlecell_datasets <- function() {
+  c("cain", "lau", "mathys", "seaRef")
+}
+
+all_bulk_datasets <- function() {
+  c("Mayo_CBE", "Mayo_TCX",
+    "MSBB_FP", "MSBB_IFG", "MSBB_PHG", "MSBB_STG",
+    "ROSMAP_ACC", "ROSMAP_DLPFC_1", "ROSMAP_DLPFC_2", "ROSMAP_PCC")
+}
+
+is_bulk <- function(dataset) {
+  return(dataset %in% c("Mayo", "MSBB", "ROSMAP", all_bulk_datasets()))
+}
+
+is_singlecell <- function(dataset) {
+  return(dataset %in% all_singlecell_datasets())
+}
+
+
 # Load_AlgorithmInputData: Ease-of-use function that gets both the reference
 # data and the test data from a set of different formats, and makes sure
 # both data sets have the same genes in the same order.
@@ -32,10 +52,10 @@ source(file.path("functions", "FileIO_HelperFunctions.R"))
 #                                         CibersortX PLUS the full single cell
 #                                         data set as a SingleCellExperiment
 #                                         object
-#   output_type = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm", or
-#                 "log_tpm". See Load_CountsFile for description.
+#   normalization = one of "counts", "cpm", "tmm", "tpm", "log_cpm", "log_tmm",
+#                   or "log_tpm". See Load_CountsFile for description.
 #   regression_method = "none", if raw uncorrected counts should be used for
-#                       bulk data, or one of "edger", "deseq2", or "dream", to
+#                       bulk data, or one of "edger", "deseq2", or "combat", to
 #                       use batch-corrected counts from one of those methods.
 #                       Applies to bulk data only.
 #
@@ -51,21 +71,24 @@ source(file.path("functions", "FileIO_HelperFunctions.R"))
 Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
                                     granularity = "broad_class",
                                     reference_input_type = "singlecell",
-                                    output_type = "counts",
+                                    normalization = "counts",
                                     regression_method = "none") {
   # Reference input
   if (reference_input_type == "singlecell") {
     reference_obj <- Load_SingleCell(reference_data_name, granularity,
-                                     output_type)
+                                     normalization)
   } else if (reference_input_type == "pseudobulk") {
     reference_obj <- Load_PseudobulkPureSamples(reference_data_name,
-                                                granularity, output_type)
+                                                granularity, normalization)
   } else if (reference_input_type == "signature") {
     reference_obj <- Load_SignatureMatrix(reference_data_name, granularity,
-                                          output_type)
+                                          normalization)
   } else if (reference_input_type == "cibersortx") {
     reference_obj <- Load_SignatureMatrix(reference_data_name, granularity,
-                                          output_type = "cibersortx")
+                                          normalization = "cibersortx")
+  } else if (reference_input_type == "scaden") {
+    reference_obj <- Load_SimulatedScadenData(reference_data_name, granularity,
+                                              normalization)
   } else {
     stop("Invalid reference_input_type specified!")
   }
@@ -73,11 +96,11 @@ Load_AlgorithmInputData <- function(reference_data_name, test_data_name,
   # Test data
   if (test_data_name == "sc_samples" || test_data_name == "training") {
     test_obj <- Load_Pseudobulk(reference_data_name, test_data_name,
-                                granularity, output_type)
+                                granularity, normalization)
   }
   # ROSMAP, Mayo, or MSBB
   else {
-    test_obj <- Load_BulkData(test_data_name, output_type, regression_method)
+    test_obj <- Load_BulkData(test_data_name, normalization, regression_method)
   }
 
   # CibersortX signature doesn't need gene filtering, everything else does
@@ -99,49 +122,46 @@ Load_AlgorithmInputData_FromParams <- function(params) {
                                  params$test_data_name,
                                  params$granularity,
                                  params$reference_input_type,
-                                 params$normalization, # 'output_type' arg in function
+                                 params$normalization,
                                  params$regression_method))
 }
 
 
 # CreateParams_MarkerTypes - Creates a parameter matrix using tidyr::expand_grid
 # (which can take data frames in the input) that has all variables required for
-# loading different combinations of markers: n_markers, marker_type,
-# marker_subtype, and marker_input_type. Invalid combinations of these variables
-# are removed from the parameter set before returning.
+# loading different combinations of markers: n_markers, marker_type, and
+# marker_subtype. Invalid combinations of these variables are removed from the
+# parameter set before returning.
 #
 # Arguments:
-#   n_markers = a vector containing one or more percentages (range 0-1.0) and/or
-#               one or more integers (range 2-Inf) specifying how many markers
-#               per cell type to use. If NULL, default values of c(0.01, 0.02,
-#               0.05, 0.1, 0.2, 0.5, 0.75, 1.0, 3, 5, 10, 20, 50, 100, 200, 500)
-#               will be used.
+#   n_markers = a vector containing one or more integers (range 3-Inf)
+#               specifying how many markers per cell type to use. If NULL,
+#               default values of c(3, 5, 10, 20, 50, 100, 200, 500) will be
+#               used.
 #   marker_types = a list where the names of the entries are one of "autogenes",
 #                  "dtangle", "seurat", or "deseq2" and the items in each entry
 #                  are a list of marker subtypes to use for that algorithm. See
 #                  FilterSignature for more detail. Must be a list and not a
 #                  vector. If NULL, all 4 marker types with all possible
 #                  subtypes will be used.
-#   marker_input_types = dtangle-specific: a vector of one or all of
-#                        c("singlecell", "pseudobulk") designating whether to
-#                        test dtangle marker sets from singlecell input,
-#                        pseudobulk input, or both
 #   marker_order = "distance" or "correlation", whether markers should be
 #                  ordered by largest expression difference between cell types
 #                  or by correlation with other markers for the same cell type
+#   filter_ad_genes = whether to filter genes that change with AD from the set
+#                  of markers
 #
 # Returns:
 #   a tibble containing all possible valid combinations of the arguments
 CreateParams_MarkerTypes <- function(n_markers = NULL, marker_types = NULL,
-                                     marker_input_types = c("singlecell", "pseudobulk"),
-                                     marker_order = c("distance", "correlation")) {
+                                     marker_order = c("distance", "correlation"),
+                                     filter_logfc_genes = TRUE,
+                                     filter_ad_genes = FALSE) {
   # Default values for n_markers and marker_types if they are not defined
   if (is.null(n_markers)) {
-    n_markers <- c(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.75, 1.0,
-                   3, 5, 10, 20, 50, 100, 200, 500)
+    n_markers <- c(3, 5, 10, 20, 50, 100, 200, 500)
   }
   if (is.null(marker_types)) {
-    marker_types <- list("dtangle" = c("ratio", "diff", "p.value", "regression"),
+    marker_types <- list("dtangle" = c("ratio", "diff"),
                          "autogenes" = c("correlation", "distance", "combined"),
                          "seurat" = c("None"),
                          "deseq2" = c("None"))
@@ -151,20 +171,10 @@ CreateParams_MarkerTypes <- function(n_markers = NULL, marker_types = NULL,
     dplyr::rename(marker_type = "L1", marker_subtype = "value")
 
   params <- tidyr::expand_grid(n_markers = n_markers,
-                               marker_types, # this is data frame
-                               marker_input_type = marker_input_types,
-                               marker_order = marker_order)
-
-  # marker_input_type only applies to dtangle markers
-  params$marker_input_type[params$marker_type != "dtangle"] <- "None"
-
-  # We don't use dtangle 'p.value' and 'regression' markers for 'singlecell'
-  # input because the compute time for these is too high
-  params <- subset(params, !(marker_input_type == "singlecell" &
-    marker_subtype %in% c("regression", "p.value")))
-
-  # We don't need to re-order markers when we're using the whole marker set
-  params$marker_order[params$n_markers == 1] <- "distance"
+                               marker_types, # this is a data frame
+                               marker_order = marker_order,
+                               filter_logfc_genes = filter_logfc_genes,
+                               filter_ad_genes = filter_ad_genes)
 
   params <- params %>% distinct()
   return(params)
@@ -174,8 +184,8 @@ CreateParams_MarkerTypes <- function(n_markers = NULL, marker_types = NULL,
 # CreateParams_FilterableSignature - Creates a parameter matrix using
 # tidyr::expand_grid (which can take data frames in the input) that has all
 # variables required for filtering a signature matrix: filter_level, n_markers,
-# marker_type, marker_subtype, and marker_input_type. Invalid combinations of
-# these variables are removed from the parameter set before returning.
+# marker_type, and marker_subtype. Invalid combinations of these variables are
+# removed from the parameter set before returning.
 #
 # Arguments:
 #   filter_levels = a vector containing one or more filter levels, as used in
@@ -188,22 +198,25 @@ CreateParams_MarkerTypes <- function(n_markers = NULL, marker_types = NULL,
 CreateParams_FilterableSignature <- function(filter_levels = c(1, 2, 3),
                                              n_markers = NULL,
                                              marker_types = NULL,
-                                             marker_input_types = c("singlecell", "pseudobulk"),
-                                             marker_order = c("distance", "correlation")) {
-  params_tmp <- CreateParams_MarkerTypes(n_markers, marker_types,
-                                         marker_input_types, marker_order)
+                                             marker_order = c("distance", "correlation"),
+                                             filter_logfc_genes = TRUE,
+                                             filter_ad_genes = FALSE) {
+  params_tmp <- CreateParams_MarkerTypes(n_markers, marker_types, marker_order,
+                                         filter_logfc_genes, filter_ad_genes)
 
   params <- tidyr::expand_grid(filter_level = filter_levels,
                                params_tmp)
 
   # Some filter_type / n_markers combos are not valid, get rid of them
-  # (filter levels 1 & 2 don't use n_markers or marker_type arguments)
+  # (filter levels 0, 1 & 2 don't use n_markers or marker_type arguments)
   low_filt <- params$filter_level < 3
   params$marker_type[low_filt] <- "None"
-  params$marker_input_type[low_filt] <- "None"
   params$marker_subtype[low_filt] <- "None"
   params$n_markers[low_filt] <- -1
   params$marker_order[low_filt] <- "distance"
+  params$filter_logfc_genes[low_filt] <- FALSE
+  params$filter_ad_genes[low_filt] <- FALSE
+
 
   params <- params %>% distinct()
   return(params)
@@ -220,42 +233,36 @@ CreateParams_FilterableSignature <- function(filter_levels = c(1, 2, 3),
 # purified cells.
 #
 # Arguments:
-#   singlecell_counts = matrix of counts (rows = genes, cols = cells)
-#   samples = vector of sample IDs that is the same length as
-#             ncol(singlecell_counts). Must either be a factor (contains
-#             multiple sample IDs) or a vector with the same sample ID repeated
-#             (for all cells belonging to a single sample).
-#   celltypes = vector of cell type assignments that is the same length as
-#               ncol(singlecell_counts). Must be a factor.
+#   sce = a SingleCellExperiment, which must have "sample", "broad_class", and
+#         "sub_class" columns in its metadata.
+#   granularity = either "broad_class" or "sub_class"
 #
 # Returns:
 #   matrix of percentages (rows = samples, cols = cell types), whose rows sum
 #   to 1.
-CalculatePercentRNA <- function(singlecell_counts, samples, celltypes) {
-  # Sum all counts per gene for each sample/celltype combination
-  y <- model.matrix(~ 0 + samples:celltypes)
-  count_sums <- singlecell_counts %*% y
+CalculatePercentRNA <- function(sce, granularity) {
+  sce$celltype <- colData(sce)[, granularity]
+  aggr <- scuttle::aggregateAcrossCells(sce,
+                                        ids = paste(sce$sample, sce$celltype),
+                                        statistics = "sum")
 
-  # Sum over all genes for each sample/celltype combination
-  count_sums <- colSums(count_sums)
+  count_sums <- colSums(counts(aggr))
+  count_sums <- data.frame(ids = names(count_sums), counts = as.numeric(count_sums))
 
-  # names are of the format "samples<sample>:celltypes<celltype>", split
-  # them apart by the ":" into a data frame w/ 2 columns
-  col_info <- str_split(names(count_sums), ":", simplify = TRUE)
-  sample_list <- unique(col_info[, 1])
+  pcts <- merge(as.data.frame(colData(aggr)), count_sums) |>
+    group_by(sample) |>
+    mutate(pct = counts / sum(counts)) |>
+    select(sample, celltype, pct) |>
+    tidyr::pivot_wider(id_cols = "sample",
+                       names_from = "celltype",
+                       values_from = "pct") |>
+    tibble::column_to_rownames("sample") |>
+    as.matrix()
 
-  pctRNA <- sapply(sample_list, function(samp) {
-    # All entries for this sample = 1 entry per cell type
-    cols <- which(col_info[, 1] == samp)
-    pct <- count_sums[cols] / sum(count_sums[cols])
+  # Fill in 0's for any samples that didn't have a particular cell type
+  pcts[is.na(pcts)] <- 0
 
-    # Remove extra labels added by model.matrix
-    names(pct) <- str_replace(names(pct), "samples.*celltypes", "")
-    return(pct)
-  })
-
-  colnames(pctRNA) <- str_replace(colnames(pctRNA), "samples", "")
-  return(t(pctRNA))
+  return(pcts)
 }
 
 
@@ -280,79 +287,32 @@ CalculatePercentRNA <- function(singlecell_counts, samples, celltypes) {
 # Returns:
 #   vector of average library size of each cell type, normalized to sum to 1.
 CalculateA <- function(dataset, granularity) {
-  pb <- Load_PseudobulkPureSamples(dataset, granularity, output_type = "counts")
+  pb <- Load_PseudobulkPureSamples(dataset, granularity, normalization = "counts")
 
-  pb_counts <- assay(pb, "counts")
-  count_sums <- colSums(pb_counts)
+  count_sums <- colSums(assay(pb, "counts"))
+  count_sums <- data.frame(sample = names(count_sums), count_sums = count_sums)
 
-  samples <- str_replace(names(count_sums), ".*_", "")
+  A <- merge(as.data.frame(colData(pb)), count_sums) |>
+    group_by(sample_orig) |>
+    mutate(
+      # sum of counts for a specific cell type / number of cells of that cell type
+      # gives average library size
+      avg_lib_size = count_sums / ncells,
+      # Normalize average library size across each sample so
+      # sum(lib_size of every cell type) for each sample = 1
+      norm_lib_size = avg_lib_size / sum(avg_lib_size)
+    ) |>
+    select(sample_orig, celltype, norm_lib_size) |>
+    # Make a sample x celltype matrix
+    tidyr::pivot_wider(id_cols = sample_orig,
+                       names_from = "celltype",
+                       values_from = "norm_lib_size") |>
+    tibble::column_to_rownames("sample_orig") |>
+    # Mean library size for each cell type across all samples, ignoring NAs
+    # where a sample doesn't have that cell type.
+    colMeans(na.rm = TRUE)
 
-  # For each sample
-  A_s <- sapply(unique(samples), function(samp) {
-    cols <- grepl(samp, names(count_sums))
-
-    # Average library size = sum over all genes for each sample/celltype
-    # divided by number of cells for that sample/celltype
-    a_s <- count_sums[cols] / pb$n_cells[cols]
-    names(a_s) <- pb$celltype[cols]
-
-    # Some samples don't have all cell types
-    missing <- setdiff(levels(pb$celltype), names(a_s))
-    a_s[missing] <- NA
-
-    a_s <- a_s[levels(pb$celltype)]
-
-    return(a_s)
-  })
-
-  # Normalize each sample row to sum to 1
-  A_s <- t(sweep(A_s, 2, colSums(A_s, na.rm = TRUE), "/"))
-
-  # Take the means but exclude entries for samples who don't have a certain cell type
-  A_s[A_s == 0] <- NA
-  A <- colMeans(A_s, na.rm = TRUE)
   A <- A / sum(A) # Enforce sum to 1
-}
-
-
-# CalculateSignature: Creates a cell-type-specific "signature" matrix that
-# describes the expected count of each gene for each cell type.
-#
-# Uses pseudobulk pure samples, where each sample is the sum of all raw counts
-# of a specific cell type from a specific donor. The pseudobulk counts are
-# normalized to CPM, and the CPM values of each gene for each cell type are
-# averaged together.
-#
-# Arguments:
-#   dataset = the name of the dataset to load
-#   granularity = either "broad_class" or "sub_class"
-#   output_type = either "cpm" or "tmm", for whether to use pure CPM or normalize
-#                 using tmm factors
-#   geom_mean = whether to take the geometric mean instead of the arithmetic mean
-#
-# Returns:
-#   matrix of average CPMs for each gene, for each cell type (rows = genes,
-#   columns = cell types)
-CalculateSignature <- function(dataset, granularity, output_type, geom_mean = FALSE) {
-  pb <- Load_PseudobulkPureSamples(dataset, granularity, output_type)
-
-  pb_cpm <- assay(pb, "counts")
-
-  # Get the mean over all samples, for each gene and cell type
-  sig <- sapply(levels(pb$celltype), function(ct) {
-    cols <- which(pb$celltype == ct)
-    if (geom_mean) {
-      log_means <- rowMeans(log(pb_cpm[, cols] + 1), na.rm = TRUE)
-      cpm_means <- exp(log_means) - 1
-      cpm_means[cpm_means < 0] <- 0
-
-    } else {
-      cpm_means <- rowMeans(pb_cpm[, cols], na.rm = TRUE)
-    }
-    return(cpm_means)
-  })
-
-  return(sig)
 }
 
 
@@ -390,15 +350,17 @@ CalculateSignature <- function(dataset, granularity, output_type, geom_mean = FA
 #                    "combined", specifying which weighting scheme was used to
 #                    pick markers.
 #                    Seurat doesn't have a subtype so this can be left as NULL.
-#   marker_input_type = for marker_type == "dtangle" only, either "singlecell"
-#                       or "pseudobulk", for which type of input was used to
-#                       generate the markers. For other marker_types, this
-#                       argument is ignored.
 #   marker_order = "distance" or "correlation". Whether the markers should be
 #                  ordered by distance (prioritize markers with the highest
 #                  expression difference between the cell type and all other
 #                  cell types) or correlation (prioritize markers with the
 #                  highest correlation to other markers for that cell type)
+#   filter_logfc_genes = if TRUE, use a filtered set of markers where each gene
+#                  has a >1 logfc (>0.25 for subclass) between the target cell
+#                  type and any other cell type. If FALSE, use all discovered
+#                  markers.
+#   filter_ad_genes = remove genes that change with AD in the reference data set
+#                  from the list of markers, if markers are being used.
 #   test_data_name = the name of the test data set. Only used if marker_order
 #                    is "correlation".
 #   normalization = the normalization strategy. Only used if marker_order is
@@ -410,10 +372,10 @@ CalculateSignature <- function(dataset, granularity, output_type, geom_mean = FA
 #   signature matrix containing only the genes that pass the specified filters.
 #   rows = genes, columns = cell types.
 FilterSignature <- function(signature, filter_level = 1, reference_data_name = NULL,
-                            granularity = NULL, n_markers = 1.0,
+                            granularity = NULL, n_markers = 3,
                             marker_type = "dtangle", marker_subtype = "diff",
-                            marker_input_type = "pseudobulk",
-                            marker_order = "distance", test_data_name = NULL,
+                            marker_order = "distance", filter_logfc_genes = TRUE,
+                            filter_ad_genes = FALSE, test_data_name = NULL,
                             normalization = NULL, regression_method = NULL) {
   # Filter for genes where at least one cell type expresses at > 1 cpm
   if (filter_level == 1) {
@@ -430,9 +392,10 @@ FilterSignature <- function(signature, filter_level = 1, reference_data_name = N
   # Filter for genes specific to cell-type marker sets
   else if (filter_level == 3 & !is.null(reference_data_name) & !is.null(granularity)) {
     markers <- FilterMarkers(reference_data_name, granularity, n_markers,
-                             marker_type, marker_subtype, marker_input_type,
-                             marker_order,
+                             marker_type, marker_subtype, marker_order,
                              available_genes = rownames(signature),
+                             filter_logfc_genes = filter_logfc_genes,
+                             filter_ad_genes = filter_ad_genes,
                              test_data_name = test_data_name,
                              normalization = normalization,
                              regression_method = regression_method)
@@ -468,8 +431,9 @@ FilterSignature_FromParams <- function(signature, params) {
                          n_markers = params$n_markers,
                          marker_type = params$marker_type,
                          marker_subtype = params$marker_subtype,
-                         marker_input_type = params$marker_input_type,
                          marker_order = params$marker_order,
+                         filter_logfc_genes = params$filter_logfc_genes,
+                         filter_ad_genes = params$filter_ad_genes,
                          test_data_name = params$test_data_name,
                          normalization = params$normalization,
                          regression_method = params$regression_method))
@@ -489,56 +453,62 @@ FilterSignature_FromParams <- function(signature, params) {
 # Returns:
 #   a list where each item is a vector of marker genes for a given cell type
 FilterMarkers <- function(reference_data_name, granularity, n_markers,
-                          marker_type, marker_subtype, marker_input_type,
-                          marker_order, available_genes, test_data_name = NULL,
+                          marker_type, marker_subtype, marker_order,
+                          available_genes, filter_logfc_genes = TRUE,
+                          filter_ad_genes = FALSE, test_data_name = NULL,
                           normalization = NULL, regression_method = NULL) {
   markers <- Load_Markers(reference_data_name, granularity, marker_type,
-                          marker_subtype,
-                          input_type = marker_input_type)
+                          marker_subtype)
 
   if (is.null(markers)) {
     return(NULL)
   }
 
+  marker_category <- ifelse(filter_logfc_genes, "filtered", "all")
+
   if (marker_order == "correlation") {
     data_name <- paste(test_data_name, normalization, regression_method,
                        sep = "_")
-    data_name <- str_replace(data_name, "log_", "")
-    data_name <- str_replace(data_name, "counts", "cpm")
+    data_name <- str_replace(data_name, "log_", "") |>
+      str_replace("counts_tpm", "tpm") |>
+      str_replace("counts", "cpm")
 
-    markers <- markers$ordered_by_correlation[[data_name]]
+    markers_out <- markers$ordered_by_correlation[[marker_category]][[data_name]]
   } else {
-    markers <- markers$filtered
+    markers_out <- markers[[marker_category]]
+  }
+
+  markers_out <- lapply(markers_out, function(X) {
+    markers$genes[X]
+  })
+
+  # Remove genes that change in AD for this data set if applicable
+  if (filter_ad_genes) {
+    markers_out <- lapply(markers_out, function(mkrs) {
+      setdiff(mkrs, markers$ad_gene_exclusions)
+    })
   }
 
   # Remove genes that don't exist in the data
-  markers <- lapply(markers, function(X) {
+  markers_out <- lapply(markers_out, function(X) {
     intersect(X, available_genes)
   })
 
-  # We can't use these markers if any cell type has 1 or 0 markers after filtering
-  if (any(lengths(markers) < 2)) {
+  # Get the minimum of n_markers and the actual number of markers for each cell type
+  n_markers <- sapply(lengths(markers_out), min, n_markers)
+
+  # We can't use these markers if any cell type has < 3 markers after filtering
+  if (any(n_markers < 3)) {
     return(NULL)
   }
 
-  # Percentage of each cell type's markers
-  if (n_markers <= 1) {
-    n_markers <- ceiling(lengths(markers) * n_markers)
-  }
-  # Fixed number of markers for each cell type
-  else {
-    n_markers <- sapply(lengths(markers), min, n_markers)
-  }
-
-  if (any(n_markers == 0)) {
-    return(NULL)
-  }
-
-  markers <- lapply(names(markers), function(N) {
-    markers[[N]][1:n_markers[N]]
+  markers_filt <- lapply(names(markers_out), function(N) {
+    markers_out[[N]][1:n_markers[N]]
   })
 
-  return(markers)
+  names(markers_filt) <- names(markers_out)
+
+  return(markers_filt)
 }
 
 
@@ -551,7 +521,7 @@ FilterMarkers <- function(reference_data_name, granularity, n_markers,
 #                     and bulk data set.
 #   params = a named vector or one-row data frame with the parameters to use.
 #            Must contain variables with the same names as the arguments to
-#            Filter_Markers (except for "available_genes").
+#            FilterMarkers (except for "available_genes").
 #
 # Returns:
 #   a list where each item is a vector of marker genes for a given cell type
@@ -561,9 +531,10 @@ FilterMarkers_FromParams <- function(available_genes, params) {
                        n_markers = params$n_markers,
                        marker_type = params$marker_type,
                        marker_subtype = params$marker_subtype,
-                       marker_input_type = params$marker_input_type,
                        marker_order = params$marker_order,
                        available_genes = available_genes,
+                       filter_logfc_genes = params$filter_logfc_genes,
+                       filter_ad_genes = params$filter_ad_genes,
                        test_data_name = params$test_data_name,
                        normalization = params$normalization,
                        regression_method = params$regression_method))
@@ -635,29 +606,19 @@ ConvertToROSMAPCelltypes <- function(df, remove_unused = TRUE) {
 # types. However this doesn't guarantee that the top markers are at all
 # correlated, or that the markers are the most informative for the data set
 # being tested. This function filters the marker list and re-orders it such
-# that for each cell type, the marker list is now the largest possible set of
-# marker genes that are all positively correlated with each other in the test
-# data set. The remaining markers are then ordered from highest to lowest
-# average correlation with each other.
-# NOTE: This problem can be solved exactly by treating the correlation matrix
-#       as an adjacency graph and using igraph::largest_cliques(), however the
-#       run-time increases exponentially with number of genes and isn't
-#       realistic for our needs. The code below is a greedy approximation.
+# that for each cell type, the marker list is now the set of marker genes with
+# a positive average correlation with all other marker genes. These markers are
+# then ordered from highest to lowest average correlation with each other.
 #
 # Arguments:
 #   marker_list = a list of marker gene names, one list entry per cell type
 #   data = a gene x sample expression matrix (or data.frame) for calculating
-#          correlation. This is usually the test data set.
+#          correlation. This is usually the test data set. The data should be
+#          log-normalized.
 #
 # Returns:
 #   an updated list of marker genes, one list entry per cell type
 OrderMarkers_ByCorrelation <- function(marker_list, data) {
-  # Assumption that if the values in data aren't very large, this is log-scale
-  # data that needs to be put into linear scale
-  if (max(data) < 100) {
-    data <- 2^data - 1
-  }
-
   # For each cell type, update the marker list
   new_list <- sapply(names(marker_list), function(N) {
     markers <- marker_list[[N]]
@@ -676,84 +637,28 @@ OrderMarkers_ByCorrelation <- function(marker_list, data) {
     }
 
     corr_mat <- cor(as.matrix(t(data[markers, ])))
+    diag(corr_mat) <- NA
 
     # Re-order genes by average correlation, highest first
-    corr_means <- rowMeans(corr_mat)
+    corr_means <- rowMeans(corr_mat, na.rm = TRUE)
     corr_means <- sort(corr_means, decreasing = TRUE)
 
-    # Start at the most positively correlated genes, iteratively add genes that
-    # have only positive correlations with the existing set of genes
-    new_markers <- c(names(corr_means)[1])
-    for (m in 2:length(corr_means)) {
-      marker <- names(corr_means)[m]
-      tmp <- corr_mat[marker, new_markers]
-      if (all(tmp >= 0)) {
-        new_markers <- c(new_markers, marker)
-      }
+    new_markers <- names(corr_means)[corr_means >= 0]
+
+    # If there aren't enough markers that are positively correlated with each
+    # other, just return all markers sorted by average correlation
+    if (length(new_markers) < 3) {
+      return(names(corr_means))
     }
 
-    # Sort by average correlation within this group of markers
-    new_means <- rowMeans(corr_mat[new_markers, new_markers])
-    return(new_markers[order(new_means, decreasing = TRUE)])
+    # Sort by average correlation within this group of markers now that negative
+    # markers have been removed
+    new_means <- rowMeans(corr_mat[new_markers, new_markers], na.rm = TRUE) |>
+      sort(decreasing = TRUE)
+    return(names(new_means))
   })
 
   return(new_list)
-}
-
-
-# Clean_BulkCovariates - takes a covariates dataframe for one of the bulk
-# datasets, makes sure that categorical variables are factors, scales numerical
-# variables, and merges the cleaned covariates dataframe with the metadata
-# dataframe.
-#
-# Arguments:
-#   bulk_dataset_name - the name of the data set
-#   metadata - the metadata dataframe (colData()) from a SummarizedExperiment
-#   covariates - a dataframe of covariates, where rows are samples and columns
-#                are the covariates
-#   scale_numerical - TRUE or FALSE, whether to scale numeric columns
-#
-# Returns:
-#   a dataframe with merged metadata and cleaned covariates
-Clean_BulkCovariates <- function(bulk_dataset_name, metadata, covariates,
-                                 scale_numerical = TRUE) {
-  covariates <- subset(covariates, specimenID %in% rownames(metadata))
-
-  for (col in c("sex", "race", "spanish", "ethnicity", "individualID", "apoe4_allele",
-                "projid", "flowcell", "sequencingBatch", "final_batch")) {
-    if (col %in% colnames(covariates)) {
-      covariates[, col] <- factor(covariates[, col])
-    }
-  }
-
-  # Fix the age_death column: ages above 90 are masked as "90+", so we convert
-  # those to numerical 90 instead.
-  covariates$age_death[covariates$age_death == "90+"] <- 90
-  covariates$age_death <- as.numeric(covariates$age_death)
-
-  # Remove duplicate columns that already exist in colData
-  covariates <- covariates %>% select(-diagnosis, -tissue)
-
-  # Merge covariates into the metadata
-  sample_order <- rownames(metadata)
-  metadata <- merge(metadata, covariates,
-                    by.x = "sample", by.y = "specimenID",
-                    sort = FALSE)
-  rownames(metadata) <- metadata$sample
-
-  # Put the data frame back in the original order, as merge might change it
-  metadata <- data.frame(metadata[sample_order, ])
-
-  # Scale numerical covariates if scale == TRUE
-  if (scale_numerical) {
-    for (colname in colnames(metadata)) {
-      if (is.numeric(metadata[, colname])) {
-        metadata[, colname] <- as.numeric(scale(metadata[, colname]))
-      }
-    }
-  }
-
-  return(metadata)
 }
 
 
@@ -809,4 +714,76 @@ List_to_DF <- function(input_list, sublist_name = NULL) {
   }
 
   return(do.call(rbind, lapply(input_list, "[[", sublist_name)))
+}
+
+
+# Helper function for marker finding. Given a data frame of average expression
+# for each gene/cell type, filter to genes where the log2-FC between the
+# target celltype and the highest-expressing non-target celltype is above a
+# certain threshold. The threshold is 1 for broad class and 0.25 for sub class.
+# A gene can only be a marker for exactly one cell type for broad class, but can
+# be a marker for up to 2 cell types for sub class. This function handles both
+# cases: for broad class, the log2-FC is expr[celltype] - max(expr[!celltype]),
+# while for sub class it is similar except that that instead of looking for the
+# max among all non-target celltypes, it looks for the max among all non-target
+# celltypes for which this gene is not a marker. This allows for two cell types
+# with the same marker gene to have similar expression as long as the rest of
+# the cell types have lower expression.
+Get_QualityMarkers <- function(expr_df, markers, granularity) {
+  # For broad class, get the top-expressing cell type. For sub
+  # class, get the top two expressing cell types.
+  #cell_thresh <- 1 #ifelse(granularity == "broad_class", 1, 2)
+  celltypes <- colnames(expr_df) |> sort()
+
+  # Turn expression df into long format
+  expr_df <- expr_df[unique(markers), ] |>
+    as.data.frame() |>
+    tibble::rownames_to_column("gene") |>
+    tidyr::pivot_longer(cols = -gene,
+                        names_to = "celltype",
+                        values_to = "expr")
+
+  # Find the top expressor of each marker gene
+  expr_mod <- expr_df |>
+    group_by(gene) |>
+    slice_max(order_by = expr, n = 1) # cell_thresh)
+
+  # Assign marker status to top expressors only
+  expr_df <- expr_df |>
+    group_by(celltype) |>
+    mutate(
+      is_marker = gene %in% expr_mod$gene[expr_mod$celltype == unique(celltype)]
+    ) |>
+    ungroup()
+
+  # Helper function
+  getLog2FC <- function(celltype, expr) { #, is_marker) {
+    sapply(celltype, function(ct) {
+      expr[celltype == ct] - max(expr[celltype != ct]) # & !is_marker])
+    })
+  }
+
+  # Filtered marker list sorted by log2FC
+  sorted_logfc <- expr_df |>
+    group_by(gene) |>
+    mutate(log2FC = getLog2FC(celltype, expr)) |> #, is_marker)) |>
+    subset(is_marker == TRUE) |>
+    dplyr::arrange(desc(log2FC))
+
+  # Create one full list containing all genes that were identified as
+  # markers, and one list filtered to (log2FC between highest and
+  # second-highest expression) > 1 (or 0.25 for sub_class)
+  markers_all <- sapply(celltypes, function(ct) {
+    return(sorted_logfc$gene[sorted_logfc$celltype == ct])
+  })
+
+  thresh <- config::get("step07_find_markers")$lfc_threshold[[granularity]]
+  markers_filt <- sapply(celltypes, function(ct) {
+    return(sorted_logfc$gene[sorted_logfc$celltype == ct &
+                               sorted_logfc$log2FC >= thresh])
+  })
+
+  return(list("all" = markers_all,
+              "filtered" = markers_filt,
+              "sorted_logfc" = sorted_logfc))
 }

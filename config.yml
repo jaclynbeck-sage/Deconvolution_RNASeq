@@ -1,0 +1,81 @@
+default:
+  upload_synid: "syn70819544"
+  gene_metadata_synid: "syn70819916.4" # Populated after first upload of step 01
+  github_repo_url: "https://github.com/jaclynbeck-sage/Deconvolution_RNASeq/blob/main/"
+
+  step01_gene_metadata:
+    gtf_bulk: "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_43/gencode.v43.primary_assembly.annotation.gtf.gz"
+    fasta_bulk: "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_43/GRCh38.primary_assembly.genome.fa.gz"
+    gtf_cain: "https://ftp.ensembl.org/pub/release-98/gtf/homo_sapiens/Homo_sapiens.GRCh38.98.gtf.gz"
+    gtf_sea_ad: "https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/67/39/67390730-a684-47a5-b9f4-89c47cd4e3fc/genesgtf.gz"
+    geo_lau: "GSM4775561"
+    geo_leng: "GSM4432635"
+    genes_mathys: "syn18687959"
+    git_ihc: "https://github.com/ellispatrick/CortexCellDeconv.git"
+
+  step02_preprocess:
+    # Single cell data sets
+    cain:
+      cell_metadata: "syn23554294.5"
+      biospecimen_metadata: "syn21323366.17"
+      clinical_metadata: "syn64759878.8" # non-corrected: syn3191087.11
+      counts: "syn23554292.3"
+      genes: "syn23554293.2"
+
+    lau:
+      geo_accession: "GSE157827"
+      clinical_metadata: "syn52308080.1"
+
+    #leng:
+    #  geo_accession: "GSE147528"
+
+    mathys:
+      clinical_metadata: "syn64759878.8" # non-corrected: syn3191087.11
+      cell_metadata: "syn18686383.1"
+      counts: "syn18687958.1"
+      genes: "syn18687959.1"
+
+    searef:
+      individual_metadata: "syn31149116.5"
+      url_searef_h5: "https://sea-ad-single-cell-profiling.s3.amazonaws.com/MTG/RNAseq/Reference_MTG_RNAseq_final-nuclei.2022-06-07.h5ad"
+
+    # Bulk data sets
+    mayo:
+      individual_metadata: "syn66639062.2"
+      biospecimen_metadata: "syn20827192.13"
+      assay_metadata: "syn20827193.4"
+      multiqc: ["syn69077709.1", "syn69380874.1"] # CBE and TCX have separate QC files
+      counts: ["syn69076198.1", "syn69369067.1"] # CBE and TCX have separate matrices
+      tpm: ["syn69076199.1", "syn69369068.1"]
+
+    msbb:
+      individual_metadata: "syn66639063.3"
+      biospecimen_metadata: "syn21893059.14"
+      assay_metadata: "syn22447899.6"
+      multiqc: "syn69421904.1"
+      counts: "syn69368998.1"
+      tpm: "syn69368999.1"
+
+    rosmap:
+      individual_metadata: "syn64759878.8" # non-corrected: syn3191087.11
+      biospecimen_metadata: "syn21323366.19"
+      assay_metadata: "syn21088596.5"
+      multiqc: ["syn69421077.1", "syn69690469.1", "syn69401724.1"]
+      counts: ["syn69369134.1", "syn69681787.1", "syn69369206.1"] # 3 different groups of data
+      tpm: ["syn69369139.1", "syn69681788.1", "syn69369207.1"]
+      # We are not using the data from batch 4 (cognitive resilience) at
+      # syn69369249.1 because there are almost no "Control" or low Braak samples
+
+  # Step 03 doesn't require any configs
+
+  step04_label_transfer: # Populated after Step 02 and running MapMyCells
+    cain_annotations: "syn70820737.2"
+    lau_annotations: "syn70820999.2"
+    mathys_annotations: "syn70984452.2"
+
+  # Steps 05 and 06 don't require any configs
+
+  step07_find_markers:
+    lfc_threshold:
+      broad_class: 1.0
+      sub_class: 0.25

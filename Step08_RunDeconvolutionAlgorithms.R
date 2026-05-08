@@ -1,0 +1,164 @@
+library(parallel)
+library(dplyr)
+library(tidyr)
+library(stringr)
+
+source(file.path("functions", "General_HelperFunctions.R"))
+source(file.path("functions", "Step08_Deconvolution_HelperFunctions.R"))
+source(file.path("functions", "CibersortX_HelperFunctions.R"))
+
+# Parameter setup --------------------------------------------------------------
+
+# options: "CibersortX", "DeconRNASeq", "Dtangle", "DWLS", "Music", "Scaden"
+algorithm <- "CibersortX"
+
+alg_config <- config::get(file = file.path("algorithm_configs",
+                                           str_glue("{algorithm}_config.yml")))
+
+# datasets and normalization parameters
+params_loop1 <- tidyr::expand_grid(
+  algorithm = algorithm,
+  reference_data_name = all_singlecell_datasets(),
+  test_data_name = setdiff(all_bulk_datasets(), "Mayo_CBE"),
+  granularity = c("broad_class", "sub_class"),
+  reference_input_type = alg_config$reference_input_type,
+  normalization = alg_config$normalization,
+  regression_method = c("none", "edger", "lme", "combat")
+) |>
+  arrange(normalization)
+
+# Algorithm-specific parameters -- marker types, number of markers, plus any
+# additional arguments to the algorithm itself. alg_config$additional_args can
+# be NULL if no other additional args.
+marker_args <- do.call(alg_config$marker_function, args = alg_config$params_markers)
+
+if (length(alg_config$additional_args) == 0) {
+  params_loop2 <- marker_args
+} else {
+  addl_args <- expand.grid(alg_config$additional_args,
+                           stringsAsFactors = FALSE)
+  params_loop2 <- tidyr::expand_grid(marker_args,
+                                     addl_args)
+}
+
+
+# Parallel execution setup -----------------------------------------------------
+
+# NOTE: Recommendations for number of cores, per algorithm:
+#   DWLS: 1/2 the available cores, as this doesn't need much RAM but multi-threads a little
+#   DeconRNASeq and Music: 1/4 to 1/2 the available cores, as these algorithms multi-thread
+#   Dtangle: All available cores
+#   CibersortX and Scaden: only 1 core because of the memory usage
+# NOTE: "FORK" is more memory-efficient but only works on Unix systems. For
+#       other systems, use "PSOCK" and reduce the number of cores.
+cores <- alg_config$cores
+cluster_type <- "FORK"
+cluster_outfile <- str_glue("{algorithm}_output.txt")
+
+
+# Iterate through parameters ---------------------------------------------------
+
+# Outer loop - each row of params_loop1 represents a single/unique call to
+# Load_AlgorithmInputData. The inner loop then runs through all parameter sets
+# on that data.
+# NOTE: the helper functions have to be sourced inside the foreach loop
+#       so they exist in each newly-created parallel environment
+
+for (P in 1:nrow(params_loop1)) {
+  data <- Load_AlgorithmInputData_FromParams(params_loop1[P, ])
+
+  bulk_metadata <- colData(data$test)
+  data$test <- as.matrix(assay(data$test, "counts"))
+
+  # Extra processing for CibersortX: Some re-formatting of the input, plus
+  # re-use of batch-corrected signature if it exists
+  if (algorithm == "CibersortX") {
+    # Remove special characters from row and colnames for CibersortX. We don't
+    # modify the reference object yet, it is modified in the inner loop instead.
+    data$original_sample_names <- colnames(data$test)
+    data$test <- Dimnames_To_Cibersort(data$test)
+
+  } else if (algorithm %in% c("Dtangle", "HSPE")) {
+    # Extra pre-processing needed for Dtangle/HSPE -- reformat the input
+    data <- Modify_DtangleHSPE_Input(data, params_loop1[P, ])
+
+  } else if (algorithm == "Music") {
+    # Extra pre-processing needed for MuSiC -- calculate or load sc_basis
+    data <- Modify_Music_Input(data, params_loop1[P,])
+  }
+
+  ## Loop through algorithm-specific arguments ---------------------------------
+  # Inner loop - each row of params_loop2 represents a single/unique call to
+  # the algorithm with specific parameters like which markers to use, how many
+  # from each cell type, and any changes to arguments in the function call.
+  cl <- makeCluster(cores, type = cluster_type, outfile = cluster_outfile)
+  chunk_size <- 1
+
+  results_list <- parLapplyLB(cl, 1:nrow(params_loop2), function(R) {
+    source(file.path("functions", "General_HelperFunctions.R"))
+    source(file.path("functions", "Step08_ArgumentChecking_HelperFunctions.R"))
+    source(alg_config$inner_loop_file) # defined in the config
+
+    params <- cbind(params_loop1[P, ], params_loop2[R, ])
+
+    # There are some invalid parameter combinations for CibersortX: if the
+    # reference_input_type = cibersortx, only use filter_level = 0 because
+    # CibersortX already filtered its signature. If reference_input_type =
+    # signature, only use filter_level = 3 because CibersortX expects a filtered
+    # signature.
+    if (algorithm == "CibersortX") {
+      if ((params$reference_input_type == "cibersortx") && (params$filter_level != 0)) {
+        return(NULL)
+      } else if ((params$reference_input_type == "signature") && (params$filter_level != 3)) {
+        return(NULL)
+      }
+    }
+
+    # If we are picking up from a failed/crashed run, and we've already run
+    # this parameter set, load the result instead of re-running the algorithm
+    prev_res <- Load_AlgorithmIntermediate(params)
+    if (!is.null(prev_res)) {
+      message(paste0("Using previously-run result for ",
+                     paste(params, collapse = "_")))
+      prev_res$param_id <- paste(paste(params_loop1[P, ], collapse = "_"),
+                                 R, sep = "_")
+      return(prev_res)
+    }
+
+    # Otherwise, call the algorithm-specific function to run it with this
+    # set of parameters
+    set.seed(sageRNAUtils::string_to_seed(paste(params, collapse = " ")))
+    inner_loop_func <- match.fun(alg_config$inner_loop_func)
+
+    res <- inner_loop_func(data, params)
+
+    if (!is.null(res)) {
+      res$param_id <- paste(paste(params_loop1[P, ], collapse = "_"),
+                            R, sep = "_")
+    }
+
+    # Save each result in case of crashing
+    Save_AlgorithmIntermediate(res)
+    return(res)
+  }, chunk.size = chunk_size) # end parLapply loop
+
+  stopCluster(cl)
+
+  # It's possible for some items in results_list to be null if there was an error.
+  # Filter them out.
+  results_list <- results_list[lengths(results_list) > 0]
+
+  # Give every result in the list a unique name
+  names(results_list) <- sapply(results_list, "[[", "param_id")
+  results_list <- results_list[sort(names(results_list))]
+
+  # Save the completed list
+  name_base <- paste(params_loop1[P, ], collapse = "_")
+  print(str_glue("Saving final list for {name_base}..."))
+  Save_AlgorithmOutputList(results_list, algorithm,
+                           test_dataset = params_loop1$test_data_name[P],
+                           name_base = name_base)
+
+  rm(results_list, data)
+  gc()
+}
